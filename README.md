@@ -1,3 +1,5 @@
+<img src="./dalle2.png" width="450px"></img>
+
 ## DALL-E 2 - Pytorch (wip)
 
 Implementation of <a href="https://openai.com/dall-e-2/">DALL-E 2</a>, OpenAI's updated text-to-image synthesis neural network, in Pytorch
