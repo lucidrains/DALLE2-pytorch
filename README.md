@@ -19,6 +19,13 @@ It may also explore an extension of using latent diffusion in the decoder
 ```
 
 ```bibtex
+@misc{crowson2022,
+    author  = {Katherine Crowson},
+    url     = {https://twitter.com/rivershavewings}
+}
+```
+
+```bibtex
 @misc{rombach2021highresolution,
     title   = {High-Resolution Image Synthesis with Latent Diffusion Models}, 
     author  = {Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},
