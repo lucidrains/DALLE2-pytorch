@@ -4,11 +4,11 @@
 
 Implementation of <a href="https://openai.com/dall-e-2/">DALL-E 2</a>, OpenAI's updated text-to-image synthesis neural network, in Pytorch
 
-The main novelty seems to be an extra layer of indirection with the prior network (whether it is a transformer or a diffusion network), which predicts an image embedding based on the text embedding from CLIP.
+The main novelty seems to be an extra layer of indirection with the prior network (whether it is an autoregressive transformer or a diffusion network), which predicts an image embedding based on the text embedding from CLIP. Specifically, this repository will only build out the diffusion prior network, as it is the best performing variant (but which incidentally involves a causal transformer as the denoising network 😂)
 
-This is SOTA for text-to-image now, but probably not for long.
+This model is SOTA for text-to-image for now.
 
-It may also explore an extension of using latent diffusion in the decoder
+It may also explore an extension of using <a href="https://huggingface.co/spaces/multimodalart/latentdiffusion">latent diffusion</a> in the decoder from Rombach et al.
 
 ## Citations
 
