@@ -7,6 +7,7 @@ setup(
   entry_points={
     'console_scripts': [
       'dalle2_pytorch = dalle2_pytorch.cli:main',
+      'dream = dalle2_pytorch.cli:dream'
     ],
   },
   version = '0.0.2',
