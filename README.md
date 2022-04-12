@@ -71,3 +71,14 @@ Todo
     year    = {2022}
 }
 ```
+
+```bibtex
+@misc{zhang2019root,
+    title   = {Root Mean Square Layer Normalization},
+    author  = {Biao Zhang and Rico Sennrich},
+    year    = {2019},
+    eprint  = {1910.07467},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.LG}
+}
+```
