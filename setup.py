@@ -3,6 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'dalle2-pytorch',
   packages = find_packages(exclude=[]),
+  include_package_data = True,
   version = '0.0.1',
   license='MIT',
   description = 'DALL-E 2',
@@ -16,8 +17,10 @@ setup(
   ],
   install_requires=[
     'einops>=0.4',
+    'einops-exts',
     'torch>=1.6',
-    'x-clip>=0.4.1'
+    'x-clip>=0.4.1',
+    'yttm'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
