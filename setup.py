@@ -28,6 +28,7 @@ setup(
     'pillow',
     'torch>=1.10',
     'torchvision',
+    'tqdm',
     'x-clip>=0.4.1',
     'youtokentome'
   ],
