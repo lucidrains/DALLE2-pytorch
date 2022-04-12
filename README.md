@@ -63,3 +63,11 @@ Todo
     primaryClass = {cs.CV}
 }
 ```
+
+```bibtex
+@inproceedings{Liu2022ACF,
+    title   = {A ConvNet for the 2020s},
+    author  = {Zhuang Liu and Hanzi Mao and Chaozheng Wu and Christoph Feichtenhofer and Trevor Darrell and Saining Xie},
+    year    = {2022}
+}
+```
