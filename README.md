@@ -14,6 +14,28 @@ Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord
 
 Do let me know if anyone is interested in a Jax version https://github.com/lucidrains/DALLE2-pytorch/discussions/8
 
+## Install
+
+```bash
+$ pip install dalle2-pytorch
+```
+
+## Usage (work in progress)
+
+<a href="https://github.com/lucidrains/big-sleep">template</a>
+
+```bash
+$ dream 'sharing a sunset at the summit of mount everest with my dog'
+```
+
+Once built, images will be saved to the same directory the command is invoked
+
+## Training (work in progress, will offer both in code and as command-line)
+
+<a href="https://github.com/lucidrains/stylegan2-pytorch">template</a>
+
+Todo
+
 ## Citations
 
 ```bibtex
