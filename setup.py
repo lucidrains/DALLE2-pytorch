@@ -25,6 +25,7 @@ setup(
     'click',
     'einops>=0.4',
     'einops-exts',
+    'pillow',
     'torch>=1.10',
     'torchvision',
     'x-clip>=0.4.1',
