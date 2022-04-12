@@ -12,6 +12,8 @@ It may also explore an extension of using <a href="https://huggingface.co/spaces
 
 Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a> if you are interested in helping out with the replication
 
+Do let me know if anyone is interested in a Jax version https://github.com/lucidrains/DALLE2-pytorch/discussions/8
+
 ## Citations
 
 ```bibtex
