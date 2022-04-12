@@ -4,7 +4,12 @@ setup(
   name = 'dalle2-pytorch',
   packages = find_packages(exclude=[]),
   include_package_data = True,
-  version = '0.0.1',
+  entry_points={
+    'console_scripts': [
+      'dalle2_pytorch = dalle2_pytorch.cli:main',
+    ],
+  },
+  version = '0.0.2',
   license='MIT',
   description = 'DALL-E 2',
   author = 'Phil Wang',
@@ -16,11 +21,13 @@ setup(
     'text to image'
   ],
   install_requires=[
+    'click',
     'einops>=0.4',
     'einops-exts',
-    'torch>=1.6',
+    'torch>=1.10',
+    'torchvision',
     'x-clip>=0.4.1',
-    'yttm'
+    'youtokentome'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
