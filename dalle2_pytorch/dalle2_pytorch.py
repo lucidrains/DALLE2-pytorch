@@ -169,6 +169,7 @@ class DiffusionPriorNetwork(nn.Module):
         text_encodings,
         text_embed,
         mask = None,
+        cond_drop_prob = 0.2
     ):
         batch = image_embed.shape[0]
 
