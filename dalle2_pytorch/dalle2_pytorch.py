@@ -149,7 +149,7 @@ class Transformer(nn.Module):
 
         return self.norm(x)
 
-class PriorNetwork(nn.Module):
+class DiffusionPriorNetwork(nn.Module):
     def __init__(
         self,
         dim,
