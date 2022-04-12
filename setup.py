@@ -17,7 +17,7 @@ setup(
   install_requires=[
     'einops>=0.4',
     'torch>=1.6',
-    'x-clip'
+    'x-clip>=0.4.1'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
