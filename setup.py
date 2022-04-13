@@ -29,7 +29,7 @@ setup(
     'torch>=1.10',
     'torchvision',
     'tqdm',
-    'x-clip>=0.4.3',
+    'x-clip>=0.4.4',
     'youtokentome'
   ],
   classifiers=[
