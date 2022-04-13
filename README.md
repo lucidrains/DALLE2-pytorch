@@ -44,6 +44,7 @@ Todo
 - [ ] look into Jonathan Ho's cascading DDPM for the decoder, as that seems to be what they are using. get caught up on DDPM literature
 - [ ] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
 - [ ] train on a toy task, offer in colab
+- [ ] add attention to unet - apply some personal tricks with efficient attention
 
 ## Citations
 
