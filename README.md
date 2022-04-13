@@ -14,6 +14,8 @@ Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord
 
 Do let me know if anyone is interested in a Jax version https://github.com/lucidrains/DALLE2-pytorch/discussions/8
 
+For all of you emailing me (there is a lot), the best way to contribute is through pull requests. Everything is open sourced after all. All my thoughts are public. This is your moment to participate.
+
 ## Install
 
 ```bash
