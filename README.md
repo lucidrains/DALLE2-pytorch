@@ -319,7 +319,7 @@ Offer training wrappers
 - [x] finish off gaussian diffusion class for latent embedding - allow for prediction of epsilon
 - [x] add what was proposed in the paper, where DDPM objective for image latent embedding predicts x0 directly (reread vq-diffusion paper and get caught up on that line of work)
 - [x] make sure it works end to end to produce an output tensor, taking a single gradient step
-- [ ] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)
+- [x] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)
 - [ ] look into Jonathan Ho's cascading DDPM for the decoder, as that seems to be what they are using. get caught up on DDPM literature
 - [ ] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
 - [ ] train on a toy task, offer in colab
