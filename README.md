@@ -364,3 +364,5 @@ For the layperson, no worries, training will all be automated into a CLI tool, a
     primaryClass = {cs.LG}
 }
 ```
+
+*Creating noise from data is easy; creating data from noise is generative modeling.* - Yang Song's <a href="https://arxiv.org/abs/2011.13456">paper</a>
