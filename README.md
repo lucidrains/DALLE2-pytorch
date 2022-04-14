@@ -325,6 +325,7 @@ Offer training wrappers
 - [ ] train on a toy task, offer in colab
 - [ ] add attention to unet - apply some personal tricks with efficient attention
 - [ ] figure out the big idea behind latent diffusion and what can be ported over
+- [ ] consider U2-net for decoder https://arxiv.org/abs/2005.09007
 
 ## Citations
 
