@@ -199,7 +199,7 @@ dalle2 = DALLE2(
     decoder = decoder
 )
 
-# send the text as a string if you want to use the simple tokenizer from DALL-E1
+# send the text as a string if you want to use the simple tokenizer from DALLE v1
 # or you can do it as token ids, if you have your own tokenizer
 
 texts = ['glistening morning dew on a flower petal']

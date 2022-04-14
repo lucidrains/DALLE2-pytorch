@@ -877,7 +877,6 @@ class DALLE2(nn.Module):
             text = [text] if not isinstance(text, (list, tuple)) else text
             text = tokenizer.tokenize(text).to(device)
 
-        print(text.shape, type(text))
         image_embed = self.prior.sample(text, num_samples_per_batch = self.prior_num_samples)
         images = self.decoder.sample(image_embed)
         return images
