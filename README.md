@@ -276,7 +276,7 @@ decoder = Decoder(
     cond_drop_prob = 0.2
 ).cuda()
 
-loss = decoder(images)
+loss = decoder(images) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much
 loss.backward()
 
 # do above for many steps
