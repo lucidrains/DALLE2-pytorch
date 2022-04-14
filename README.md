@@ -162,7 +162,6 @@ clip = CLIP(
 
 prior_network = DiffusionPriorNetwork(
     dim = 512,
-    num_timesteps = 100,
     depth = 6,
     dim_head = 64,
     heads = 8
@@ -251,7 +250,6 @@ loss.backward()
 
 prior_network = DiffusionPriorNetwork(
     dim = 512,
-    num_timesteps = 100,
     depth = 6,
     dim_head = 64,
     heads = 8
