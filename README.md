@@ -22,15 +22,7 @@ For all of you emailing me (there is a lot), the best way to contribute is throu
 $ pip install dalle2-pytorch
 ```
 
-## CLI Usage (work in progress)
-
-```bash
-$ dream 'sharing a sunset at the summit of mount everest with my dog'
-```
-
-Once built, images will be saved to the same directory the command is invoked
-
-## Training (for deep learning practitioners)
+## Usage
 
 To train DALLE-2 is a 3 step process, with the training of CLIP being the most important
 
@@ -305,6 +297,18 @@ images = dalle2(
 Everything in this readme should run without error
 
 For the layperson, no worries, training will all be automated into a CLI tool, at least for small scale training.
+
+## CLI Usage (work in progress)
+
+```bash
+$ dream 'sharing a sunset at the summit of mount everest with my dog'
+```
+
+Once built, images will be saved to the same directory the command is invoked
+
+## Training wrapper (wip)
+
+Offer training wrappers
 
 ## Training CLI (wip)
 
