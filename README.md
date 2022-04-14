@@ -214,8 +214,6 @@ Let's see the whole script below
 import torch
 from dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder, CLIP
 
-import torch
-
 clip = CLIP(
     dim_text = 512,
     dim_image = 512,
@@ -302,6 +300,8 @@ images = dalle2(['cute puppy chasing after a squirrel'])
 ```
 
 Everything in this readme should run without error
+
+For the layperson, no worries, training will all be automated into a CLI tool, at least for small scale training.
 
 ## Training CLI (wip)
 
