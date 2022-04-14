@@ -296,7 +296,10 @@ dalle2 = DALLE2(
     decoder = decoder
 )
 
-images = dalle2(['cute puppy chasing after a squirrel'])
+images = dalle2(
+    ['cute puppy chasing after a squirrel'],
+    cond_scale = 2. # classifier free guidance strength (> 1 would strengthen the condition)
+)
 
 # save your image
 ```
