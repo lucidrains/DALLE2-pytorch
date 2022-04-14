@@ -101,7 +101,7 @@ clip = CLIP(
 unet = Unet(
     dim = 128,
     image_embed_dim = 512,
-    time_dim = 128,
+    cond_dim = 128,
     channels = 3,
     dim_mults=(1, 2, 4, 8)
 ).cuda()
@@ -264,7 +264,7 @@ loss.backward()
 unet = Unet(
     dim = 128,
     image_embed_dim = 512,
-    time_dim = 128,
+    cond_dim = 128,
     channels = 3,
     dim_mults=(1, 2, 4, 8)
 ).cuda()
