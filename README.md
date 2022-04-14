@@ -34,7 +34,7 @@ Once built, images will be saved to the same directory the command is invoked
 
 To train DALLE-2 is a 3 step process, with the training of CLIP being the most important
 
-To train CLIP, you can either use `x-clip` package, or join the LAION discord, where a lot of replication efforts are already underway.
+To train CLIP, you can either use <a href="https://github.com/lucidrains/x-clip">x-clip</a> package, or join the LAION discord, where a lot of replication efforts are already underway.
 
 This repository will demonstrate integration with `x-clip` for starters
 
