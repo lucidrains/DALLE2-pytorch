@@ -25,6 +25,7 @@ setup(
     'click',
     'einops>=0.4',
     'einops-exts>=0.0.3',
+    'kornia>=0.5.4',
     'pillow',
     'torch>=1.10',
     'torchvision',
