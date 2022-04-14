@@ -136,7 +136,7 @@ loss.backward()
 # then it will learn to generate images based on the CLIP image embeddings
 ```
 
-Finally, the main contribution of the paper. The repository offers the diffusion prior network. It takes the CLIP text embeddings and tries to generate the CLIP image embeddings. Again, you will need the trained CLIP fron the first step
+Finally, the main contribution of the paper. The repository offers the diffusion prior network. It takes the CLIP text embeddings and tries to generate the CLIP image embeddings. Again, you will need the trained CLIP from the first step
 
 ```python
 import torch
