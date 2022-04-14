@@ -1011,11 +1011,12 @@ class DALLE2(nn.Module):
         super().__init__()
         assert isinstance(prior, DiffusionPrior)
         assert isinstance(decoder, Decoder)
-        self.prior = prior.eval()
-        self.decoder = decoder.eval()     
+        self.prior = prior
+        self.decoder = decoder
         self.prior_num_samples = prior_num_samples
 
     @torch.no_grad()
+    @eval_decorator
     def forward(
         self,
         text,
