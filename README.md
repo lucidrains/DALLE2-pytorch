@@ -142,6 +142,8 @@ Finally, the main contribution of the paper. The repository offers the diffusion
 import torch
 from dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior, CLIP
 
+# get trained CLIP from step one
+
 clip = CLIP(
     dim_text = 512,
     dim_image = 512,
