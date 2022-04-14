@@ -317,6 +317,7 @@ For the layperson, no worries, training will all be automated into a CLI tool, a
 - [ ] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
 - [ ] train on a toy task, offer in colab
 - [ ] add attention to unet - apply some personal tricks with efficient attention
+- [ ] figure out the big idea behind latent diffusion and what can be ported over
 
 ## Citations
 
