@@ -450,7 +450,7 @@ class DiffusionPrior(nn.Module):
 
         alphas = 1. - betas
         alphas_cumprod = torch.cumprod(alphas, axis=0)
-        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (0, 1), value = 1.)
+        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value = 1.)
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
@@ -941,7 +941,7 @@ class Decoder(nn.Module):
 
         alphas = 1. - betas
         alphas_cumprod = torch.cumprod(alphas, axis=0)
-        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (0, 1), value = 1.)
+        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value = 1.)
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
