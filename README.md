@@ -318,12 +318,12 @@ Offer training wrappers
 - [x] add what was proposed in the paper, where DDPM objective for image latent embedding predicts x0 directly (reread vq-diffusion paper and get caught up on that line of work)
 - [x] make sure it works end to end to produce an output tensor, taking a single gradient step
 - [x] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)
-- [ ] look into Jonathan Ho's cascading DDPM for the decoder, as that seems to be what they are using. get caught up on DDPM literature
-- [ ] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
+- [x] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
+- [ ] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions
 - [ ] train on a toy task, offer in colab
-- [ ] add attention to unet - apply some personal tricks with efficient attention
-- [ ] figure out the big idea behind latent diffusion and what can be ported over
-- [ ] consider U2-net for decoder https://arxiv.org/abs/2005.09007
+- [ ] add attention to unet - apply some personal tricks with efficient attention - use the sparse attention mechanism from https://github.com/lucidrains/vit-pytorch#maxvit
+- [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
+- [ ] consider U2-net for decoder https://arxiv.org/abs/2005.09007 (also in separate file as experimental) build out https://github.com/lucidrains/x-unet
 
 ## Citations
 
