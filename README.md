@@ -182,6 +182,81 @@ loss.backward()
 # now the diffusion prior can generate image embeddings from the text embeddings
 ```
 
+In the paper, they actually used a <a href="https://cascaded-diffusion.github.io/">recently discovered technique</a>, from <a href="http://www.jonathanho.me/">Jonathan Ho</a> himself (original author of DDPMs, from which DALL-E2 is based).
+
+This can easily be used within the framework offered in this repository as so
+
+```python
+import torch
+from dalle2_pytorch import Unet, Decoder, CLIP
+
+# trained clip from step 1
+
+clip = CLIP(
+    dim_text = 512,
+    dim_image = 512,
+    dim_latent = 512,
+    num_text_tokens = 49408,
+    text_enc_depth = 1,
+    text_seq_len = 256,
+    text_heads = 8,
+    visual_enc_depth = 1,
+    visual_image_size = 256,
+    visual_patch_size = 32,
+    visual_heads = 8
+).cuda()
+
+# 2 unets for the decoder (a la cascading DDPM)
+
+unet1 = Unet(
+    dim = 16,
+    image_embed_dim = 512,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8)
+).cuda()
+
+unet2 = Unet(
+    dim = 16,
+    image_embed_dim = 512,
+    lowres_cond = True,         # subsequence unets must have this turned on (and first unet must have this turned off)
+    cond_dim = 128,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8, 16)
+).cuda()
+
+# decoder, which contains the unet and clip
+
+decoder = Decoder(
+    clip = clip,
+    unet = (unet1, unet2),            # insert both unets in order of low resolution to highest resolution (you can have as many stages as you want here)
+    image_sizes = (256, 512),         # resolutions, 256 for first unet, 512 for second
+    timesteps = 100,
+    cond_drop_prob = 0.2
+).cuda()
+
+# mock images (get a lot of this)
+
+images = torch.randn(4, 3, 512, 512).cuda()
+
+# feed images into decoder, specifying which unet you want to train
+# each unet can be trained separately, which is one of the benefits of the cascading DDPM scheme
+
+loss = decoder(images, unet_number = 1)
+loss.backward()
+
+loss = decoder(images, unet_number = 2)
+loss.backward()
+
+# do the above for many steps for both unets
+
+# then it will learn to generate images based on the CLIP image embeddings
+
+# chaining the unets from lowest resolution to highest resolution (thus cascading)
+
+mock_image_embed = torch.randn(1, 512).cuda()
+images = decoder.sample(mock_image_embed) # (1, 3, 512, 512)
+```
+
 Finally, to generate the DALL-E2 images from text. Insert the trained `DiffusionPrior` as well as the `Decoder` (which both contains `CLIP`, a unet, and a causal transformer)
 
 ```python
@@ -261,7 +336,7 @@ loss.backward()
 
 # decoder (with unet)
 
-unet = Unet(
+unet1 = Unet(
     dim = 128,
     image_embed_dim = 512,
     cond_dim = 128,
@@ -269,15 +344,26 @@ unet = Unet(
     dim_mults=(1, 2, 4, 8)
 ).cuda()
 
+unet2 = Unet(
+    dim = 16,
+    image_embed_dim = 512,
+    cond_dim = 128,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8, 16),
+    lowres_cond = True
+).cuda()
+
 decoder = Decoder(
-    net = unet,
+    unet = (unet1, unet2),
+    image_sizes = (128, 256),
     clip = clip,
     timesteps = 100,
     cond_drop_prob = 0.2
 ).cuda()
 
-loss = decoder(images) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much
-loss.backward()
+for unet_number in (1, 2):
+    loss = decoder(images, unet_number = unet_number) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much
+    loss.backward()
 
 # do above for many steps
 
@@ -291,10 +377,12 @@ images = dalle2(
     cond_scale = 2. # classifier free guidance strength (> 1 would strengthen the condition)
 )
 
-# save your image
+# save your image (in this example, of size 256x256)
 ```
 
 Everything in this readme should run without error
+
+You can also train the decoder on images of greater than the size (say 512x512) at which CLIP was trained (256x256). The images will be resized to CLIP image resolution for the image embeddings
 
 For the layperson, no worries, training will all be automated into a CLI tool, at least for small scale training.
 
@@ -321,7 +409,9 @@ Offer training wrappers
 - [x] make sure it works end to end to produce an output tensor, taking a single gradient step
 - [x] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)
 - [x] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
-- [ ] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions
+- [x] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions
+- [ ] use an image resolution cutoff and do cross attention conditioning only if resources allow, and MLP + sum conditioning on rest
+- [ ] make unet more configurable
 - [ ] train on a toy task, offer in colab
 - [ ] add attention to unet - apply some personal tricks with efficient attention - use the sparse attention mechanism from https://github.com/lucidrains/vit-pytorch#maxvit
 - [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
