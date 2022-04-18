@@ -257,7 +257,7 @@ mock_image_embed = torch.randn(1, 512).cuda()
 images = decoder.sample(mock_image_embed) # (1, 3, 512, 512)
 ```
 
-Finally, to generate the DALL-E2 images from text. Insert the trained `DiffusionPrior` as well as the `Decoder` (which both contains `CLIP`, a unet, and a causal transformer)
+Finally, to generate the DALL-E2 images from text. Insert the trained `DiffusionPrior` as well as the `Decoder` (which wraps `CLIP`, the causal transformer, and unet(s))
 
 ```python
 from dalle2_pytorch import DALLE2
@@ -409,15 +409,10 @@ Offer training wrappers
 - [x] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)
 - [x] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
 - [x] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions
-- [ ] use an image resolution cutoff and do cross attention conditioning only if resources allow, and MLP + sum conditioning on rest
-- [ ] make unet more configurable
-- [ ] figure out some factory methods to make cascading unet instantiations less error-prone
 - [ ] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
-- [ ] become an expert with unets, port learnings over to https://github.com/lucidrains/x-unet
-- [ ] train on a toy task, offer in colab
-- [ ] add attention to unet - apply some personal tricks with efficient attention - use the sparse attention mechanism from https://github.com/lucidrains/vit-pytorch#maxvit
 - [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
-- [ ] consider U2-net for decoder https://arxiv.org/abs/2005.09007 (also in separate file as experimental) build out https://github.com/lucidrains/x-unet
+- [ ] become an expert with unets, cleanup unet code, make it fully configurable, add efficient attention (conditional on resolution), port all learnings over to https://github.com/lucidrains/x-unet
+- [ ] train on a toy task, offer in colab
 
 ## Citations
 
