@@ -414,6 +414,7 @@ Offer training wrappers
 - [ ] make unet more configurable
 - [ ] figure out some factory methods to make cascading unet instantiations less error-prone
 - [ ] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
+- [ ] become an expert with unets, port learnings over to https://github.com/lucidrains/x-unet
 - [ ] train on a toy task, offer in colab
 - [ ] add attention to unet - apply some personal tricks with efficient attention - use the sparse attention mechanism from https://github.com/lucidrains/vit-pytorch#maxvit
 - [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
