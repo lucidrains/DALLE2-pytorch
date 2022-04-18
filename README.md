@@ -224,7 +224,7 @@ unet2 = Unet(
     dim_mults = (1, 2, 4, 8, 16)
 ).cuda()
 
-# decoder, which contains the unet and clip
+# decoder, which contains the unet(s) and clip
 
 decoder = Decoder(
     clip = clip,
