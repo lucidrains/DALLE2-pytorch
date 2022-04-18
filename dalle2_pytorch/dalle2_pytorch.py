@@ -816,6 +816,11 @@ class Unet(nn.Module):
         attend_at_middle = True, # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
     ):
         super().__init__()
+        # save locals to take care of some hyperparameters for cascading DDPM
+
+        self._locals = locals()
+        del self._locals['self']
+        del self._locals['__class__']
 
         # for eventual cascading diffusion
 
@@ -895,6 +900,15 @@ class Unet(nn.Module):
             ConvNextBlock(dim, dim),
             nn.Conv2d(dim, out_dim, 1)
         )
+
+    # if the current settings for the unet are not correct
+    # for cascading DDPM, then reinit the unet with the right settings
+    def force_lowres_cond(self, lowres_cond):
+        if lowres_cond == self.lowres_cond:
+            return self
+
+        updated_kwargs = {**self._locals, 'lowres_cond': lowres_cond}
+        return self.__class__(**updated_kwargs)
 
     def forward_with_cond_scale(
         self,
@@ -1021,7 +1035,17 @@ class Decoder(nn.Module):
         self.clip_image_size = clip.image_size
         self.channels = clip.image_channels
 
-        self.unets = nn.ModuleList(unet)
+        # automatically take care of ensuring that first unet is unconditional
+        # while the rest of the unets are conditioned on the low resolution image produced by previous unet
+
+        self.unets = nn.ModuleList([])
+        for ind, one_unet in enumerate(cast_tuple(unet)):
+            is_first = ind == 0
+            one_unet = one_unet.force_lowres_cond(not is_first)
+            self.unets.append(one_unet)
+
+        # unet image sizes
+
         image_sizes = default(image_sizes, (clip.image_size,))
         image_sizes = tuple(sorted(set(image_sizes)))
 

@@ -218,7 +218,6 @@ unet1 = Unet(
 unet2 = Unet(
     dim = 16,
     image_embed_dim = 512,
-    lowres_cond = True,         # subsequent unets must have this turned on (and first unet must have this turned off)
     cond_dim = 128,
     channels = 3,
     dim_mults = (1, 2, 4, 8, 16)
@@ -349,8 +348,7 @@ unet2 = Unet(
     image_embed_dim = 512,
     cond_dim = 128,
     channels = 3,
-    dim_mults = (1, 2, 4, 8, 16),
-    lowres_cond = True
+    dim_mults = (1, 2, 4, 8, 16)
 ).cuda()
 
 decoder = Decoder(
