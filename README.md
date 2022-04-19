@@ -409,9 +409,10 @@ Offer training wrappers
 - [x] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)
 - [x] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
 - [x] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions
+- [x] add efficient attention in unet
 - [ ] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
 - [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
-- [ ] become an expert with unets, cleanup unet code, make it fully configurable, add efficient attention (conditional on resolution), port all learnings over to https://github.com/lucidrains/x-unet
+- [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] train on a toy task, offer in colab
 
 ## Citations
@@ -458,6 +459,14 @@ Offer training wrappers
     eprint  = {1910.07467},
     archivePrefix = {arXiv},
     primaryClass = {cs.LG}
+}
+```
+
+```bibtex
+@inproceedings{Tu2022MaxViTMV,
+    title   = {MaxViT: Multi-Axis Vision Transformer},
+    author  = {Zhe-Wei Tu and Hossein Talebi and Han Zhang and Feng Yang and Peyman Milanfar and Alan Conrad Bovik and Yinxiao Li},
+    year    = {2022}
 }
 ```
 

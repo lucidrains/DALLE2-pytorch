@@ -798,6 +798,20 @@ class CrossAttention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
 
+class GridAttention(nn.Module):
+    def __init__(self, *args, window_size = 8, **kwargs):
+        super().__init__()
+        self.window_size = window_size
+        self.attn = Attention(*args, **kwargs)
+
+    def forward(self, x):
+        h, w = x.shape[-2:]
+        wsz = self.window_size
+        x = rearrange(x, 'b c (w1 h) (w2 w) -> (b h w) (w1 w2) c', w1 = wsz, w2 = wsz)
+        out = self.attn(x)
+        out = rearrange(out, '(b h w) (w1 w2) c -> b c (w1 h) (w2 w)', w1 = wsz, w2 = wsz, h = h // wsz, w = w // wsz)
+        return out
+
 class Unet(nn.Module):
     def __init__(
         self,
@@ -813,6 +827,8 @@ class Unet(nn.Module):
         lowres_cond_upsample_mode = 'bilinear',
         blur_sigma = 0.1,
         blur_kernel_size = 3,
+        sparse_attn = False,
+        sparse_attn_window = 8,  # window size for sparse attention
         attend_at_middle = True, # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
     ):
         super().__init__()
@@ -875,6 +891,7 @@ class Unet(nn.Module):
 
             self.downs.append(nn.ModuleList([
                 ConvNextBlock(dim_in, dim_out, norm = ind != 0),
+                Residual(GridAttention(dim_out, window_size = sparse_attn_window)) if sparse_attn else nn.Identity(),
                 ConvNextBlock(dim_out, dim_out, cond_dim = layer_cond_dim),
                 Downsample(dim_out) if not is_last else nn.Identity()
             ]))
@@ -891,6 +908,7 @@ class Unet(nn.Module):
 
             self.ups.append(nn.ModuleList([
                 ConvNextBlock(dim_out * 2, dim_in, cond_dim = layer_cond_dim),
+                Residual(GridAttention(dim_in, window_size = sparse_attn_window)) if sparse_attn else nn.Identity(),
                 ConvNextBlock(dim_in, dim_in, cond_dim = layer_cond_dim),
                 Upsample(dim_in)
             ]))
@@ -995,8 +1013,9 @@ class Unet(nn.Module):
 
         hiddens = []
 
-        for convnext, convnext2, downsample in self.downs:
+        for convnext, sparse_attn, convnext2, downsample in self.downs:
             x = convnext(x, c)
+            x = sparse_attn(x)
             x = convnext2(x, c)
             hiddens.append(x)
             x = downsample(x)
@@ -1008,9 +1027,10 @@ class Unet(nn.Module):
 
         x = self.mid_block2(x, mid_c)
 
-        for convnext, convnext2, upsample in self.ups:
+        for convnext, sparse_attn, convnext2, upsample in self.ups:
             x = torch.cat((x, hiddens.pop()), dim=1)
             x = convnext(x, c)
+            x = sparse_attn(x)
             x = convnext2(x, c)
             x = upsample(x)
 
