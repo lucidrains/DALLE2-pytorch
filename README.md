@@ -410,6 +410,7 @@ Offer training wrappers
 - [x] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)
 - [x] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions
 - [x] add efficient attention in unet
+- [ ] be able to finely customize what to condition on (text, image embed) for specific unet in the cascade (super resolution ddpms near the end may not need too much conditioning)
 - [ ] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
 - [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
