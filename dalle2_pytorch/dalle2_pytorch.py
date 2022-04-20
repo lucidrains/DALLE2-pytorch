@@ -590,8 +590,7 @@ class DiffusionPrior(nn.Module):
         return x_recon + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
-    def 
-    _loop(self, shape, text_cond):
+    def p_sample_loop(self, shape, text_cond):
         device = self.betas.device
 
         b = shape[0]
