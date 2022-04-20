@@ -2,6 +2,7 @@ import math
 from tqdm import tqdm
 from inspect import isfunction
 from functools import partial
+from contextlib import contextmanager
 
 import torch
 import torch.nn.functional as F
@@ -1141,6 +1142,20 @@ class Decoder(nn.Module):
         self.register_buffer('posterior_mean_coef1', betas * torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))
         self.register_buffer('posterior_mean_coef2', (1. - alphas_cumprod_prev) * torch.sqrt(alphas) / (1. - alphas_cumprod))
 
+    @contextmanager
+    def one_unet_in_gpu(self, unet_number):
+        assert 0 < unet_number <= len(self.unets)
+        index = unet_number - 1
+        self.cuda()
+        self.unets.cpu()
+
+        unet = self.unets[index]
+        unet.cuda()
+
+        yield
+
+        self.unets.cpu()
+
     def get_text_encodings(self, text):
         text_encodings = self.clip.text_transformer(text)
         return text_encodings[:, 1:]
@@ -1245,9 +1260,11 @@ class Decoder(nn.Module):
         text_encodings = self.get_text_encodings(text) if exists(text) else None
 
         img = None
-        for unet, image_size in tqdm(zip(self.unets, self.image_sizes)):
-            shape = (batch_size, channels, image_size, image_size)
-            img = self.p_sample_loop(unet, shape, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = img)
+
+        for ind, (unet, image_size) in tqdm(enumerate(zip(self.unets, self.image_sizes))):
+            with self.one_unet_in_gpu(ind + 1):
+                shape = (batch_size, channels, image_size, image_size)
+                img = self.p_sample_loop(unet, shape, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = img)
 
         return img
 
