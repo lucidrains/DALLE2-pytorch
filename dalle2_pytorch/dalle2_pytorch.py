@@ -820,6 +820,7 @@ class Unet(nn.Module):
         image_embed_dim,
         cond_dim = None,
         num_image_tokens = 4,
+        num_time_tokens = 2,
         out_dim = None,
         dim_mults=(1, 2, 4, 8),
         channels = 3,
@@ -830,6 +831,8 @@ class Unet(nn.Module):
         sparse_attn = False,
         sparse_attn_window = 8,  # window size for sparse attention
         attend_at_middle = True, # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
+        cond_on_text_encodings = False,
+        cond_on_image_embeds = False,
     ):
         super().__init__()
         # save locals to take care of some hyperparameters for cascading DDPM
@@ -862,8 +865,8 @@ class Unet(nn.Module):
             SinusoidalPosEmb(dim),
             nn.Linear(dim, dim * 4),
             nn.GELU(),
-            nn.Linear(dim * 4, cond_dim),
-            Rearrange('b d -> b 1 d')
+            nn.Linear(dim * 4, cond_dim * num_time_tokens),
+            Rearrange('b (r d) -> b r d', r = num_time_tokens)
         )
 
         self.image_to_cond = nn.Sequential(
@@ -872,6 +875,12 @@ class Unet(nn.Module):
         ) if image_embed_dim != cond_dim else nn.Identity()
 
         self.text_to_cond = nn.LazyLinear(cond_dim)
+
+        # finer control over whether to condition on image embeddings and text encodings
+        # so one can have the latter unets in the cascading DDPMs only focus on super-resoluting
+
+        self.cond_on_text_encodings = cond_on_text_encodings
+        self.cond_on_image_embeds = cond_on_image_embeds
 
         # for classifier free guidance
 
@@ -982,17 +991,22 @@ class Unet(nn.Module):
         # mask out image embedding depending on condition dropout
         # for classifier free guidance
 
-        image_tokens = self.image_to_cond(image_embed)
+        image_tokens = None
 
-        image_tokens = torch.where(
-            cond_prob_mask,
-            image_tokens,
-            self.null_image_embed
-        )
+        if self.cond_on_image_embeds:
+            image_tokens = self.image_to_cond(image_embed)
+
+            image_tokens = torch.where(
+                cond_prob_mask,
+                image_tokens,
+                self.null_image_embed
+            )
 
         # take care of text encodings (optional)
 
-        if exists(text_encodings):
+        text_tokens = None
+
+        if exists(text_encodings) and self.cond_on_text_encodings:
             text_tokens = self.text_to_cond(text_encodings)
             text_tokens = torch.where(
                 cond_prob_mask,
@@ -1002,12 +1016,15 @@ class Unet(nn.Module):
 
         # main conditioning tokens (c)
 
-        c = torch.cat((time_tokens, image_tokens), dim = -2)
+        c = time_tokens
+
+        if exists(image_tokens):
+            c = torch.cat((c, image_tokens), dim = -2)
 
         # text and image conditioning tokens (mid_c)
         # to save on compute, only do cross attention based conditioning on the inner most layers of the Unet
 
-        mid_c = c if not exists(text_encodings) else torch.cat((c, text_tokens), dim = -2)
+        mid_c = c if not exists(text_tokens) else torch.cat((c, text_tokens), dim = -2)
 
         # go through the layers of the unet, down and up
 

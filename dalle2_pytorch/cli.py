@@ -6,4 +6,4 @@ def main():
 @click.command()
 @click.argument('text')
 def dream(text):
-    return image
+    return 'not ready yet'
