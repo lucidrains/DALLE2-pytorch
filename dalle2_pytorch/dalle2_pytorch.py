@@ -564,7 +564,7 @@ class DiffusionPrior(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def p_mean_variance(self, x, t, text_cond, clip_denoised: bool):
+    def p_recon_variance(self, x, t, text_cond, clip_denoised: bool):
         if self.predict_x0:
             x_recon = self.net(x, t, **text_cond)
             # not 100% sure of this above line - for any spectators, let me know in the github issues (or through a pull request) if you know how to correctly do this
@@ -574,21 +574,24 @@ class DiffusionPrior(nn.Module):
 
         if clip_denoised:
             x_recon.clamp_(-1., 1.)
-
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
-        return model_mean, posterior_variance, posterior_log_variance
+            
+        posterior_variance = extract(self.posterior_variance, t, x.shape)
+        posterior_log_variance = extract(self.posterior_log_variance_clipped, t, x.shape)
+        
+        return x_recon, posterior_variance, posterior_log_variance
 
     @torch.no_grad()
     def p_sample(self, x, t, text_cond = None, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
-        model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, text_cond = text_cond, clip_denoised = clip_denoised)
+        x_recon, _, model_log_variance = self.p_recon_variance(x = x, t = t, text_cond = text_cond, clip_denoised = clip_denoised)
         noise = noise_like(x.shape, device, repeat_noise)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
-        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+        return x_recon + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
-    def p_sample_loop(self, shape, text_cond):
+    def 
+    _loop(self, shape, text_cond):
         device = self.betas.device
 
         b = shape[0]
@@ -1156,24 +1159,26 @@ class Decoder(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, lowres_cond_img = None, clip_denoised = True, cond_scale = 1.):
+    def p_recon_variance(self, unet, x, t, image_embed, text_encodings = None, lowres_cond_img = None, clip_denoised = True, cond_scale = 1.):
         pred_noise = unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
         x_recon = self.predict_start_from_noise(x, t = t, noise = pred_noise)
 
         if clip_denoised:
             x_recon.clamp_(-1., 1.)
-
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
-        return model_mean, posterior_variance, posterior_log_variance
+            
+        posterior_variance = extract(self.posterior_variance, t, x.shape)
+        posterior_log_variance = extract(self.posterior_log_variance_clipped, t, x.shape)
+        
+        return x_recon, posterior_variance, posterior_log_variance
 
     @torch.no_grad()
     def p_sample(self, unet, x, t, image_embed, text_encodings = None, cond_scale = 1., lowres_cond_img = None, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
-        model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised)
+        x_recon, _, model_log_variance = self.p_recon_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised)
         noise = noise_like(x.shape, device, repeat_noise)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
-        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
+        return x_recon + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
     def p_sample_loop(self, unet, shape, image_embed, lowres_cond_img = None, text_encodings = None, cond_scale = 1):
