@@ -412,7 +412,7 @@ Offer training wrappers
 - [x] add efficient attention in unet
 - [x] be able to finely customize what to condition on (text, image embed) for specific unet in the cascade (super resolution ddpms near the end may not need too much conditioning)
 - [x] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
-- [ ] build out latent diffusion architecture in separate file, as it is not faithful to dalle-2 (but offer it as as setting)
+- [ ] build out latent diffusion architecture, make it completely optional (additional autoencoder + some regularizations [kl and vq regs])
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] train on a toy task, offer in colab
 
