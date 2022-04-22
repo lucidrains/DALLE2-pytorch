@@ -10,8 +10,6 @@ The main novelty seems to be an extra layer of indirection with the prior networ
 
 This model is SOTA for text-to-image for now.
 
-It may also explore an extension of using <a href="https://huggingface.co/spaces/multimodalart/latentdiffusion">latent diffusion</a> in the decoder from Rombach et al.
-
 Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a> if you are interested in helping out with the replication
 
 There was enough interest for a Jax version. It will be completed after the Pytorch version shows signs of life on my toy tasks. <a href="https://github.com/lucidrains/dalle2-jax">Placeholder repository</a>. I will also eventually extend this to <a href="https://github.com/lucidrains/dalle2-video">text to video</a>, once the repository is in a good place.
@@ -385,6 +383,117 @@ You can also train the decoder on images of greater than the size (say 512x512) 
 
 For the layperson, no worries, training will all be automated into a CLI tool, at least for small scale training.
 
+## Experimental
+
+### DALL-E2 with Latent Diffusion
+
+This repository decides to take the next step and offer DALL-E2 combined with latent diffusion, from Rombach et al.
+
+You can use it as follows. Latent diffusion can be limited to just the first U-Net in the cascade, or to any number you wish.
+
+```python
+import torch
+from dalle2_pytorch import Unet, Decoder, CLIP, VQGanVAE
+
+# trained clip from step 1
+
+clip = CLIP(
+    dim_text = 512,
+    dim_image = 512,
+    dim_latent = 512,
+    num_text_tokens = 49408,
+    text_enc_depth = 1,
+    text_seq_len = 256,
+    text_heads = 8,
+    visual_enc_depth = 1,
+    visual_image_size = 256,
+    visual_patch_size = 32,
+    visual_heads = 8
+)
+
+# 2 unets for the decoder (a la cascading DDPM)
+
+# 1st unet is doing latent diffusion
+
+vae1 = VQGanVAE(
+    dim = 32,
+    image_size = 256,
+    layers = 3,
+    layer_mults = (1, 2, 4)
+)
+
+vae2 = VQGanVAE(
+    dim = 32,
+    image_size = 512,
+    layers = 3,
+    layer_mults = (1, 2, 4)
+)
+
+unet1 = Unet(
+    dim = 32,
+    image_embed_dim = 512,
+    cond_dim = 128,
+    channels = 3,
+    sparse_attn = True,
+    sparse_attn_window = 2,
+    dim_mults = (1, 2, 4, 8)
+)
+
+unet2 = Unet(
+    dim = 32,
+    image_embed_dim = 512,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8, 16),
+    cond_on_image_embeds = True,
+    cond_on_text_encodings = False
+)
+
+unet3 = Unet(
+    dim = 32,
+    image_embed_dim = 512,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8, 16),
+    cond_on_image_embeds = True,
+    cond_on_text_encodings = False,
+    attend_at_middle = False
+)
+
+# decoder, which contains the unet(s) and clip
+
+decoder = Decoder(
+    clip = clip,
+    vae = (vae1, vae2),                # latent diffusion for unet1 (vae1) and unet2 (vae2), but not for the last unet3
+    unet = (unet1, unet2, unet3),      # insert unets in order of low resolution to highest resolution (you can have as many stages as you want here)
+    image_sizes = (256, 512, 1024),    # resolutions, 256 for first unet, 512 for second, 1024 for third
+    timesteps = 100,
+    cond_drop_prob = 0.2
+).cuda()
+
+# mock images (get a lot of this)
+
+images = torch.randn(1, 3, 1024, 1024).cuda()
+
+# feed images into decoder, specifying which unet you want to train
+# each unet can be trained separately, which is one of the benefits of the cascading DDPM scheme
+
+with decoder.one_unet_in_gpu(1):
+    loss = decoder(images, unet_number = 1)
+    loss.backward()
+
+with decoder.one_unet_in_gpu(2):
+    loss = decoder(images, unet_number = 2)
+    loss.backward()
+
+# do the above for many steps for both unets
+
+# then it will learn to generate images based on the CLIP image embeddings
+
+# chaining the unets from lowest resolution to highest resolution (thus cascading)
+
+mock_image_embed = torch.randn(1, 512).cuda()
+images = decoder.sample(mock_image_embed) # (1, 3, 1024, 1024)
+```
+
 ## CLI Usage (work in progress)
 
 ```bash
@@ -412,11 +521,13 @@ Offer training wrappers
 - [x] add efficient attention in unet
 - [x] be able to finely customize what to condition on (text, image embed) for specific unet in the cascade (super resolution ddpms near the end may not need too much conditioning)
 - [x] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
-- [ ] build out latent diffusion architecture, with the vq-reg variant (vqgan-vae), make it completely optional and compatible with cascading ddpms
+- [x] build out latent diffusion architecture, with the vq-reg variant (vqgan-vae), make it completely optional and compatible with cascading ddpms
+- [ ] spend one day cleaning up tech debt in decoder
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
 - [ ] train on a toy task, offer in colab
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
+- [ ] bring in tools to train vqgan-vae
 
 ## Citations
 
