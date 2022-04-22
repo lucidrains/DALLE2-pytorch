@@ -531,6 +531,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] train on a toy task, offer in colab
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] bring in tools to train vqgan-vae
+- [ ] for decoder, allow ability to customize objective (predict epsilon vs x0), in case latent diffusion does better with prediction of x0
 
 ## Citations
 
