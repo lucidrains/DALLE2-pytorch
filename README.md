@@ -485,6 +485,10 @@ with decoder.one_unet_in_gpu(2):
     loss = decoder(images, unet_number = 2)
     loss.backward()
 
+with decoder.one_unet_in_gpu(3):
+    loss = decoder(images, unet_number = 3)
+    loss.backward()
+
 # do the above for many steps for both unets
 
 # then it will learn to generate images based on the CLIP image embeddings
