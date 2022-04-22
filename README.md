@@ -412,11 +412,11 @@ Offer training wrappers
 - [x] add efficient attention in unet
 - [x] be able to finely customize what to condition on (text, image embed) for specific unet in the cascade (super resolution ddpms near the end may not need too much conditioning)
 - [x] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
-- [ ] build out latent diffusion architecture, make it completely optional (additional autoencoder + some regularizations [kl and vq regs]) (figure out if latent diffusion + cascading ddpm can be used in conjunction)
-- [ ] Extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
+- [ ] build out latent diffusion architecture, with the vq-reg variant (vqgan-vae), make it completely optional
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
 - [ ] train on a toy task, offer in colab
+- [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 
 ## Citations
 

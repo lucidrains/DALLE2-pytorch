@@ -30,6 +30,7 @@ setup(
     'torch>=1.10',
     'torchvision',
     'tqdm',
+    'vector-quantize-pytorch',
     'x-clip>=0.4.4',
     'youtokentome'
   ],
