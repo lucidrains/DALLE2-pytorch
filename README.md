@@ -387,7 +387,7 @@ For the layperson, no worries, training will all be automated into a CLI tool, a
 
 ### DALL-E2 with Latent Diffusion
 
-This repository decides to take the next step and offer DALL-E2 combined with latent diffusion, from Rombach et al.
+This repository decides to take the next step and offer DALL-E2 combined with <a href="https://huggingface.co/spaces/multimodalart/latentdiffusion">latent diffusion</a>, from Rombach et al.
 
 You can use it as follows. Latent diffusion can be limited to just the first U-Net in the cascade, or to any number you wish.
 
@@ -411,9 +411,10 @@ clip = CLIP(
     visual_heads = 8
 )
 
-# 2 unets for the decoder (a la cascading DDPM)
+# 3 unets for the decoder (a la cascading DDPM)
 
-# 1st unet is doing latent diffusion
+# first two unets are doing latent diffusion
+# vqgan-vae must be trained before hand
 
 vae1 = VQGanVAE(
     dim = 32,
@@ -494,7 +495,11 @@ mock_image_embed = torch.randn(1, 512).cuda()
 images = decoder.sample(mock_image_embed) # (1, 3, 1024, 1024)
 ```
 
-## CLI Usage (work in progress)
+## Training wrapper (wip)
+
+Offer training wrappers
+
+## CLI (wip)
 
 ```bash
 $ dream 'sharing a sunset at the summit of mount everest with my dog'
@@ -502,9 +507,7 @@ $ dream 'sharing a sunset at the summit of mount everest with my dog'
 
 Once built, images will be saved to the same directory the command is invoked
 
-## Training wrapper (wip)
-
-Offer training wrappers
+<a href="https://github.com/lucidrains/big-sleep">template</a>
 
 ## Training CLI (wip)
 
