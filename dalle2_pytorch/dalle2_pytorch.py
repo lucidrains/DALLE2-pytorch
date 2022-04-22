@@ -16,6 +16,7 @@ from einops_exts.torch import EinopsToAndFrom
 from kornia.filters import gaussian_blur2d
 
 from dalle2_pytorch.tokenizer import tokenizer
+from dalle2_pytorch.vqgan_vae import NullVQGanVAE, VQGanVAE
 
 # use x-clip
 
@@ -48,11 +49,11 @@ def is_list_str(x):
         return False
     return all([type(el) == str for el in x])
 
-def pad_tuple_to_length(t, length):
+def pad_tuple_to_length(t, length, fillvalue = None):
     remain_length = length - len(t)
     if remain_length <= 0:
         return t
-    return (*t, *((None,) * remain_length))
+    return (*t, *((fillvalue,) * remain_length))
 
 # for controlling freezing of CLIP
 
@@ -1135,12 +1136,15 @@ class Decoder(nn.Module):
         # while the rest of the unets are conditioned on the low resolution image produced by previous unet
 
         unets = cast_tuple(unet)
-        vaes = pad_tuple_to_length(cast_tuple(vae), len(unets))
+        vaes = pad_tuple_to_length(cast_tuple(vae), len(unets), fillvalue = NullVQGanVAE(channels = self.channels))
 
         self.unets = nn.ModuleList([])
         self.vaes = nn.ModuleList([])
 
         for ind, (one_unet, one_vae) in enumerate(zip(unets, vaes)):
+            assert isinstance(one_unet, Unet)
+            assert isinstance(one_vae, (VQGanVAE, NullVQGanVAE))
+
             is_first = ind == 0
             latent_dim = one_vae.encoded_dim if exists(one_vae) else None
 
@@ -1152,7 +1156,7 @@ class Decoder(nn.Module):
             )
 
             self.unets.append(one_unet)
-            self.vaes.append(one_vae.copy_for_eval() if exists(one_vae) else None)
+            self.vaes.append(one_vae.copy_for_eval())
 
         # unet image sizes
 
@@ -1362,12 +1366,11 @@ class Decoder(nn.Module):
                 if unet.lowres_cond:
                     lowres_cond_img = self.to_lowres_cond(img, target_image_size = image_size)
 
-                if exists(vae):
-                    image_size //= (2 ** vae.layers)
-                    shape = (batch_size, vae.encoded_dim, image_size, image_size)
+                image_size = vae.get_encoded_fmap_size(image_size)
+                shape = (batch_size, vae.encoded_dim, image_size, image_size)
 
-                    if exists(lowres_cond_img):
-                        lowres_cond_img = vae.encode(lowres_cond_img)
+                if exists(lowres_cond_img):
+                    lowres_cond_img = vae.encode(lowres_cond_img)
 
                 img = self.p_sample_loop(
                     unet,
@@ -1378,8 +1381,7 @@ class Decoder(nn.Module):
                     lowres_cond_img = lowres_cond_img
                 )
 
-                if exists(vae):
-                    img = vae.decode(img)
+                img = vae.decode(img)
 
         return img
 
@@ -1415,13 +1417,12 @@ class Decoder(nn.Module):
         lowres_cond_img = self.to_lowres_cond(image, target_image_size = target_image_size, downsample_image_size = self.image_sizes[unet_index - 1]) if unet_number > 1 else None
         image = resize_image_to(image, target_image_size)
 
-        if exists(vae):
-            vae.eval()
-            with torch.no_grad():
-                image = vae.encode(image)
+        vae.eval()
+        with torch.no_grad():
+            image = vae.encode(image)
 
-                if exists(lowres_cond_img):
-                    lowres_cond_img = vae.encode(lowres_cond_img)
+            if exists(lowres_cond_img):
+                lowres_cond_img = vae.encode(lowres_cond_img)
 
         return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, lowres_cond_img = lowres_cond_img)
 
