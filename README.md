@@ -536,6 +536,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] bring in tools to train vqgan-vae
 - [ ] for decoder, allow ability to customize objective (predict epsilon vs x0), in case latent diffusion does better with prediction of x0
+- [ ] bring in vit-vqgan https://arxiv.org/abs/2110.04627 for the latent diffusion
 
 ## Citations
 
@@ -570,17 +571,6 @@ Once built, images will be saved to the same directory the command is invoked
     title   = {A ConvNet for the 2020s},
     author  = {Zhuang Liu and Hanzi Mao and Chaozheng Wu and Christoph Feichtenhofer and Trevor Darrell and Saining Xie},
     year    = {2022}
-}
-```
-
-```bibtex
-@misc{zhang2019root,
-    title   = {Root Mean Square Layer Normalization},
-    author  = {Biao Zhang and Rico Sennrich},
-    year    = {2019},
-    eprint  = {1910.07467},
-    archivePrefix = {arXiv},
-    primaryClass = {cs.LG}
 }
 ```
 
