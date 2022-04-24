@@ -591,7 +591,7 @@ class DiffusionPrior(nn.Module):
         else:
             x_recon = self.predict_start_from_noise(x, t = t, noise = self.net(x, t, **text_cond))
 
-        if clip_denoised:
+        if clip_denoised and not self.predict_x0:
             x_recon.clamp_(-1., 1.)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
