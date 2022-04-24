@@ -584,12 +584,14 @@ class DiffusionPrior(nn.Module):
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(self, x, t, text_cond, clip_denoised: bool):
+        pred = self.net(x, t, **text_cond)
+
         if self.predict_x0:
-            x_recon = self.net(x, t, **text_cond)
+            x_recon = pred
             # not 100% sure of this above line - for any spectators, let me know in the github issues (or through a pull request) if you know how to correctly do this
             # i'll be rereading https://arxiv.org/abs/2111.14822, where i think a similar approach is taken
         else:
-            x_recon = self.predict_start_from_noise(x, t = t, noise = self.net(x, t, **text_cond))
+            x_recon = self.predict_start_from_noise(x, t = t, noise = pred)
 
         if clip_denoised and not self.predict_x0:
             x_recon.clamp_(-1., 1.)
@@ -1119,6 +1121,7 @@ class Decoder(nn.Module):
         cond_drop_prob = 0.2,
         loss_type = 'l1',
         beta_schedule = 'cosine',
+        predict_x0 = False,
         image_sizes = None,                         # for cascading ddpm, image size at each stage
         lowres_cond_upsample_mode = 'bilinear',     # cascading ddpm - low resolution upsample mode
         lowres_downsample_first = True,             # cascading ddpm - resizes to lower resolution, then to next conditional resolution + blur
@@ -1166,6 +1169,10 @@ class Decoder(nn.Module):
         assert len(self.unets) == len(image_sizes), f'you did not supply the correct number of u-nets ({len(self.unets)}) for resolutions {image_sizes}'
         self.image_sizes = image_sizes
         self.sample_channels = cast_tuple(self.channels, len(image_sizes))
+
+        # predict x0 config
+
+        self.predict_x0 = cast_tuple(predict_x0, len(unets))
 
         # cascading ddpm related stuff
 
@@ -1285,34 +1292,47 @@ class Decoder(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, lowres_cond_img = None, clip_denoised = True, cond_scale = 1.):
-        pred_noise = unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
-        x_recon = self.predict_start_from_noise(x, t = t, noise = pred_noise)
+    def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, lowres_cond_img = None, clip_denoised = True, predict_x0 = False, cond_scale = 1.):
+        pred = unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
 
-        if clip_denoised:
+        if predict_x0:
+            x_recon = pred
+        else:
+            x_recon = self.predict_start_from_noise(x, t = t, noise = pred)
+
+        if clip_denoised and not predict_x0:
             x_recon.clamp_(-1., 1.)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
     @torch.no_grad()
-    def p_sample(self, unet, x, t, image_embed, text_encodings = None, cond_scale = 1., lowres_cond_img = None, clip_denoised = True, repeat_noise = False):
+    def p_sample(self, unet, x, t, image_embed, text_encodings = None, cond_scale = 1., lowres_cond_img = None, predict_x0 = False, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
-        model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised)
+        model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised, predict_x0 = predict_x0)
         noise = noise_like(x.shape, device, repeat_noise)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
-    def p_sample_loop(self, unet, shape, image_embed, lowres_cond_img = None, text_encodings = None, cond_scale = 1):
+    def p_sample_loop(self, unet, shape, image_embed, predict_x0 = False, lowres_cond_img = None, text_encodings = None, cond_scale = 1):
         device = self.betas.device
 
         b = shape[0]
         img = torch.randn(shape, device = device)
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
-            img = self.p_sample(unet, img, torch.full((b,), i, device = device, dtype = torch.long), image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
+            img = self.p_sample(
+                unet,
+                img,
+                torch.full((b,), i, device = device, dtype = torch.long),
+                image_embed = image_embed,
+                text_encodings = text_encodings,
+                cond_scale = cond_scale,
+                lowres_cond_img = lowres_cond_img,
+                predict_x0 = predict_x0
+            )
 
         return img
 
@@ -1324,7 +1344,7 @@ class Decoder(nn.Module):
             extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
         )
 
-    def p_losses(self, unet, x_start, t, *, image_embed, lowres_cond_img = None, text_encodings = None, noise = None):
+    def p_losses(self, unet, x_start, t, *, image_embed, lowres_cond_img = None, text_encodings = None, predict_x0 = False, noise = None):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         x_noisy = self.q_sample(x_start = x_start, t = t, noise = noise)
@@ -1338,12 +1358,14 @@ class Decoder(nn.Module):
             cond_drop_prob = self.cond_drop_prob
         )
 
+        target = noise if not predict_x0 else x_start
+
         if self.loss_type == 'l1':
-            loss = F.l1_loss(noise, x_recon)
+            loss = F.l1_loss(target, x_recon)
         elif self.loss_type == 'l2':
-            loss = F.mse_loss(noise, x_recon)
+            loss = F.mse_loss(target, x_recon)
         elif self.loss_type == "huber":
-            loss = F.smooth_l1_loss(noise, x_recon)
+            loss = F.smooth_l1_loss(target, x_recon)
         else:
             raise NotImplementedError()
 
@@ -1358,7 +1380,7 @@ class Decoder(nn.Module):
 
         img = None
 
-        for unet, vae, channel, image_size in tqdm(zip(self.unets, self.vaes, self.sample_channels, self.image_sizes)):
+        for unet, vae, channel, image_size, predict_x0 in tqdm(zip(self.unets, self.vaes, self.sample_channels, self.image_sizes, self.predict_x0)):
             with self.one_unet_in_gpu(unet = unet):
                 lowres_cond_img = None
                 shape = (batch_size, channel, image_size, image_size)
@@ -1378,6 +1400,7 @@ class Decoder(nn.Module):
                     image_embed = image_embed,
                     text_encodings = text_encodings,
                     cond_scale = cond_scale,
+                    predict_x0 = predict_x0,
                     lowres_cond_img = lowres_cond_img
                 )
 
@@ -1401,6 +1424,7 @@ class Decoder(nn.Module):
 
         target_image_size = self.image_sizes[unet_index]
         vae = self.vaes[unet_index]
+        predict_x0 = self.predict_x0[unet_index]
 
         b, c, h, w, device, = *image.shape, image.device
 
@@ -1424,7 +1448,7 @@ class Decoder(nn.Module):
             if exists(lowres_cond_img):
                 lowres_cond_img = vae.encode(lowres_cond_img)
 
-        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, lowres_cond_img = lowres_cond_img)
+        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, lowres_cond_img = lowres_cond_img, predict_x0 = predict_x0)
 
 # main class
 
