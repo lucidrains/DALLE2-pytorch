@@ -538,6 +538,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] bring in tools to train vqgan-vae
 - [ ] bring in vit-vqgan https://arxiv.org/abs/2110.04627 for the latent diffusion
+- [ ] experiment with https://arxiv.org/abs/2112.11435 as upsampler, test in https://github.com/lucidrains/lightweight-gan first
 
 ## Citations
 
@@ -569,7 +570,7 @@ Once built, images will be saved to the same directory the command is invoked
 
 ```bibtex
 @inproceedings{Liu2022ACF,
-    title   = {A ConvNet for the 2020s},
+    title   = {A ConvNet for the 2020https://arxiv.org/abs/2112.11435s},
     author  = {Zhuang Liu and Hanzi Mao and Chaozheng Wu and Christoph Feichtenhofer and Trevor Darrell and Saining Xie},
     year    = {2022}
 }
