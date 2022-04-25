@@ -12,7 +12,7 @@ This model is SOTA for text-to-image for now.
 
 Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a> if you are interested in helping out with the replication
 
-There was enough interest for a Jax version. It will be completed after the Pytorch version shows signs of life on my toy tasks. <a href="https://github.com/lucidrains/dalle2-jax">Placeholder repository</a>. I will also eventually extend this to <a href="https://github.com/lucidrains/dalle2-video">text to video</a>, once the repository is in a good place.
+There was enough interest for a <a href="https://github.com/lucidrains/dalle2-jax">Jax version</a>. I will also eventually extend this to <a href="https://github.com/lucidrains/dalle2-video">text to video</a>, once the repository is in a good place.
 
 ## Install
 
@@ -533,6 +533,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] spend one day cleaning up tech debt in decoder
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
+- [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] train on a toy task, offer in colab
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] bring in tools to train vqgan-vae
