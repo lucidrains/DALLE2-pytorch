@@ -423,54 +423,77 @@ class DiffusionPriorNetwork(nn.Module):
         *,
         text_encodings,
         text_embed,
-        mask = None,
-        cond_drop_prob = 0.2
+        mask=None,
+        cond_drop_prob=0.1
     ):
-        batch, text_enc_len, device = image_embed.shape[0], text_encodings.shape[-2], image_embed.device
+        """
+        Complete one forward pass through the diffusion prior network.
 
-        # in section 2.2, last paragraph
-        # "... consisting of encoded text, CLIP text embedding, diffusion timestep embedding, noised CLIP image embedding, final embedding for prediction"
+        If the dictionary passed from the DiffusionPrior wrapper has the 
+        key:value pair text_encodings:None, then we will assume
+        we are doing "embedding only" training.
 
-        text_embed, image_embed = rearrange_many((text_embed, image_embed), 'b d -> b 1 d')
+        In the case of embedding only training we will drop the text
+        encoding from the tokens entirely and train on the remaining
+        tokens mentioned in section 2.2 of the DALLE2 paper.
+        """
 
-        # whether text embedding is used for conditioning depends on whether text encodings are available for attention (for classifier free guidance, even though it seems from the paper it was not used in the prior ddpm, as the objective is different)
-        # but let's just do it right
+        # grab some contextual information
+        batch, device = image_embed.shape[0], image_embed.device
 
-        if exists(mask):
-            not_all_masked_out = mask.any(dim = -1)
-            mask = torch.cat((mask, rearrange(not_all_masked_out, 'b -> b 1')), dim = 1)
-
-        if exists(mask):
-            mask = F.pad(mask, (0, 2), value = True) # extend mask for text embedding, noised image embedding, time step embedding, and learned query
-
+        # gather tokens for casual transformer
+        text_embed, image_embed = rearrange_many(
+            (text_embed, image_embed), 'b d -> b 1 d')
         time_embed = self.time_embeddings(diffusion_timesteps)
         time_embed = rearrange(time_embed, 'b d -> b 1 d')
+        learned_queries = repeat(self.learned_query, 'd -> b 1 d', b=batch)
 
-        learned_queries = repeat(self.learned_query, 'd -> b 1 d', b = batch)
+        # check for embedding only training
+        if text_encodings is not None:
+            text_enc_len = text_encodings.shape[-2]
 
-        tokens = torch.cat((
-            text_encodings,
-            text_embed,
-            time_embed,
-            learned_queries
-        ), dim = -2)
+            # text conditioning can be passed during training for CFG; as described in the paper
 
-        # mask if it doesn't exist
+            if exists(mask):
+                not_all_masked_out = mask.any(dim=-1)
+                mask = torch.cat(
+                    (mask, rearrange(not_all_masked_out, 'b -> b 1')), dim=1)
+                # extend mask for text embedding, noised image embedding, etc.
+                mask = F.pad(mask, (0, 2), value=True)
 
-        if not exists(mask):
-            mask = torch.ones((batch, text_enc_len), device = device, dtype = torch.bool)
+            if not exists(mask):
+                mask = torch.ones((batch, text_enc_len),
+                                  device=device, dtype=torch.bool)
 
-        # classifier free guidance
+            # classifier free guidance
+            cond_prob_mask = prob_mask_like(
+                (batch,), cond_drop_prob, device=device)
+            mask &= rearrange(cond_prob_mask, 'b -> b 1')
 
-        cond_prob_mask = prob_mask_like((batch,), cond_drop_prob, device = device)
-        mask &= rearrange(cond_prob_mask, 'b -> b 1')
+            # actually combine everything as described originally
+            tokens = torch.cat((
+                text_encodings,
+                text_embed,
+                time_embed,
+                learned_queries
+            ), dim=-2)
 
-        # attend
+        # TODO: someone should double check this block of code below
+        else:
+            # during embedding only, just drop text_encodings entirely
+            tokens = torch.cat((
+                text_embed,
+                time_embed,
+                learned_queries
+            ), dim=-2)
 
-        tokens = self.causal_transformer(tokens, mask = mask)
+            # make a mask of all one's since we don't do CFG
+            mask = torch.ones(
+                (batch, tokens.shape[1]), dtype=torch.bool, device=device)
+
+        tokens = self.causal_transformer(tokens, mask=mask)
 
         # get learned query, which should predict the image embedding (per DDPM timestep)
-
         pred_image_embed = tokens[..., -1, :]
 
         return pred_image_embed
@@ -488,15 +511,22 @@ class DiffusionPrior(nn.Module):
         beta_schedule = "cosine",
     ):
         super().__init__()
-        assert isinstance(clip, CLIP)
-        freeze_model_and_make_eval_(clip)
-        self.clip = clip
 
-        self.net = net
-        self.image_embed_dim = clip.dim_latent
-        self.channels = clip.image_channels
-        self.image_size = clip.image_size
+        # add ability for clip to be None (aka training on embeddings only)
+        if clip is not None:
+            assert isinstance(clip, CLIP)
+            freeze_model_and_make_eval_(clip)
+            
+            self.clip = clip
+            self.channels = clip.image_channels
+            self.image_size = clip.image_size
+            self.image_embed_dim = clip.dim_latent
+            # conditional dropping only happens with text_cond
+        
         self.cond_drop_prob = cond_drop_prob
+
+        # store diffusion prior network
+        self.net = net
 
         self.predict_x_start = predict_x_start
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
@@ -633,6 +663,7 @@ class DiffusionPrior(nn.Module):
 
         image_embed_noisy = self.q_sample(x_start = image_embed, t = t, noise = noise)
 
+        # pass noisy image to diffusion network
         x_recon = self.net(
             image_embed_noisy,
             t,
@@ -679,15 +710,31 @@ class DiffusionPrior(nn.Module):
         top_image_embeds = image_embeds.gather(1, top_sim_indices)
         return rearrange(top_image_embeds, 'b 1 d -> b d')
 
-    def forward(self, text, image, *args, **kwargs):
-        b, device, img_size, = image.shape[0], image.device, self.image_size
-        check_shape(image, 'b c h w', h = img_size, w = img_size, c = self.channels)
+    def forward(self, text, image, text_embed=None, image_embed=None, *args, **kwargs):
+        # check if we are doing embedding-only training
+        if text is not None:
+            b, device, img_size, = image.shape[0], image.device, self.image_size
+            check_shape(image, 'b c h w', h=img_size,
+                        w=img_size, c=self.channels)
+            text_cond = self.get_text_cond(text)
+        else:
+            b, device = image_embed.shape[0], image_embed.device
+            text_cond = {
+                'text_encodings': None,
+                'text_embed': text_embed,
+                'mask': None
+            }
 
-        times = torch.randint(0, self.num_timesteps, (b,), device = device, dtype = torch.long)
-        image_embed = self.get_image_embed(image)
-        text_cond = self.get_text_cond(text)
+        # TODO: might wanna refactor to avoid a self-assignment
+        image_embed = self.get_image_embed(
+            image) if image is not None else image_embed
 
-        loss = self.p_losses(image_embed, times, text_cond = text_cond, *args, **kwargs)
+        times = torch.randint(0, self.num_timesteps, (b,),
+                              device=device, dtype=torch.long)
+
+        loss = self.p_losses(image_embed, times,
+                             text_cond=text_cond, *args, **kwargs)
+
         return loss
 
 # decoder
