@@ -1117,7 +1117,7 @@ class Decoder(nn.Module):
         unet,
         *,
         clip,
-        vae = None,
+        vae = tuple(),
         timesteps = 1000,
         cond_drop_prob = 0.2,
         loss_type = 'l1',
