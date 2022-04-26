@@ -84,7 +84,7 @@ def resize_image_to(t, image_size, mode = 'bilinear'): # take a look at https://
     if orig_image_size == shape:
         return t
 
-    return F.interpolate(t, size = shape, mode = mode)
+    return F.interpolate(t, size = shape, mode = mode, align_corners = False)
 
 # classifier free guidance functions
 
