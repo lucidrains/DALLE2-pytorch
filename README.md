@@ -446,6 +446,55 @@ loss.backward()
 # now the diffusion prior can generate image embeddings from the text embeddings
 ```
 
+You can also completely go `CLIP`-less, in which case you will need to pass in the `image_embed_dim` into the `DiffusionPrior` on initialization
+
+```python
+import torch
+from dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior
+
+# setup prior network, which contains an autoregressive transformer
+
+prior_network = DiffusionPriorNetwork(
+    dim = 512,
+    depth = 6,
+    dim_head = 64,
+    heads = 8
+).cuda()
+
+# diffusion prior network, which contains the CLIP and network (with transformer) above
+
+diffusion_prior = DiffusionPrior(
+    net = prior_network,
+    image_embed_dim = 512,               # this needs to be set
+    timesteps = 100,
+    cond_drop_prob = 0.2,
+    condition_on_text_encodings = False  # this probably should be true, but just to get Laion started
+).cuda()
+
+# mock data
+
+text = torch.randint(0, 49408, (4, 256)).cuda()
+images = torch.randn(4, 3, 256, 256).cuda()
+
+# precompute the text and image embeddings
+# here using the diffusion prior class, but could be done with CLIP alone
+
+clip_image_embeds = torch.randn(4, 512).cuda()
+clip_text_embeds = torch.randn(4, 512).cuda()
+
+# feed text and images into diffusion prior network
+
+loss = diffusion_prior(
+    text_embed = clip_text_embeds,
+    image_embed = clip_image_embeds
+)
+
+loss.backward()
+
+# do the above for many many many steps
+# now the diffusion prior can generate image embeddings from the text embeddings
+```
+
 ## Experimental
 
 ### DALL-E2 with Latent Diffusion
