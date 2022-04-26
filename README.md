@@ -348,7 +348,8 @@ decoder = Decoder(
     image_sizes = (128, 256),
     clip = clip,
     timesteps = 100,
-    cond_drop_prob = 0.2
+    cond_drop_prob = 0.2,
+    condition_on_text_encodings = False  # set this to True if you wish to condition on text during training and sampling
 ).cuda()
 
 for unet_number in (1, 2):
