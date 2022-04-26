@@ -693,7 +693,7 @@ class DiffusionPrior(nn.Module):
 # decoder
 
 def Upsample(dim):
-    return QueryAttnUpsample(dim)
+    return nn.ConvTranspose2d(dim, dim, 4, 2, 1)
 
 def Downsample(dim):
     return nn.Conv2d(dim, dim, 4, 2, 1)
