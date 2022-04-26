@@ -577,4 +577,14 @@ Once built, images will be saved to the same directory the command is invoked
 }
 ```
 
+```bibtex
+@article{Arar2021LearnedQF,
+    title   = {Learned Queries for Efficient Local Attention},
+    author  = {Moab Arar and Ariel Shamir and Amit H. Bermano},
+    journal = {ArXiv},
+    year    = {2021},
+    volume  = {abs/2112.11435}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - Yang Song's <a href="https://arxiv.org/abs/2011.13456">paper</a>
