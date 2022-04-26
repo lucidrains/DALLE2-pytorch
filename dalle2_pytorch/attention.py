@@ -44,7 +44,12 @@ class QueryAndAttend(nn.Module):
 
         self.queries = nn.Parameter(torch.randn(heads, num_queries, dim_head))
         self.to_kv = nn.Conv2d(dim, dim_head * 2, 1, bias = False)
-        self.to_out = nn.Conv2d(inner_dim, dim, 1, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Conv2d(inner_dim, dim * 2, 1, bias = False),
+            nn.Tanh(),
+            nn.Conv2d(dim * 2, dim, 1, bias = False)
+        )
 
     def forward(self, x):
         """

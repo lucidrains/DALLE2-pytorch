@@ -697,4 +697,24 @@ Once built, images will be saved to the same directory the command is invoked
 }
 ```
 
+```bibtex
+@article{Arar2021LearnedQF,
+    title   = {Learned Queries for Efficient Local Attention},
+    author  = {Moab Arar and Ariel Shamir and Amit H. Bermano},
+    journal = {ArXiv},
+    year    = {2021},
+    volume  = {abs/2112.11435}
+}
+```
+
+```bibtex
+@article{Yu2021VectorquantizedIM,
+    title   = {Vector-quantized Image Modeling with Improved VQGAN},
+    author  = {Jiahui Yu and Xin Li and Jing Yu Koh and Han Zhang and Ruoming Pang and James Qin and Alexander Ku and Yuanzhong Xu and Jason Baldridge and Yonghui Wu},
+    journal = {ArXiv},
+    year    = {2021},
+    volume  = {abs/2110.04627}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - Yang Song's <a href="https://arxiv.org/abs/2011.13456">paper</a>
