@@ -523,6 +523,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)
 - [x] build out latent diffusion architecture, with the vq-reg variant (vqgan-vae), make it completely optional and compatible with cascading ddpms
 - [x] for decoder, allow ability to customize objective (predict epsilon vs x0), in case latent diffusion does better with prediction of x0
+- [x] use attention-based upsampling https://arxiv.org/abs/2112.11435
 - [ ] spend one day cleaning up tech debt in decoder
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
@@ -531,7 +532,6 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] bring in tools to train vqgan-vae
 - [ ] bring in vit-vqgan https://arxiv.org/abs/2110.04627 for the latent diffusion
-- [ ] experiment with https://arxiv.org/abs/2112.11435 as upsampler, test in https://github.com/lucidrains/lightweight-gan first
 
 ## Citations
 
