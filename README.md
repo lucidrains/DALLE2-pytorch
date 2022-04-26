@@ -246,13 +246,6 @@ loss = decoder(images, unet_number = 2)
 loss.backward()
 
 # do the above for many steps for both unets
-
-# then it will learn to generate images based on the CLIP image embeddings
-
-# chaining the unets from lowest resolution to highest resolution (thus cascading)
-
-mock_image_embed = torch.randn(1, 512).cuda()
-images = decoder.sample(mock_image_embed) # (1, 3, 512, 512)
 ```
 
 Finally, to generate the DALL-E2 images from text. Insert the trained `DiffusionPrior` as well as the `Decoder` (which wraps `CLIP`, the causal transformer, and unet(s))
