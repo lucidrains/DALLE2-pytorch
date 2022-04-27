@@ -17,7 +17,6 @@ from kornia.filters import gaussian_blur2d
 
 from dalle2_pytorch.tokenizer import tokenizer
 from dalle2_pytorch.vqgan_vae import NullVQGanVAE, VQGanVAE
-from dalle2_pytorch.attention import QueryAttnUpsample
 
 # use x-clip
 

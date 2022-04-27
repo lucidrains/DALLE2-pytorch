@@ -15,8 +15,6 @@ from einops import rearrange, reduce, repeat
 from einops_exts import rearrange_many
 from einops.layers.torch import Rearrange
 
-from dalle2_pytorch.attention import QueryAttnUpsample
-
 # constants
 
 MList = nn.ModuleList
