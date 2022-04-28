@@ -783,6 +783,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         text_cond = dict(text_embed = text_embed)
 
         if self.condition_on_text_encodings:
+            assert exists(text_encodings), 'text encodings must be present for diffusion prior if specified'
             text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
         # timestep conditioning from ddpm
@@ -792,8 +793,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         # calculate forward loss
 
-        loss = self.p_losses(image_embed, times, text_cond = text_cond, *args, **kwargs)
-        return loss
+        return self.p_losses(image_embed, times, text_cond = text_cond, *args, **kwargs)
 
 # decoder
 
@@ -1418,6 +1418,7 @@ class Decoder(BaseGaussianDiffusion):
             _, text_encodings = self.clip.embed_text(text)
 
         assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
+        assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
 
         img = None
 
@@ -1485,6 +1486,7 @@ class Decoder(BaseGaussianDiffusion):
             _, text_encodings = self.clip.embed_text(text)
 
         assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
+        assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
 
         lowres_cond_img = self.to_lowres_cond(image, target_image_size = target_image_size, downsample_image_size = self.image_sizes[unet_index - 1]) if unet_number > 1 else None
         image = resize_image_to(image, target_image_size)
