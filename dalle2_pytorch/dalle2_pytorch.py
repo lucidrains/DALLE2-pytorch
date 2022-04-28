@@ -647,9 +647,12 @@ class DiffusionPrior(BaseGaussianDiffusion):
         )
 
         if exists(clip):
-            assert isinstance(clip, CLIP)
+            if isinstance(clip, CLIP):
+                clip = XClipAdapter(clip)
+
+            assert isinstance(clip, BaseClipAdapter)
             freeze_model_and_make_eval_(clip)
-            self.clip = XClipAdapter(clip)
+            self.clip = clip
         else:
             assert exists(image_embed_dim), 'latent dimension must be given, if training prior network without CLIP given'
             self.clip = None
@@ -1248,6 +1251,8 @@ class Decoder(BaseGaussianDiffusion):
             clip = XClipAdapter(clip)
 
         freeze_model_and_make_eval_(clip)
+        assert isinstance(clip, BaseClipAdapter)
+
         self.clip = clip
         self.clip_image_size = clip.image_size
         self.channels = clip.image_channels
