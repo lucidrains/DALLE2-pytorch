@@ -545,6 +545,7 @@ class VQGanVAE(nn.Module):
         l2_recon_loss = False,
         use_hinge_loss = True,
         vgg = None,
+        vq_codebook_dim = 256,
         vq_codebook_size = 512,
         vq_decay = 0.8,
         vq_commitment_weight = 1.,
@@ -579,6 +580,7 @@ class VQGanVAE(nn.Module):
 
         self.vq = VQ(
             dim = self.enc_dec.encoded_dim,
+            codebook_dim = vq_codebook_dim,
             codebook_size = vq_codebook_size,
             decay = vq_decay,
             commitment_weight = vq_commitment_weight,
