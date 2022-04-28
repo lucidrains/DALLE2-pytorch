@@ -736,11 +736,10 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         text_embed, text_encodings = self.clip.embed_text(text)
 
-        text_cond = dict(
-            text_embed = text_embed,
-            text_encodings = text_encodings,
-            mask = text != 0
-        )
+        text_cond = dict(text_embed = text_embed)
+
+        if self.condition_on_text_encodings:
+            text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
         image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond)
         text_embeds = text_cond['text_embed']
@@ -780,11 +779,10 @@ class DiffusionPrior(BaseGaussianDiffusion):
             text_embed, text_encodings = self.clip.embed_text(text)
             text_mask = text != 0
 
-        text_cond = dict(
-            text_embed = text_embed,
-            text_encodings = text_encodings,
-            mask = text_mask
-        )
+        text_cond = dict(text_embed = text_embed)
+
+        if self.condition_on_text_encodings:
+            text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
         # timestep conditioning from ddpm
 
