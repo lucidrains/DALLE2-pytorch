@@ -47,9 +47,8 @@ def train(image_embed_dim,
             emb_images = list(emb_images)
             emb_text = list(emb_text)
             print(emb_images[0].shape,emb_text[0].shape)
-            if torch.cuda.is_available():
-                emb_images[0] = torch.tensor(emb_images[0]).to(device)
-                emb_text[0] = torch.tensor(emb_text[0]).to(device)
+            emb_images[0] = torch.tensor(emb_images[0]).to(device)
+            emb_text[0] = torch.tensor(emb_text[0]).to(device)
             optimizer.zero_grad()
             loss = diffusion_prior(text_embed = emb_text[0],image_embed = emb_images[0])
             loss.backward()
@@ -69,9 +68,8 @@ def train(image_embed_dim,
                     text_reader(batch_size=batch_size, start=start, end=end)):
                 emb_images = list(emb_images)
                 emb_text = list(emb_text)
-                if torch.cuda.is_available():
-                    emb_images[0] = torch.tensor(emb_images[0]).to(device)
-                    emb_text[0] = torch.tensor(emb_text[0]).to(device)
+                emb_images[0] = torch.tensor(emb_images[0]).to(device)
+                emb_text[0] = torch.tensor(emb_text[0]).to(device)
                 diffusion_prior.eval()
                 loss = diffusion_prior(text_embed = emb_text[0],image_embed = emb_images[0])
 
@@ -85,16 +83,13 @@ def train(image_embed_dim,
     test_set_size = int(test_percent*train_set_size)
     with torch.no_grad():
         for emb_images,emb_text in zip(image_reader(batch_size=batch_size, start=train_set_size+val_set_size,
-            end=text_reader.count),
-            text_reader(batch_size=batch_size, start=train_set_size+val_set_size, end=text_reader.count)):
+            end=text_reader.count),text_reader(batch_size=batch_size, start=train_set_size+val_set_size, end=text_reader.count)):
             emb_images = list(emb_images)
             emb_text = list(emb_text)
-            if torch.cuda.is_available():
-                emb_images[0] = torch.tensor(emb_images[0]).to(device)
-                emb_text[0] = torch.tensor(emb_text[0]).to(device)
+            emb_images[0] = torch.tensor(emb_images[0]).to(device)
+            emb_text[0] = torch.tensor(emb_text[0]).to(device)
             diffusion_prior.eval()
             loss = diffusion_prior(text_embed = emb_text[0],image_embed = emb_images[0])
-
             # Log to wandb
             wandb.log({"Test mse ": loss})
 
@@ -103,23 +98,25 @@ def main():
     # Logging
     parser.add_argument("--wandb-entity", type=str, default="laion")
     parser.add_argument("--wandb-project", type=str, default="diffusion-prior")
+    parser.add_argument("--wandb-name", type=str, default="laion-dprior")
+    parser.add_argument("--wandb-dataset", type=str, default="LAION-5B")
+
+
     # URLs for embeddings 
     parser.add_argument("--image-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
-    parser.add_argument("--text-embed-url", type=str, default="s3://laion-us-east-1/embeddings/vit-l-14/laion2B-en/text_emb/")
-    # Hyperparamtext_readerers
+    parser.add_argument("--text-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/ ")
+    # Hyperparameters
     parser.add_argument("--learning-rate", type=float, default=0.01)
-    parser.add_argument("--batch-size", type=int, default=10**6)
-    parser.add_argument("--loss-type", type=str, default="l1")
+    parser.add_argument("--batch-size", type=int, default=10**4)
+    parser.add_argument("--loss-type", type=str, default="l2")
     parser.add_argument("--num-epochs", type=int, default=5)
-
-
     # Image embed dimension
     parser.add_argument("--image-embed-dim", type=int, default=768)
     # Train-test split
     parser.add_argument("--train-percent", type=float, default=0.7)
     parser.add_argument("--val-percent", type=float, default=0.2)
     parser.add_argument("--test-percent", type=float, default=0.1)
-    # LAION-style training(pre-computed embeddings)
+    # LAION training(pre-computed embeddings)
     parser.add_argument("--condition-on-text-encodings", type=bool, default=False)
 
     args = parser.parse_args()
@@ -127,12 +124,12 @@ def main():
     wandb.init(
       entity=args.wandb_entity,
       project=args.wandb_project,
-      name=f"laion-dprior",
+      name=args.wandb_name,
       config={
       "learning_rate": args.learning_rate,
       "architecture": "DiffusionPrior",
-      "dataset": "LAION-5B",
-      "epochs": 10,
+      "dataset": args.wandb_dataset,
+      "epochs": 5,
       })
     print("wandb logging setup done!")
        # Obtain the utilized device.
