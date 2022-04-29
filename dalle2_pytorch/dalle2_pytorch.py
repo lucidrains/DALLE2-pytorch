@@ -1066,13 +1066,14 @@ class Unet(nn.Module):
         self,
         *,
         lowres_cond,
-        channels
+        channels,
+        cond_on_image_embeds
     ):
-        if lowres_cond == self.lowres_cond and channels == self.channels:
+        if lowres_cond == self.lowres_cond and channels == self.channels and cond_on_image_embeds == self.cond_on_image_embeds:
             return self
 
-        updated_kwargs = {**self._locals, 'lowres_cond': lowres_cond, 'channels': channels}
-        return self.__class__(**updated_kwargs)
+        updated_kwargs = {'lowres_cond': lowres_cond, 'channels': channels, 'cond_on_image_embeds': cond_on_image_embeds}
+        return self.__class__(**{**self._locals, **updated_kwargs})
 
     def forward_with_cond_scale(
         self,
@@ -1279,6 +1280,7 @@ class Decoder(BaseGaussianDiffusion):
 
             one_unet = one_unet.cast_model_parameters(
                 lowres_cond = not is_first,
+                cond_on_image_embeds = is_first,
                 channels = unet_channels
             )
 
