@@ -430,8 +430,8 @@ images = torch.randn(4, 3, 256, 256).cuda()
 # precompute the text and image embeddings
 # here using the diffusion prior class, but could be done with CLIP alone
 
-clip_image_embeds = diffusion_prior.get_image_embed(images)
-clip_text_embeds = diffusion_prior.get_text_cond(text).get('text_embed')
+clip_image_embeds = diffusion_prior.clip.embed_image(images).image_embed
+clip_text_embeds = diffusion_prior.clip.embed_text(text).text_embed
 
 # feed text and images into diffusion prior network
 
