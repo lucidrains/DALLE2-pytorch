@@ -1213,7 +1213,7 @@ class LowresConditioner(nn.Module):
         target_image_size = cast_tuple(target_image_size, 2)
 
         if self.training and self.downsample_first and exists(downsample_image_size):
-            cond_fmap = resize_image_to(cond_fmap, target_image_size, mode = self.cond_upsample_mode)
+            cond_fmap = resize_image_to(cond_fmap, downsample_image_size, mode = self.cond_upsample_mode)
 
         if self.training:
             # when training, blur the low resolution conditional image
