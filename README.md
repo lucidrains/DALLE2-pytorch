@@ -741,6 +741,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
+- [ ] just take care of the training for the decoder in a wrapper class, as each unet in the cascade will need its own optimizer
 - [ ] train on a toy task, offer in colab
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
