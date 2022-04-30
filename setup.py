@@ -32,7 +32,9 @@ setup(
     'tqdm',
     'vector-quantize-pytorch',
     'x-clip>=0.4.4',
-    'youtokentome'
+    'youtokentome',
+    'webdataset>=0.2.5',
+    'requests>=2.23.0'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
