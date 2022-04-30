@@ -172,11 +172,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
         self,
         name = 'ViT-B/32'
     ):
-        try:
-            import clip
-        except ImportError:
-            print('you must install openai clip in order to use this adapter - `pip install git+https://github.com/openai/CLIP.git` - more instructions at https://github.com/openai/CLIP#usage')
-
+        import clip
         openai_clip, _ = clip.load(name)
         super().__init__(openai_clip)
 
@@ -1636,4 +1632,3 @@ class DALLE2(nn.Module):
             return images[0]
 
         return images
-
