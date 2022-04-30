@@ -110,7 +110,8 @@ decoder = Decoder(
     unet = unet,
     clip = clip,
     timesteps = 100,
-    cond_drop_prob = 0.2
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 # mock images (get a lot of this)
@@ -229,7 +230,8 @@ decoder = Decoder(
     unet = (unet1, unet2),            # insert both unets in order of low resolution to highest resolution (you can have as many stages as you want here)
     image_sizes = (256, 512),         # resolutions, 256 for first unet, 512 for second. these must be unique and in ascending order (matches with the unets passed in)
     timesteps = 1000,
-    cond_drop_prob = 0.2
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 # mock images (get a lot of this)
@@ -348,7 +350,8 @@ decoder = Decoder(
     image_sizes = (128, 256),
     clip = clip,
     timesteps = 100,
-    cond_drop_prob = 0.2,
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5,
     condition_on_text_encodings = False  # set this to True if you wish to condition on text during training and sampling
 ).cuda()
 
@@ -558,7 +561,8 @@ decoder = Decoder(
     image_sizes = (128, 256),
     clip = clip,
     timesteps = 100,
-    cond_drop_prob = 0.2,
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5,
     condition_on_text_encodings = False  # set this to True if you wish to condition on text during training and sampling
 ).cuda()
 
@@ -669,7 +673,8 @@ decoder = Decoder(
     unet = (unet1, unet2, unet3),      # insert unets in order of low resolution to highest resolution (you can have as many stages as you want here)
     image_sizes = (256, 512, 1024),    # resolutions, 256 for first unet, 512 for second, 1024 for third
     timesteps = 100,
-    cond_drop_prob = 0.2
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 # mock images (get a lot of this)
