@@ -133,6 +133,8 @@ def main():
     parser.add_argument("--wandb-project", type=str, default="diffusion-prior")
     parser.add_argument("--wandb-name", type=str, default="laion-dprior")
     parser.add_argument("--wandb-dataset", type=str, default="LAION-5B")
+    parser.add_argument("--wandb-arch", type=str, default="DiffusionPrior")
+
 
 
     # URLs for embeddings 
@@ -168,12 +170,12 @@ def main():
       name=args.wandb_name,
       config={
       "learning_rate": args.learning_rate,
-      "architecture": "DiffusionPrior",
+      "architecture": args.wandb_arch,
       "dataset": args.wandb_dataset,
-      "epochs": 5,
+      "epochs": args.num_epochs,
       })
     print("wandb logging setup done!")
-       # Obtain the utilized device.
+    # Obtain the utilized device.
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
         torch.cuda.set_device(device)
@@ -181,7 +183,7 @@ def main():
     else:
         device = torch.device("cpu")
         has_cuda = False
-      # Training loop
+    # Training loop
     train(args.image_embed_dim,
           args.image_embed_url,
           args.text_embed_url,
