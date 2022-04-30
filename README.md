@@ -811,7 +811,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] use inheritance just this once for sharing logic between decoder and prior network ddpms
 - [x] bring in vit-vqgan https://arxiv.org/abs/2110.04627 for the latent diffusion
 - [x] abstract interface for CLIP adapter class, so other CLIPs can be brought in
-- [ ] take care of mixed precision as well as gradient accumulation within decoder trainer
+- [x] take care of mixed precision as well as gradient accumulation within decoder trainer
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
