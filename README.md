@@ -826,6 +826,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] bring in tools to train vqgan-vae
+- [ ] add convnext backbone for vqgan-vae (in addition to vit [vit-vqgan] + resnet)
 
 ## Citations
 
