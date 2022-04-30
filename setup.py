@@ -34,7 +34,8 @@ setup(
     'x-clip>=0.4.4',
     'youtokentome',
     'webdataset>=0.2.5',
-    'requests>=2.23.0'
+    'requests>=2.23.0',
+    'fsspec>=2022.1.0'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',

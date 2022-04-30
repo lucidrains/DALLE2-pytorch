@@ -1,29 +1,82 @@
 import os
-import io
-from urllib.parse import urlparse
 import webdataset as wds
-import requests
 import torch
 import numpy as np
+import fsspec
 
+def get_shard(filename):
+    """
+    Filenames with shards in them have a consistent structure that we can take advantage of
+    Standard structure: path/to/file/prefix_string_00001.ext
+    """
+    try:
+        return int(filename.split("_")[-1].split(".")[0])
+    except ValueError:
+        raise RuntimeError(f"Could not find shard for filename {filename}")
 
-def embedding_inserter(samples, embeddings_url, shard_width, imb_shard_width, handler=wds.handlers.reraise_exception):
+# fsspec file reading code from embedding_reader https://github.com/rom1504/embedding-reader/blob/dd7da26ba4cd363cbfd608e0877faa921180c2e3/embedding_reader/get_file_list.py
+def get_file_list(path, file_format):
+    """
+    Get the file system and all the file paths that matches `file_format` under the given `path`.
+    The `path` could a single folder or multiple folders.
+    :raises ValueError: if file system is inconsistent under different folders.
+    """
+    if isinstance(path, str):
+        return _get_file_list(path, file_format)
+    all_file_paths = []
+    fs = None
+    for p in path:
+        cur_fs, file_paths = _get_file_list(p, file_format, sort_result=False)
+        if fs is None:
+            fs = cur_fs
+        elif fs != cur_fs:
+            raise ValueError(
+                f"The file system in different folder are inconsistent.\n" f"Got one {fs} and the other {cur_fs}"
+            )
+        all_file_paths.extend(file_paths)
+    all_file_paths.sort()
+    return fs, all_file_paths
+
+def make_path_absolute(path: str) -> str:
+    fs, p = fsspec.core.url_to_fs(path)
+    if fs.protocol == "file":
+        return os.path.abspath(p)
+    return path
+
+def _get_file_list(
+    path: str, file_format: str, sort_result: bool = True
+):
+    """Get the file system and all the file paths that matches `file_format` given a single path."""
+    path = make_path_absolute(path)
+    fs, path_in_fs = fsspec.core.url_to_fs(path)
+    prefix = path[: path.index(path_in_fs)]
+    glob_pattern = path.rstrip("/") + f"/**.{file_format}"
+    file_paths = fs.glob(glob_pattern)
+    if sort_result:
+        file_paths.sort()
+    file_paths_with_prefix = [prefix + file_path for file_path in file_paths]
+    return fs, file_paths_with_prefix
+### Code from embedding_reader ends
+
+def embedding_inserter(samples, embeddings_url, shard_width, handler=wds.handlers.reraise_exception):
     """Given a datum of {"__key__": str, "__url__": str, ...} adds the cooresponding embedding and yields"""
     previous_tar_url = None
     current_embeddings = None
+    # Get a reference to an abstract file system where the embeddings are stored
+    fs, embedding_files = get_file_list(embeddings_url, 'npy')
+    # Assuming all shard strings have the same length, we can find it very easily
+    example_embedding_shard = get_shard(embedding_files[0])
+    emb_shard_width = len(example_embedding_shard)
+    # Easier to get the basename without the shard once than search through for the correct file every time
+    embedding_file_basename = '_'.join(embedding_files[0].split("_")[:-1]) + "_"
 
-    def load_corresponding_embeds(tar_url):  # TODO: Start downloading the next one in parallel? How do we get the next tar_url?
-        """Finds and reads the npy files that contains embeddings for the given webdataset tar"""
-        shard = int(tar_url.split("/")[-1].split(".")[0])
-        embedding_url = os.path.join(embeddings_url, f'img_emb_{str(shard).zfill(imb_shard_width)}.npy')
-        scheme = urlparse(embedding_url).scheme
-        if len(scheme) > 0:
-            response = requests.get(embedding_url)
-            response.raise_for_status()
-            data = np.load(io.BytesIO(response.content))
-        else:
-            data = np.load(embedding_url)
-        return torch.from_numpy(data)
+    def load_corresponding_embeds(tar_url):
+      """Finds and reads the npy files that contains embeddings for the given webdataset tar"""
+      shard = int(tar_url.split("/")[-1].split(".")[0])
+      embedding_url = embedding_file_basename + str(shard).zfill(emb_shard_width) + '.npy'
+      with fs.open(embedding_url) as f:
+        data = np.load(f)
+      return torch.from_numpy(data)
 
     for sample in samples:
         try:
@@ -72,7 +125,6 @@ class ImageEmbedingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             urls,
             embedding_folder_url=None,
             shard_width=None,
-            imb_shard_width=None,
             handler=wds.handlers.reraise_exception,
             resample=False,
             shuffle_shards=True
@@ -85,8 +137,6 @@ class ImageEmbedingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             Webdataset image keys should align with the index of the embedding. This means missing image indices must have a corresponding embedding of all zeros.
         :param shard_width: The number of digits in the shard number. This is used to align the embedding index with the image index.
             For example, if a file in the webdataset shard 3 is named 0003039.jpg, we know the shard with this 4 and the last three digits are the index.
-        :param imb_shard_width: The number of digits in the shard number for the embedding. If an embedding file is named img_emb_0000.npy, there is an imb_shard_width of 4.
-            This is often, but not always, the same as shard_width.
         :param handler: A webdataset handler.
         :param resample: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
         :param shuffle_shards: If true, shuffle the shards before resampling. This cannot be true if resample is true.
@@ -108,8 +158,7 @@ class ImageEmbedingDataset(wds.DataPipeline, wds.compat.FluidInterface):
         self.append(wds.decode("torchrgb"))
         if embedding_folder_url is not None:
             assert shard_width is not None, "Reading embeddings separately requires shard length to be given"
-            assert imb_shard_width is not None, "Reading embedding separately requires embedding shard length to be given"
-            self.append(insert_embedding(embeddings_url=embedding_folder_url, shard_width=shard_width, imb_shard_width=imb_shard_width, handler=handler))
+            self.append(insert_embedding(embeddings_url=embedding_folder_url, shard_width=shard_width, handler=handler))
         self.append(verify_keys)
         self.append(wds.to_tuple("jpg", "npy"))
 
@@ -119,7 +168,6 @@ def create_dataloader(
     batch_size,
     embeddings_url=None,
     shard_width=None,
-    imb_shard_width=None,
     shuffle_num = None,
     shuffle_shards = True,
     resample_shards = False, 
@@ -135,8 +183,6 @@ def create_dataloader(
         Webdataset image keys should align with the index of the embedding. This means missing image indices must have a corresponding embedding of all zeros.
     :param shard_width: The number of digits in the shard number. This is used to align the embedding index with the image index.
         For example, if a file in the webdataset shard 3 is named 0003039.jpg, we know the shard with this 4 and the last three digits are the index.
-    :param imb_shard_width: The number of digits in the shard number for the embedding. If an embedding file is named img_emb_0000.npy, there is an imb_shard_width of 4.
-        This is often, but not always, the same as shard_width.
     :param shuffle_num: If not None, shuffle the dataset with this size buffer after sampling.
     :param shuffle_shards: If true, shuffle the shards before sampling. This cannot be true if resample is true.
     :param resample_shards: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
@@ -146,7 +192,6 @@ def create_dataloader(
         tar_url,
         embeddings_url,
         shard_width=shard_width,
-        imb_shard_width=imb_shard_width,
         shuffle_shards=shuffle_shards,
         resample=resample_shards,
         handler=handler
