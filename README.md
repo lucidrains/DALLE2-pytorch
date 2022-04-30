@@ -760,7 +760,7 @@ decoder = Decoder(
     unet = (unet1, unet2),
     image_sizes = (128, 256),
     clip = clip,
-    timesteps = 1,
+    timesteps = 1000,
     condition_on_text_encodings = True
 ).cuda()
 
@@ -778,6 +778,12 @@ for unet_number in (1, 2):
     loss.backward()
 
     decoder_trainer.update(unet_number) # update the specific unet as well as its exponential moving average
+
+# after much training
+# you can sample from the exponentially moving averaged unets as so
+
+mock_image_embed = torch.randn(4, 512).cuda()
+images = decoder.sample(mock_image_embed, text = text) # (4, 3, 256, 256)
 ```
 
 ## CLI (wip)

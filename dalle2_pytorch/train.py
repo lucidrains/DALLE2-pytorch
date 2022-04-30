@@ -144,6 +144,10 @@ class DecoderTrainer(nn.Module):
 
         self.max_grad_norm = max_grad_norm
 
+    @property
+    def unets(self):
+        return nn.ModuleList([ema.ema_model for ema in self.ema_unets])
+
     def scale(self, loss, *, unet_number):
         assert 1 <= unet_number <= self.num_unets
         index = unet_number - 1
@@ -168,6 +172,18 @@ class DecoderTrainer(nn.Module):
         if self.use_ema:
             ema_unet = self.ema_unets[index]
             ema_unet.update()
+
+    @torch.no_grad()
+    def sample(self, *args, **kwargs):
+        if self.use_ema:
+            trainable_unets = self.decoder.unets
+            self.decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling
+
+        output = self.decoder.sample(*args, **kwargs)
+
+        if self.use_ema:
+            self.decoder.unets = trainable_unets             # restore original training unets
+        return output
 
     def forward(
         self,
