@@ -1540,7 +1540,13 @@ class Decoder(BaseGaussianDiffusion):
 
     @torch.no_grad()
     @eval_decorator
-    def sample(self, image_embed, text = None, cond_scale = 1.):
+    def sample(
+        self,
+        image_embed,
+        text = None,
+        cond_scale = 1.,
+        stop_at_unet_number = None
+    ):
         batch_size = image_embed.shape[0]
 
         text_encodings = text_mask = None
@@ -1552,7 +1558,7 @@ class Decoder(BaseGaussianDiffusion):
 
         img = None
 
-        for unet, vae, channel, image_size, predict_x_start in tqdm(zip(self.unets, self.vaes, self.sample_channels, self.image_sizes, self.predict_x_start)):
+        for unet_number, unet, vae, channel, image_size, predict_x_start in tqdm(zip(range(1, len(self.unets) + 1), self.unets, self.vaes, self.sample_channels, self.image_sizes, self.predict_x_start)):
 
             context = self.one_unet_in_gpu(unet = unet) if image_embed.is_cuda else null_context()
 
@@ -1583,6 +1589,9 @@ class Decoder(BaseGaussianDiffusion):
                 )
 
                 img = vae.decode(img)
+
+            if exists(stop_at_unet_number) and stop_at_unet_number == unet_number:
+                break
 
         return img
 

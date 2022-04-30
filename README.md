@@ -783,7 +783,7 @@ for unet_number in (1, 2):
 # you can sample from the exponentially moving averaged unets as so
 
 mock_image_embed = torch.randn(4, 512).cuda()
-images = decoder.sample(mock_image_embed, text = text) # (4, 3, 256, 256)
+images = decoder_trainer.sample(mock_image_embed, text = text) # (4, 3, 256, 256)
 ```
 
 ## CLI (wip)
