@@ -3,6 +3,7 @@ from tqdm import tqdm
 from inspect import isfunction
 from functools import partial
 from contextlib import contextmanager
+from collections import namedtuple
 
 import torch
 import torch.nn.functional as F
@@ -90,7 +91,20 @@ def resize_image_to(t, image_size, mode = 'bilinear'): # take a look at https://
 
     return F.interpolate(t, size = shape, mode = mode, align_corners = False)
 
+# image normalization functions
+# ddpms expect images to be in the range of -1 to 1
+# but CLIP may otherwise
+
+def normalize_img(img):
+    return img * 2 - 1
+
+def unnormalize_img(normed_img):
+    return (normed_img + 1) * 0.5
+
 # clip related adapters
+
+EmbeddedText = namedtuple('EmbedTextReturn', ['text_embed', 'text_encodings', 'text_mask'])
+EmbeddedImage = namedtuple('EmbedImageReturn', ['image_embed', 'image_encodings'])
 
 class BaseClipAdapter(nn.Module):
     def __init__(self, clip):
@@ -107,6 +121,10 @@ class BaseClipAdapter(nn.Module):
 
     @property
     def image_channels(self):
+        raise NotImplementedError
+
+    @property
+    def max_text_len(self):
         raise NotImplementedError
 
     def embed_text(self, text):
@@ -128,12 +146,18 @@ class XClipAdapter(BaseClipAdapter):
     def image_channels(self):
         return self.clip.image_channels
 
+    @property
+    def max_text_len(self):
+        return self.clip.text_seq_len
+
     @torch.no_grad()
     def embed_text(self, text):
+        text = text[..., :self.max_text_len]
+        text_mask = text != 0
         encoder_output = self.clip.text_transformer(text)
         text_cls, text_encodings = encoder_output[:, 0], encoder_output[:, 1:]
         text_embed = self.clip.to_text_latent(text_cls)
-        return l2norm(text_embed), text_encodings
+        return EmbeddedText(l2norm(text_embed), text_encodings, text_mask)
 
     @torch.no_grad()
     def embed_image(self, image):
@@ -141,7 +165,69 @@ class XClipAdapter(BaseClipAdapter):
         encoder_output = self.clip.visual_transformer(image)
         image_cls, image_encodings = encoder_output[:, 0], encoder_output[:, 1:]
         image_embed = self.clip.to_visual_latent(image_cls)
-        return l2norm(image_embed), image_encodings
+        return EmbeddedImage(l2norm(image_embed), image_encodings)
+
+class OpenAIClipAdapter(BaseClipAdapter):
+    def __init__(
+        self,
+        name = 'ViT-B/32'
+    ):
+        import clip
+        openai_clip, preprocess = clip.load(name)
+        super().__init__(openai_clip)
+
+        text_attention_final = self.find_layer('ln_final')
+        self.handle = text_attention_final.register_forward_hook(self._hook)
+        self.clip_normalize = preprocess.transforms[-1]
+        self.cleared = False
+
+    def find_layer(self,  layer):
+        modules = dict([*self.clip.named_modules()])
+        return modules.get(layer, None)
+
+    def clear(self):
+        if self.cleared:
+            return
+
+        self.handle()
+
+    def _hook(self, _, inputs, outputs):
+        self.text_encodings = outputs
+
+    @property
+    def dim_latent(self):
+        return 512
+
+    @property
+    def image_size(self):
+        return self.clip.visual.input_resolution
+
+    @property
+    def image_channels(self):
+        return 3
+
+    @property
+    def max_text_len(self):
+        return self.clip.context_length
+
+    @torch.no_grad()
+    def embed_text(self, text):
+        text = text[..., :self.max_text_len]
+        text_mask = text != 0
+        assert not self.cleared
+
+        text_embed = self.clip.encode_text(text)
+        text_encodings = self.text_encodings
+        del self.text_encodings
+        return EmbeddedText(text_embed.float(), text_encodings.float(), text_mask)
+
+    @torch.no_grad()
+    def embed_image(self, image):
+        assert not self.cleared
+        image = resize_image_to(image, self.image_size)
+        image = self.clip_normalize(unnormalize_img(image))
+        image_embed = self.clip.encode_image(image)
+        return EmbeddedImage(image_embed.float(), None)
 
 # classifier free guidance functions
 
@@ -598,14 +684,14 @@ class DiffusionPriorNetwork(nn.Module):
 
         # classifier free guidance
 
-        cond_prob_mask = prob_mask_like((batch,), cond_drop_prob, device = device)
-        cond_prob_mask = rearrange(cond_prob_mask, 'b -> b 1')
+        keep_mask = prob_mask_like((batch,), 1 - cond_drop_prob, device = device)
+        keep_mask = rearrange(keep_mask, 'b -> b 1')
 
-        mask &= cond_prob_mask
+        mask &= keep_mask
 
         # whether text embedding is masked or not depends on the classifier free guidance conditional masking
 
-        mask = torch.cat((mask, cond_prob_mask), dim = 1)
+        mask = torch.cat((mask, keep_mask), dim = 1)
 
         # whether text embedding is used for conditioning depends on whether text encodings are available for attention (for classifier free guidance, even though it seems from the paper it was not used in the prior ddpm, as the objective is different)
         # but let's just do it right
@@ -650,6 +736,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         predict_x_start = True,
         beta_schedule = "cosine",
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
+        sampling_clamp_l2norm = False
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -678,6 +765,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.predict_x_start = predict_x_start
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
 
+        # whether to force an l2norm, similar to clipping denoised, when sampling
+        self.sampling_clamp_l2norm = sampling_clamp_l2norm
+
     def p_mean_variance(self, x, t, text_cond, clip_denoised: bool):
         pred = self.net(x, t, **text_cond)
 
@@ -690,6 +780,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         if clip_denoised and not self.predict_x_start:
             x_recon.clamp_(-1., 1.)
+
+        if self.predict_x_start and self.sampling_clamp_l2norm:
+            x_recon = l2norm(x_recon)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
@@ -741,12 +834,12 @@ class DiffusionPrior(BaseGaussianDiffusion):
         batch_size = text.shape[0]
         image_embed_dim = self.image_embed_dim
 
-        text_embed, text_encodings = self.clip.embed_text(text)
+        text_embed, text_encodings, text_mask = self.clip.embed_text(text)
 
         text_cond = dict(text_embed = text_embed)
 
         if self.condition_on_text_encodings:
-            text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text != 0}
+            text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
         image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond)
         text_embeds = text_cond['text_embed']
@@ -783,8 +876,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         # calculate text conditionings, based on what is passed in
 
         if exists(text):
-            text_embed, text_encodings = self.clip.embed_text(text)
-            text_mask = text != 0
+            text_embed, text_encodings, text_mask = self.clip.embed_text(text)
 
         text_cond = dict(text_embed = text_embed)
 
@@ -1016,6 +1108,8 @@ class Unet(nn.Module):
         # for classifier free guidance
 
         self.null_image_embed = nn.Parameter(torch.randn(1, num_image_tokens, cond_dim))
+
+        self.max_text_len = max_text_len
         self.null_text_embed = nn.Parameter(torch.randn(1, max_text_len, cond_dim))
 
         # attention related params
@@ -1089,7 +1183,7 @@ class Unet(nn.Module):
         if cond_scale == 1:
             return logits
 
-        null_logits = self.forward(*args, cond_drop_prob = 1., **kwargs)
+        null_logits = self.forward(*args, text_cond_drop_prob = 1., image_cond_drop_prob = 1., **kwargs)
         return null_logits + (logits - null_logits) * cond_scale
 
     def forward(
@@ -1100,7 +1194,9 @@ class Unet(nn.Module):
         image_embed,
         lowres_cond_img = None,
         text_encodings = None,
-        cond_drop_prob = 0.,
+        text_mask = None,
+        image_cond_drop_prob = 0.,
+        text_cond_drop_prob = 0.,
         blur_sigma = None,
         blur_kernel_size = None
     ):
@@ -1119,8 +1215,10 @@ class Unet(nn.Module):
 
         # conditional dropout
 
-        cond_prob_mask = prob_mask_like((batch_size,), cond_drop_prob, device = device)
-        cond_prob_mask = rearrange(cond_prob_mask, 'b -> b 1 1')
+        image_keep_mask = prob_mask_like((batch_size,), 1 - image_cond_drop_prob, device = device)
+        text_keep_mask = prob_mask_like((batch_size,), 1 - text_cond_drop_prob, device = device)
+
+        image_keep_mask, text_keep_mask = rearrange_many((image_keep_mask, text_keep_mask), 'b -> b 1 1')
 
         # mask out image embedding depending on condition dropout
         # for classifier free guidance
@@ -1131,7 +1229,7 @@ class Unet(nn.Module):
             image_tokens = self.image_to_cond(image_embed)
 
             image_tokens = torch.where(
-                cond_prob_mask,
+                image_keep_mask,
                 image_tokens,
                 self.null_image_embed
             )
@@ -1142,10 +1240,25 @@ class Unet(nn.Module):
 
         if exists(text_encodings) and self.cond_on_text_encodings:
             text_tokens = self.text_to_cond(text_encodings)
+            text_tokens = text_tokens[:, :self.max_text_len]
+
+            text_tokens_len = text_tokens.shape[1]
+            remainder = self.max_text_len - text_tokens_len
+
+            if remainder > 0:
+                text_tokens = F.pad(text_tokens, (0, 0, 0, remainder))
+
+            if exists(text_mask):
+                if remainder > 0:
+                    text_mask = F.pad(text_mask, (0, remainder), value = False)
+
+                text_mask = rearrange(text_mask, 'b n -> b n 1')
+                text_keep_mask = text_mask & text_keep_mask
+
             text_tokens = torch.where(
-                cond_prob_mask,
+                text_keep_mask,
                 text_tokens,
-                self.null_text_embed[:, :text_tokens.shape[1]]
+                self.null_text_embed
             )
 
         # main conditioning tokens (c)
@@ -1233,7 +1346,8 @@ class Decoder(BaseGaussianDiffusion):
         clip,
         vae = tuple(),
         timesteps = 1000,
-        cond_drop_prob = 0.2,
+        image_cond_drop_prob = 0.1,
+        text_cond_drop_prob = 0.5,
         loss_type = 'l1',
         beta_schedule = 'cosine',
         predict_x_start = False,
@@ -1244,6 +1358,8 @@ class Decoder(BaseGaussianDiffusion):
         blur_sigma = 0.1,                           # cascading ddpm - blur sigma
         blur_kernel_size = 3,                       # cascading ddpm - blur kernel size
         condition_on_text_encodings = False,        # the paper suggested that this didn't do much in the decoder, but i'm allowing the option for experimentation
+        clip_denoised = True,
+        clip_x_start = True
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -1317,7 +1433,13 @@ class Decoder(BaseGaussianDiffusion):
 
         # classifier free guidance
 
-        self.cond_drop_prob = cond_drop_prob
+        self.image_cond_drop_prob = image_cond_drop_prob
+        self.text_cond_drop_prob = text_cond_drop_prob
+
+        # whether to clip when sampling
+
+        self.clip_denoised = clip_denoised
+        self.clip_x_start = clip_x_start
 
     def get_unet(self, unet_number):
         assert 0 < unet_number <= len(self.unets)
@@ -1341,37 +1463,34 @@ class Decoder(BaseGaussianDiffusion):
 
     @torch.no_grad()
     def get_image_embed(self, image):
-        image = resize_image_to(image, self.clip_image_size)
-        image_encoding = self.clip.visual_transformer(image)
-        image_cls = image_encoding[:, 0]
-        image_embed = self.clip.to_visual_latent(image_cls)
-        return l2norm(image_embed)
+        image_embed, _ = self.clip.embed_image(image)
+        return image_embed
 
-    def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, lowres_cond_img = None, clip_denoised = True, predict_x_start = False, cond_scale = 1.):
-        pred = unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
+    def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, lowres_cond_img = None, clip_denoised = True, predict_x_start = False, cond_scale = 1.):
+        pred = unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
 
         if predict_x_start:
             x_recon = pred
         else:
             x_recon = self.predict_start_from_noise(x, t = t, noise = pred)
 
-        if clip_denoised and not predict_x_start:
+        if clip_denoised:
             x_recon.clamp_(-1., 1.)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
     @torch.no_grad()
-    def p_sample(self, unet, x, t, image_embed, text_encodings = None, cond_scale = 1., lowres_cond_img = None, predict_x_start = False, clip_denoised = True, repeat_noise = False):
+    def p_sample(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, cond_scale = 1., lowres_cond_img = None, predict_x_start = False, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
-        model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised, predict_x_start = predict_x_start)
+        model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised, predict_x_start = predict_x_start)
         noise = noise_like(x.shape, device, repeat_noise)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
-    def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, lowres_cond_img = None, text_encodings = None, cond_scale = 1):
+    def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, clip_denoised = True, lowres_cond_img = None, text_encodings = None, text_mask = None, cond_scale = 1):
         device = self.betas.device
 
         b = shape[0]
@@ -1384,14 +1503,16 @@ class Decoder(BaseGaussianDiffusion):
                 torch.full((b,), i, device = device, dtype = torch.long),
                 image_embed = image_embed,
                 text_encodings = text_encodings,
+                text_mask = text_mask,
                 cond_scale = cond_scale,
                 lowres_cond_img = lowres_cond_img,
-                predict_x_start = predict_x_start
+                predict_x_start = predict_x_start,
+                clip_denoised = clip_denoised
             )
 
         return img
 
-    def p_losses(self, unet, x_start, times, *, image_embed, lowres_cond_img = None, text_encodings = None, predict_x_start = False, noise = None):
+    def p_losses(self, unet, x_start, times, *, image_embed, lowres_cond_img = None, text_encodings = None, text_mask = None, predict_x_start = False, noise = None):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         x_noisy = self.q_sample(x_start = x_start, t = times, noise = noise)
@@ -1401,8 +1522,10 @@ class Decoder(BaseGaussianDiffusion):
             times,
             image_embed = image_embed,
             text_encodings = text_encodings,
+            text_mask = text_mask,
             lowres_cond_img = lowres_cond_img,
-            cond_drop_prob = self.cond_drop_prob
+            image_cond_drop_prob = self.image_cond_drop_prob,
+            text_cond_drop_prob = self.text_cond_drop_prob,
         )
 
         target = noise if not predict_x_start else x_start
@@ -1415,9 +1538,9 @@ class Decoder(BaseGaussianDiffusion):
     def sample(self, image_embed, text = None, cond_scale = 1.):
         batch_size = image_embed.shape[0]
 
-        text_encodings = None
+        text_encodings = text_mask = None
         if exists(text):
-            _, text_encodings = self.clip.embed_text(text)
+            _, text_encodings, text_mask = self.clip.embed_text(text)
 
         assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
         assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
@@ -1435,6 +1558,7 @@ class Decoder(BaseGaussianDiffusion):
                 if unet.lowres_cond:
                     lowres_cond_img = self.to_lowres_cond(img, target_image_size = image_size)
 
+                is_latent_diffusion = isinstance(vae, VQGanVAE)
                 image_size = vae.get_encoded_fmap_size(image_size)
                 shape = (batch_size, vae.encoded_dim, image_size, image_size)
 
@@ -1446,8 +1570,10 @@ class Decoder(BaseGaussianDiffusion):
                     shape,
                     image_embed = image_embed,
                     text_encodings = text_encodings,
+                    text_mask = text_mask,
                     cond_scale = cond_scale,
                     predict_x_start = predict_x_start,
+                    clip_denoised = not is_latent_diffusion,
                     lowres_cond_img = lowres_cond_img
                 )
 
@@ -1483,9 +1609,9 @@ class Decoder(BaseGaussianDiffusion):
         if not exists(image_embed):
             image_embed, _ = self.clip.embed_image(image)
 
-        text_encodings = None
+        text_encodings = text_mask = None
         if exists(text) and not exists(text_encodings):
-            _, text_encodings = self.clip.embed_text(text)
+            _, text_encodings, text_mask = self.clip.embed_text(text)
 
         assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
         assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
@@ -1500,7 +1626,7 @@ class Decoder(BaseGaussianDiffusion):
             if exists(lowres_cond_img):
                 lowres_cond_img = vae.encode(lowres_cond_img)
 
-        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start)
+        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start)
 
 # main class
 
@@ -1550,4 +1676,3 @@ class DALLE2(nn.Module):
             return images[0]
 
         return images
-

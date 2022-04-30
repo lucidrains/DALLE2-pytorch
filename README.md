@@ -47,7 +47,7 @@ clip = CLIP(
     use_all_token_embeds = True,            # whether to use fine-grained contrastive learning (FILIP)
     decoupled_contrastive_learning = True,  # use decoupled contrastive learning (DCL) objective function, removing positive pairs from the denominator of the InfoNCE loss (CLOOB + DCL)
     extra_latent_projection = True,         # whether to use separate projections for text-to-image vs image-to-text comparisons (CLOOB)
-    use_visual_ssl = True,                  # whether to do self supervised learning on iages
+    use_visual_ssl = True,                  # whether to do self supervised learning on images
     visual_ssl_type = 'simclr',             # can be either 'simclr' or 'simsiam', depending on using DeCLIP or SLIP
     use_mlm = False,                        # use masked language learning (MLM) on text (DeCLIP)
     text_ssl_loss_weight = 0.05,            # weight for text MLM loss
@@ -110,7 +110,8 @@ decoder = Decoder(
     unet = unet,
     clip = clip,
     timesteps = 100,
-    cond_drop_prob = 0.2
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 # mock images (get a lot of this)
@@ -229,7 +230,8 @@ decoder = Decoder(
     unet = (unet1, unet2),            # insert both unets in order of low resolution to highest resolution (you can have as many stages as you want here)
     image_sizes = (256, 512),         # resolutions, 256 for first unet, 512 for second. these must be unique and in ascending order (matches with the unets passed in)
     timesteps = 1000,
-    cond_drop_prob = 0.2
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 # mock images (get a lot of this)
@@ -348,7 +350,8 @@ decoder = Decoder(
     image_sizes = (128, 256),
     clip = clip,
     timesteps = 100,
-    cond_drop_prob = 0.2,
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5,
     condition_on_text_encodings = False  # set this to True if you wish to condition on text during training and sampling
 ).cuda()
 
@@ -430,8 +433,8 @@ images = torch.randn(4, 3, 256, 256).cuda()
 # precompute the text and image embeddings
 # here using the diffusion prior class, but could be done with CLIP alone
 
-clip_image_embeds = diffusion_prior.get_image_embed(images)
-clip_text_embeds = diffusion_prior.get_text_cond(text).get('text_embed')
+clip_image_embeds = diffusion_prior.clip.embed_image(images).image_embed
+clip_text_embeds = diffusion_prior.clip.embed_text(text).text_embed
 
 # feed text and images into diffusion prior network
 
@@ -495,6 +498,95 @@ loss.backward()
 # now the diffusion prior can generate image embeddings from the text embeddings
 ```
 
+## OpenAI CLIP
+
+Although there is the possibility they are using an unreleased, more powerful CLIP, you can use one of the released ones, if you do not wish to train your own CLIP from scratch. This will also allow the community to more quickly validate the conclusions of the paper.
+
+To use a pretrained OpenAI CLIP, simply import `OpenAIClipAdapter` and pass it into the `DiffusionPrior` or `Decoder` like so
+
+```python
+import torch
+from dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder, OpenAIClipAdapter
+
+# openai pretrained clip - defaults to ViT/B-32
+
+clip = OpenAIClipAdapter()
+
+# mock data
+
+text = torch.randint(0, 49408, (4, 256)).cuda()
+images = torch.randn(4, 3, 256, 256).cuda()
+
+# prior networks (with transformer)
+
+prior_network = DiffusionPriorNetwork(
+    dim = 512,
+    depth = 6,
+    dim_head = 64,
+    heads = 8
+).cuda()
+
+diffusion_prior = DiffusionPrior(
+    net = prior_network,
+    clip = clip,
+    timesteps = 100,
+    cond_drop_prob = 0.2
+).cuda()
+
+loss = diffusion_prior(text, images)
+loss.backward()
+
+# do above for many steps ...
+
+# decoder (with unet)
+
+unet1 = Unet(
+    dim = 128,
+    image_embed_dim = 512,
+    cond_dim = 128,
+    channels = 3,
+    dim_mults=(1, 2, 4, 8)
+).cuda()
+
+unet2 = Unet(
+    dim = 16,
+    image_embed_dim = 512,
+    cond_dim = 128,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8, 16)
+).cuda()
+
+decoder = Decoder(
+    unet = (unet1, unet2),
+    image_sizes = (128, 256),
+    clip = clip,
+    timesteps = 100,
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5,
+    condition_on_text_encodings = False  # set this to True if you wish to condition on text during training and sampling
+).cuda()
+
+for unet_number in (1, 2):
+    loss = decoder(images, unet_number = unet_number) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much
+    loss.backward()
+
+# do above for many steps
+
+dalle2 = DALLE2(
+    prior = diffusion_prior,
+    decoder = decoder
+)
+
+images = dalle2(
+    ['a butterfly trying to escape a tornado'],
+    cond_scale = 2. # classifier free guidance strength (> 1 would strengthen the condition)
+)
+
+# save your image (in this example, of size 256x256)
+```
+
+Now you'll just have to worry about training the Prior and the Decoder!
+
 ## Experimental
 
 ### DALL-E2 with Latent Diffusion
@@ -528,7 +620,7 @@ clip = CLIP(
 # 3 unets for the decoder (a la cascading DDPM)
 
 # first two unets are doing latent diffusion
-# vqgan-vae must be trained before hand
+# vqgan-vae must be trained beforehand
 
 vae1 = VQGanVAE(
     dim = 32,
@@ -581,7 +673,8 @@ decoder = Decoder(
     unet = (unet1, unet2, unet3),      # insert unets in order of low resolution to highest resolution (you can have as many stages as you want here)
     image_sizes = (256, 512, 1024),    # resolutions, 256 for first unet, 512 for second, 1024 for third
     timesteps = 100,
-    cond_drop_prob = 0.2
+    image_cond_drop_prob = 0.1,
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 # mock images (get a lot of this)
@@ -651,6 +744,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
+- [ ] just take care of the training for the decoder in a wrapper class, as each unet in the cascade will need its own optimizer
 - [ ] train on a toy task, offer in colab
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
