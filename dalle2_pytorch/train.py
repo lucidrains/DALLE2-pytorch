@@ -1,6 +1,36 @@
 import copy
+from functools import partial
+
 import torch
 from torch import nn
+
+from dalle2_pytorch.dalle2_pytorch import Decoder
+from dalle2_pytorch.optimizer import get_optimizer
+
+# helper functions
+
+def pick_and_pop(keys, d):
+    values = list(map(lambda key: d.pop(key), keys))
+    return dict(zip(keys, values))
+
+def group_dict_by_key(cond, d):
+    return_val = [dict(),dict()]
+    for key in d.keys():
+        match = bool(cond(key))
+        ind = int(not match)
+        return_val[ind][key] = d[key]
+    return (*return_val,)
+
+def string_begins_with(prefix, str):
+    return str.startswith(prefix)
+
+def group_by_key_prefix(prefix, d):
+    return group_dict_by_key(partial(string_begins_with, prefix), d)
+
+def groupby_prefix_and_trim(prefix, d):
+    kwargs_with_prefix, kwargs = group_dict_by_key(partial(string_begins_with, prefix), d)
+    kwargs_without_prefix = dict(map(lambda x: (x[0][len(prefix):], x[1]), tuple(kwargs_with_prefix.items())))
+    return kwargs_without_prefix, kwargs
 
 # exponential moving average wrapper
 
@@ -9,16 +39,16 @@ class EMA(nn.Module):
         self,
         model,
         beta = 0.99,
-        ema_update_after_step = 1000,
-        ema_update_every = 10,
+        update_after_step = 1000,
+        update_every = 10,
     ):
         super().__init__()
         self.beta = beta
         self.online_model = model
         self.ema_model = copy.deepcopy(model)
 
-        self.ema_update_after_step = ema_update_after_step # only start EMA after this step number, starting at 0
-        self.ema_update_every = ema_update_every
+        self.update_after_step = update_after_step # only start EMA after this step number, starting at 0
+        self.update_every = update_every
 
         self.register_buffer('initted', torch.Tensor([False]))
         self.register_buffer('step', torch.tensor([0.]))
@@ -26,7 +56,7 @@ class EMA(nn.Module):
     def update(self):
         self.step += 1
 
-        if self.step <= self.ema_update_after_step or (self.step % self.ema_update_every) != 0:
+        if self.step <= self.update_after_step or (self.step % self.update_every) != 0:
             return
 
         if not self.initted:
@@ -51,3 +81,49 @@ class EMA(nn.Module):
 
     def __call__(self, *args, **kwargs):
         return self.ema_model(*args, **kwargs)
+
+# trainers
+
+class DecoderTrainer(nn.Module):
+    def __init__(
+        self,
+        decoder,
+        use_ema = True,
+        **kwargs
+    ):
+        super().__init__()
+        assert isinstance(decoder, Decoder)
+        ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
+
+        self.decoder = decoder
+        self.num_unets = len(self.decoder.unets)
+
+        self.use_ema = use_ema
+
+        if use_ema:
+            has_lazy_linear = any([type(module) == nn.LazyLinear for module in decoder.modules()])
+            assert not has_lazy_linear, 'you must set the text_embed_dim on your u-nets if you plan on doing automatic exponential moving average'
+
+        self.ema_unets = nn.ModuleList([])
+
+        for ind, unet in enumerate(self.decoder.unets):
+            optimizer = get_optimizer(unet.parameters(), **kwargs)
+            setattr(self, f'optim{ind}', optimizer) # cannot use pytorch ModuleList for some reason with optimizers
+
+            if self.use_ema:
+                self.ema_unets.append(EMA(unet, **ema_kwargs))
+
+    def update(self, unet_number):
+        assert 1 <= unet_number <= self.num_unets
+        index = unet_number - 1
+
+        optimizer = getattr(self, f'optim{index}')
+        optimizer.step()
+        optimizer.zero_grad()
+
+        if self.use_ema:
+            ema_unet = self.ema_unets[index]
+            ema_unet.update()
+
+    def forward(self, x, *, unet_number, **kwargs):
+        return self.decoder(x, unet_number = unet_number, **kwargs)

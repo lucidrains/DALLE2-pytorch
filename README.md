@@ -708,7 +708,77 @@ images = decoder.sample(mock_image_embed) # (1, 3, 1024, 1024)
 
 ## Training wrapper (wip)
 
-Offer training wrappers
+### Decoder Training
+
+Training the `Decoder` may be confusing, as one needs to keep track of an optimizer for each of the `Unet`(s) separately. Each `Unet` will also need its own corresponding exponential moving average. The `DecoderTrainer` hopes to make this simple, as shown below
+
+```python
+import torch
+from dalle2_pytorch import DALLE2, Unet, Decoder, CLIP, DecoderTrainer
+
+clip = CLIP(
+    dim_text = 512,
+    dim_image = 512,
+    dim_latent = 512,
+    num_text_tokens = 49408,
+    text_enc_depth = 6,
+    text_seq_len = 256,
+    text_heads = 8,
+    visual_enc_depth = 6,
+    visual_image_size = 256,
+    visual_patch_size = 32,
+    visual_heads = 8
+).cuda()
+
+# mock data
+
+text = torch.randint(0, 49408, (4, 256)).cuda()
+images = torch.randn(4, 3, 256, 256).cuda()
+
+# decoder (with unet)
+
+unet1 = Unet(
+    dim = 128,
+    image_embed_dim = 512,
+    text_embed_dim = 512,
+    cond_dim = 128,
+    channels = 3,
+    dim_mults=(1, 2, 4, 8)
+).cuda()
+
+unet2 = Unet(
+    dim = 16,
+    image_embed_dim = 512,
+    text_embed_dim = 512,
+    cond_dim = 128,
+    channels = 3,
+    dim_mults = (1, 2, 4, 8, 16),
+    cond_on_text_encodings = True
+).cuda()
+
+decoder = Decoder(
+    unet = (unet1, unet2),
+    image_sizes = (128, 256),
+    clip = clip,
+    timesteps = 1,
+    condition_on_text_encodings = True
+).cuda()
+
+decoder_trainer = DecoderTrainer(
+    decoder,
+    lr = 3e-4,
+    wd = 1e-2,
+    ema_beta = 0.99,
+    ema_update_after_step = 1000,
+    ema_update_every = 10,
+)
+
+for unet_number in (1, 2):
+    loss = decoder_trainer(images, text = text, unet_number = unet_number)  # use the decoder_trainer forward
+    loss.backward()
+
+    decoder_trainer.update(unet_number) # update the specific unet as well as its exponential moving average
+```
 
 ## CLI (wip)
 
@@ -741,6 +811,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] use inheritance just this once for sharing logic between decoder and prior network ddpms
 - [x] bring in vit-vqgan https://arxiv.org/abs/2110.04627 for the latent diffusion
 - [x] abstract interface for CLIP adapter class, so other CLIPs can be brought in
+- [ ] take care of mixed precision as well as gradient accumulation within decoder trainer
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet
 - [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
