@@ -9,7 +9,6 @@ import time
 from tqdm import tqdm
 import torch
 from torch import nn
-#from diffusion_prior_timer import RepeatedTimer,save_model
 import wandb
 os.environ["WANDB_SILENT"] = "true"
 
@@ -24,10 +23,6 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
 
             # Log to wandb
             wandb.log({phase + " " + loss_type: loss})
-#                wandb.log({"Test loss": loss})
-
-    # Saving State Dict
-#    torch.save(model.state_dict(), 'saved_model.pth')
 
 def save_model(save_path,state_dict):
     # Saving State Dict
@@ -77,8 +72,6 @@ def train(image_embed_dim,
     image_reader = EmbeddingReader(embeddings_folder=image_embed_url, file_format="npy")
     text_reader  = EmbeddingReader(embeddings_folder=text_embed_url, file_format="npy")
     num_data_points = text_reader.count
-    num_data_points = 1000000
-
 
     # Create save_path if it doesn't exist
     if not os.path.exists(save_path):
