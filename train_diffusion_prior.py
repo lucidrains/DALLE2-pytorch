@@ -97,9 +97,7 @@ def train(image_embed_dim,
             step+=1
             samples_per_sec = step/(time.time()-t)
             # Save checkpoint every save_interval minutes
-            if(int(time.time()-t) >= 10):
-            #if(int(time.time()-t) >= 60*save_interval):
-                print("SAVING MODEL !!!")
+            if(int(time.time()-t) >= 60*save_interval):
                 t = time.time()
                 save_model(save_path,diffusion_prior.state_dict())
             # Log to wandb
