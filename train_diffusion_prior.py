@@ -101,9 +101,9 @@ def train(image_embed_dim,
                 t = time.time()
                 save_model(save_path,diffusion_prior.state_dict())
             # Log to wandb
-            wandb.log({"Training loss ": loss.item()})
-            wandb.log({"Steps ": step})
-            wandb.log({"Samples per second  ": samples_per_sec})
+            wandb.log({"Training loss": loss.item(),
+                        "Steps": step,
+                        "Samples per second": samples_per_sec})
             optimizer.step()
 
         ### Evaluate model(validation run) ###
