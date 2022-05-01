@@ -95,7 +95,7 @@ def train(image_embed_dim,
             loss.backward()
             # Samples per second
             step+=1
-            samples_per_sec = step/(time.time()-t)
+            samples_per_sec = batch_size*step/(time.time()-t)
             # Save checkpoint every save_interval minutes
             if(int(time.time()-t) >= 60*save_interval):
                 t = time.time()
