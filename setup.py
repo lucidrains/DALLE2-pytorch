@@ -33,7 +33,8 @@ setup(
     'tqdm',
     'vector-quantize-pytorch',
     'x-clip>=0.5.1',
-    'youtokentome'
+    'youtokentome',
+    'embedding-reader'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
