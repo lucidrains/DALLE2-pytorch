@@ -1064,7 +1064,7 @@ class Unet(nn.Module):
         dim_mults=(1, 2, 4, 8),
         channels = 3,
         attn_dim_head = 32,
-        attn_heads = 8,
+        attn_heads = 16,
         lowres_cond = False, # for cascading diffusion - https://cascaded-diffusion.github.io/
         sparse_attn = False,
         sparse_attn_window = 8,  # window size for sparse attention
