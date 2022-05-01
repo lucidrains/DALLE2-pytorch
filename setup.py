@@ -26,15 +26,16 @@ setup(
     'clip-anytorch',
     'einops>=0.4',
     'einops-exts>=0.0.3',
+    'embedding-reader',
     'kornia>=0.5.4',
     'pillow',
     'torch>=1.10',
     'torchvision',
     'tqdm',
     'vector-quantize-pytorch',
+    'webdataset',
     'x-clip>=0.5.1',
-    'youtokentome',
-    'embedding-reader'
+    'youtokentome'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
