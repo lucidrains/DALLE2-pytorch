@@ -861,9 +861,19 @@ Once built, images will be saved to the same directory the command is invoked
 
 ```bibtex
 @inproceedings{Liu2022ACF,
-    title   = {A ConvNet for the 2020https://arxiv.org/abs/2112.11435s},
+    title   = {A ConvNet for the 2020s},
     author  = {Zhuang Liu and Hanzi Mao and Chaozheng Wu and Christoph Feichtenhofer and Trevor Darrell and Saining Xie},
     year    = {2022}
+}
+```
+
+```bibtex
+@article{shen2019efficient,
+    author  = {Zhuoran Shen and Mingyuan Zhang and Haiyu Zhao and Shuai Yi and Hongsheng Li},
+    title   = {Efficient Attention: Attention with Linear Complexities},
+    journal = {CoRR},
+    year    = {2018},
+    url     = {http://arxiv.org/abs/1812.01243},
 }
 ```
 
