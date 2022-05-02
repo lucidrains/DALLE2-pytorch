@@ -159,11 +159,12 @@ class DecoderTrainer(nn.Module):
         index = unet_number - 1
         unet = self.decoder.unets[index]
 
-        if exists(self.max_grad_norm):
-            nn.utils.clip_grad_norm_(unet.parameters(), self.max_grad_norm)
-
         optimizer = getattr(self, f'optim{index}')
         scaler = getattr(self, f'scaler{index}')
+
+        if exists(self.max_grad_norm):
+            scaler.unscale_(optimizer)
+            nn.utils.clip_grad_norm_(unet.parameters(), self.max_grad_norm)
 
         scaler.step(optimizer)
         scaler.update()
