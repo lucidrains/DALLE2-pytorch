@@ -599,7 +599,7 @@ class CausalTransformer(nn.Module):
         dim_head = 64,
         heads = 8,
         ff_mult = 4,
-        norm_out = False,
+        norm_out = True,
         attn_dropout = 0.,
         ff_dropout = 0.,
         final_proj = True
