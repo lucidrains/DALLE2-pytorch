@@ -897,4 +897,14 @@ Once built, images will be saved to the same directory the command is invoked
 }
 ```
 
+```bibtex
+@article{Shleifer2021NormFormerIT,
+    title   = {NormFormer: Improved Transformer Pretraining with Extra Normalization},
+    author  = {Sam Shleifer and Jason Weston and Myle Ott},
+    journal = {ArXiv},
+    year    = {2021},
+    volume  = {abs/2110.09456}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - Yang Song's <a href="https://arxiv.org/abs/2011.13456">paper</a>
