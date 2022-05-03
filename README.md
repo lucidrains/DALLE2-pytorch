@@ -834,6 +834,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
 - [ ] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
+- [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 
 ## Citations
 
