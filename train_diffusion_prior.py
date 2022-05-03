@@ -61,13 +61,14 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,v
         predicted_image_embeddings = diffusion_prior.p_sample_loop((NUM_TEST_EMBEDDINGS, 768), text_cond = test_text_cond)
         predicted_image_embeddings = predicted_image_embeddings / predicted_image_embeddings.norm(dim=1, keepdim=True)
 
-        original_similarity = cos(text_embed,test_image_embeddings)
-        predicted_similarity = cos(text_embed,predicted_image_embeddings)
+        original_similarity = cos(text_embed,test_image_embeddings).cpu().numpy()
+        predicted_similarity = cos(text_embed,predicted_image_embeddings).cpu().numpy()
 
         wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity)})
         wandb.log({"CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity)})
 
-    return np.mean(predicted_similarity.cpu().numpy() - original_similarity.cpu().numpy())
+    return np.mean(predicted_similarity - original_similarity)
+
 
 
 def train(image_embed_dim,
