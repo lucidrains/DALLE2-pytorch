@@ -16,6 +16,8 @@ from tqdm import tqdm
 import wandb
 os.environ["WANDB_SILENT"] = "true"
 NUM_TEST_EMBEDDINGS = 100 # for cosine similarity reporting during training
+REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting during training
+
 
 def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_type,phase="Validation"):
     model.eval()
@@ -167,14 +169,15 @@ def train(image_embed_dim,
             # Log cosineSim(text_embed,predicted_image_embed) - cosineSim(text_embed,image_embed)
             # Use NUM_TEST_EMBEDDINGS samples from the test set each time
             # Get embeddings from the most recently saved model
-            diff_cosine_sim = report_cosine_sims(diffusion_prior,
-                    image_reader,
-                    text_reader,
-                    train_set_size,
-                    val_set_size,
-                    NUM_TEST_EMBEDDINGS,
-                    device)
-            wandb.log({"Cosine similarity difference": diff_cosine_sim})
+            if(step % REPORT_METRICS_EVERY) == 0:
+                diff_cosine_sim = report_cosine_sims(diffusion_prior,
+                        image_reader,
+                        text_reader,
+                        train_set_size,
+                        val_set_size,
+                        NUM_TEST_EMBEDDINGS,
+                        device)
+                wandb.log({"Cosine similarity difference": diff_cosine_sim})
 
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(diffusion_prior.parameters(), max_grad_norm)
