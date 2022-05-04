@@ -1,6 +1,7 @@
 import click
 import torch
 import torchvision.transforms as T
+from functools import reduce
 from pathlib import Path
 
 from dalle2_pytorch import DALLE2, Decoder, DiffusionPrior
