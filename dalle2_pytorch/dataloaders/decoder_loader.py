@@ -114,7 +114,7 @@ def verify_keys(samples, handler=wds.handlers.reraise_exception):
             else:
                 break
 
-class ImageEmbedingDataset(wds.DataPipeline, wds.compat.FluidInterface):
+class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
     """
     A fluid interface wrapper for DataPipline that returns image embedding pairs
     Reads embeddings as npy files from the webdataset if they exist. If embedding_folder_url is set, they will be inserted in from the alternate source.
@@ -188,7 +188,7 @@ def create_dataloader(
     :param resample_shards: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
     :param handler: A webdataset handler.
     """
-    ds = ImageEmbedingDataset(
+    ds = ImageEmbeddingDataset(
         tar_url,
         embeddings_url,
         shard_width=shard_width,
