@@ -10,71 +10,33 @@ def get_shard(filename):
     Standard structure: path/to/file/prefix_string_00001.ext
     """
     try:
-        return int(filename.split("_")[-1].split(".")[0])
+        return filename.split("_")[-1].split(".")[0]
     except ValueError:
         raise RuntimeError(f"Could not find shard for filename {filename}")
 
-# fsspec file reading code from embedding_reader https://github.com/rom1504/embedding-reader/blob/dd7da26ba4cd363cbfd608e0877faa921180c2e3/embedding_reader/get_file_list.py
-def get_file_list(path, file_format):
+def get_example_file(fs, path, file_format):
     """
-    Get the file system and all the file paths that matches `file_format` under the given `path`.
-    The `path` could a single folder or multiple folders.
-    :raises ValueError: if file system is inconsistent under different folders.
+    Given a file system and a file extension, return the example file
     """
-    if isinstance(path, str):
-        return _get_file_list(path, file_format)
-    all_file_paths = []
-    fs = None
-    for p in path:
-        cur_fs, file_paths = _get_file_list(p, file_format, sort_result=False)
-        if fs is None:
-            fs = cur_fs
-        elif fs != cur_fs:
-            raise ValueError(
-                f"The file system in different folder are inconsistent.\n" f"Got one {fs} and the other {cur_fs}"
-            )
-        all_file_paths.extend(file_paths)
-    all_file_paths.sort()
-    return fs, all_file_paths
-
-def make_path_absolute(path: str) -> str:
-    fs, p = fsspec.core.url_to_fs(path)
-    if fs.protocol == "file":
-        return os.path.abspath(p)
-    return path
-
-def _get_file_list(
-    path: str, file_format: str, sort_result: bool = True
-):
-    """Get the file system and all the file paths that matches `file_format` given a single path."""
-    path = make_path_absolute(path)
-    fs, path_in_fs = fsspec.core.url_to_fs(path)
-    prefix = path[: path.index(path_in_fs)]
-    glob_pattern = path.rstrip("/") + f"/**.{file_format}"
-    file_paths = fs.glob(glob_pattern)
-    if sort_result:
-        file_paths.sort()
-    file_paths_with_prefix = [prefix + file_path for file_path in file_paths]
-    return fs, file_paths_with_prefix
-### Code from embedding_reader ends
+    return fs.glob(os.path.join(path, f"*.{file_format}"))[0]
 
 def embedding_inserter(samples, embeddings_url, shard_width, handler=wds.handlers.reraise_exception):
     """Given a datum of {"__key__": str, "__url__": str, ...} adds the cooresponding embedding and yields"""
     previous_tar_url = None
     current_embeddings = None
     # Get a reference to an abstract file system where the embeddings are stored
-    fs, embedding_files = get_file_list(embeddings_url, 'npy')
-    # Assuming all shard strings have the same length, we can find it very easily
-    example_embedding_shard = get_shard(embedding_files[0])
+    embeddings_fs, embeddings_path = fsspec.core.url_to_fs(embeddings_url)
+    example_embedding_file = get_example_file(embeddings_fs, embeddings_path, "npy")
+    example_embedding_shard = get_shard(example_embedding_file)
     emb_shard_width = len(example_embedding_shard)
     # Easier to get the basename without the shard once than search through for the correct file every time
-    embedding_file_basename = '_'.join(embedding_files[0].split("_")[:-1]) + "_"
+    embedding_file_basename = '_'.join(example_embedding_file.split("_")[:-1]) + "_"
 
     def load_corresponding_embeds(tar_url):
       """Finds and reads the npy files that contains embeddings for the given webdataset tar"""
       shard = int(tar_url.split("/")[-1].split(".")[0])
       embedding_url = embedding_file_basename + str(shard).zfill(emb_shard_width) + '.npy'
-      with fs.open(embedding_url) as f:
+      with embeddings_fs.open(embedding_url) as f:
         data = np.load(f)
       return torch.from_numpy(data)
 
