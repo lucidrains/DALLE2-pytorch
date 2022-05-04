@@ -1808,7 +1808,7 @@ class Decoder(BaseGaussianDiffusion):
         image = resize_image_to(image, target_image_size)
 
         if exists(random_crop_size):
-            aug = K.RandomCrop((random_crop_size, random_crop_size))
+            aug = K.RandomCrop((random_crop_size, random_crop_size), p = 1.)
 
             # make sure low res conditioner and image both get augmented the same way
             # detailed https://kornia.readthedocs.io/en/latest/augmentation.module.html?highlight=randomcrop#kornia.augmentation.RandomCrop
