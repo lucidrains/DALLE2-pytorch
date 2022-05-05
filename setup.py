@@ -10,7 +10,7 @@ setup(
       'dream = dalle2_pytorch.cli:dream'
     ],
   },
-  version = '0.0.99',
+  version = '0.0.100',
   license='MIT',
   description = 'DALL-E 2',
   author = 'Phil Wang',
@@ -29,6 +29,7 @@ setup(
     'embedding-reader',
     'kornia>=0.5.4',
     'pillow',
+    'resize-right>=0.0.2',
     'torch>=1.10',
     'torchvision',
     'tqdm',
