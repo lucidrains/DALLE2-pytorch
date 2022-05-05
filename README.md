@@ -382,6 +382,38 @@ For the layperson, no worries, training will all be automated into a CLI tool, a
 
 ## Training on Preprocessed CLIP Embeddings
 
+## Using the train_diffusion_prior.py script
+This script allows training the DiffusionPrior on pre-computed text and image embeddings. The working example below elucidates this process.
+Please note that the script internally passes text_embed and image_embed to the DiffusionPrior, unlike the example below.
+## Usage 
+```bash
+$ pyhon train_diffusion_prior.py
+```
+The most significant parameters for the script are as follows:
+
+--image-embed-url, default = "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
+
+--text-embed-url, default = "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
+
+--image-embed-dim, default=768 - 768 corresponds to the ViT iL/14 embedding size,change it to what your chosen ViT generates
+
+--learning-rate, default=1.1e-4
+
+--weight-decay,  default=6.02e-2
+
+--max-grad-norm, default=0.5
+
+--batch-size, default=10 ** 4
+
+--num-epochs, default=5
+
+--clip, default=None # Signals the prior to use pre-computed embeddings
+
+## Sample wandb run log
+
+Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/aul0rhv5?workspace=
+
+
 It is likely, when scaling up, that you would first preprocess your images and text into corresponding embeddings before training the prior network. You can do so easily by simply passing in `image_embed`, `text_embed`, and optionally `text_encodings` and `text_mask`
 
 Working example below
