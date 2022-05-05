@@ -756,7 +756,8 @@ class DiffusionPrior(BaseGaussianDiffusion):
         predict_x_start = True,
         beta_schedule = "cosine",
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
-        sampling_clamp_l2norm = False
+        sampling_clamp_l2norm = False,
+        image_embed_scale = None,           # this is for scaling the l2-normed image embedding, so it is more suitable for gaussian diffusion, as outlined by Katherine (@crowsonkb) https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -782,8 +783,11 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.cond_drop_prob = cond_drop_prob
         self.condition_on_text_encodings = condition_on_text_encodings
 
-        self.predict_x_start = predict_x_start
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
+        self.predict_x_start = predict_x_start
+
+        # @crowsonkb 's suggestion - https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
+        self.image_embed_scale = default(image_embed_scale, image_embed_dim ** 0.5)
 
         # whether to force an l2norm, similar to clipping denoised, when sampling
         self.sampling_clamp_l2norm = sampling_clamp_l2norm
@@ -802,7 +806,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
             x_recon.clamp_(-1., 1.)
 
         if self.predict_x_start and self.sampling_clamp_l2norm:
-            x_recon = l2norm(x_recon)
+            x_recon = l2norm(x_recon) * self.image_embed_scale
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
@@ -862,6 +866,11 @@ class DiffusionPrior(BaseGaussianDiffusion):
             text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
         image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond)
+
+        # retrieve original unscaled image embed
+
+        image_embeds /= self.image_embed_scale
+
         text_embeds = text_cond['text_embed']
 
         text_embeds = rearrange(text_embeds, '(b r) d -> b r d', r = num_samples_per_batch)
@@ -908,6 +917,10 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         batch, device = image_embed.shape[0], image_embed.device
         times = torch.randint(0, self.num_timesteps, (batch,), device = device, dtype = torch.long)
+
+        # scale image embed (Katherine)
+
+        image_embed *= self.image_embed_scale
 
         # calculate forward loss
 
@@ -997,68 +1010,6 @@ class ResnetBlock(nn.Module):
             h = self.cross_attn(h, context = cond) + h
 
         h = self.block2(h)
-        return h + self.res_conv(x)
-
-class ConvNextBlock(nn.Module):
-    """ https://arxiv.org/abs/2201.03545 """
-
-    def __init__(
-        self,
-        dim,
-        dim_out,
-        *,
-        cond_dim = None,
-        time_cond_dim = None,
-        mult = 2
-    ):
-        super().__init__()
-        need_projection = dim != dim_out
-
-        self.cross_attn = None
-
-        if exists(cond_dim):
-            self.cross_attn = EinopsToAndFrom(
-                'b c h w',
-                'b (h w) c',
-                CrossAttention(
-                    dim = dim,
-                    context_dim = cond_dim
-                )
-            )
-
-        self.time_mlp = None
-
-        if exists(time_cond_dim):
-            self.time_mlp = nn.Sequential(
-                nn.GELU(),
-                nn.Linear(time_cond_dim, dim)
-            )
-
-        self.ds_conv = nn.Conv2d(dim, dim, 7, padding = 3, groups = dim)
-
-        inner_dim = int(dim_out * mult)
-        self.net = nn.Sequential(
-            ChanLayerNorm(dim),
-            nn.Conv2d(dim, inner_dim, 3, padding = 1),
-            nn.GELU(),
-            nn.Conv2d(inner_dim, dim_out, 3, padding = 1)
-        )
-
-        self.res_conv = nn.Conv2d(dim, dim_out, 1) if need_projection else nn.Identity()
-
-    def forward(self, x, cond = None, time = None):
-        h = self.ds_conv(x)
-
-        if exists(time) and exists(self.time_mlp):
-            t = self.time_mlp(time)
-            h = rearrange(t, 'b c -> b c 1 1') + h
-
-        if exists(self.cross_attn):
-            assert exists(cond)
-            h = self.cross_attn(h, context = cond) + h
-
-        h = self.net(h)
-
         return h + self.res_conv(x)
 
 class CrossAttention(nn.Module):
@@ -1200,7 +1151,6 @@ class Unet(nn.Module):
         init_conv_kernel_size = 7,
         block_type = 'resnet',
         block_resnet_groups = 8,
-        block_convnext_mult = 2,
         **kwargs
     ):
         super().__init__()
@@ -1276,14 +1226,9 @@ class Unet(nn.Module):
 
         attn_kwargs = dict(heads = attn_heads, dim_head = attn_dim_head)
 
-        # whether to use resnet or the (improved?) convnext blocks
+        # resnet block klass
 
-        if block_type == 'resnet':
-            block_klass = partial(ResnetBlock, groups = block_resnet_groups)
-        elif block_type == 'convnext':
-            block_klass = partial(ConvNextBlock, mult = block_convnext_mult)
-        else:
-            raise ValueError(f'unimplemented block type {block_type}')
+        block_klass = partial(ResnetBlock, groups = block_resnet_groups)
 
         # layers
 
