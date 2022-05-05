@@ -34,9 +34,10 @@ setup(
     'torchvision',
     'tqdm',
     'vector-quantize-pytorch',
-    'webdataset',
-    'x-clip>=0.5.1',
-    'youtokentome'
+    'x-clip>=0.4.4',
+    'youtokentome',
+    'webdataset>=0.2.5',
+    'fsspec>=2022.1.0'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
