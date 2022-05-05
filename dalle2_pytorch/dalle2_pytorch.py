@@ -652,14 +652,12 @@ class DiffusionPriorNetwork(nn.Module):
         self,
         dim,
         num_timesteps = None,
-        l2norm_output = False,  # whether to restrict image embedding output with l2norm at the end (may make it easier to learn?)
         **kwargs
     ):
         super().__init__()
         self.time_embeddings = nn.Embedding(num_timesteps, dim) if exists(num_timesteps) else nn.Sequential(Rearrange('b -> b 1'), MLP(1, dim)) # also offer a continuous version of timestep embeddings, with a 2 layer MLP
         self.learned_query = nn.Parameter(torch.randn(dim))
         self.causal_transformer = CausalTransformer(dim = dim, **kwargs)
-        self.l2norm_output = l2norm_output
 
     def forward_with_cond_scale(
         self,
@@ -738,8 +736,7 @@ class DiffusionPriorNetwork(nn.Module):
 
         pred_image_embed = tokens[..., -1, :]
 
-        output_fn = l2norm if self.l2norm_output else identity
-        return output_fn(pred_image_embed)
+        return pred_image_embed
 
 class DiffusionPrior(BaseGaussianDiffusion):
     def __init__(
