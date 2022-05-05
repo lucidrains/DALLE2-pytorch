@@ -124,7 +124,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
         self.append(verify_keys)
         self.append(wds.to_tuple("jpg", "npy"))
 
-def create_dataloader(
+def create_image_embedding_dataloader(
     tar_url,
     num_workers,
     batch_size,
@@ -144,7 +144,7 @@ def create_dataloader(
     :param embeddings_url: Required if webdataset does not contain embeddings. A url pointing to the npy files of the embeddings. Should have the same number of shards as the webdataset.
         Webdataset image keys should align with the index of the embedding. This means missing image indices must have a corresponding embedding of all zeros.
     :param shard_width: The number of digits in the shard number. This is used to align the embedding index with the image index.
-        For example, if a file in the webdataset shard 3 is named 0003039.jpg, we know the shard with this 4 and the last three digits are the index.
+        For example, if a file in the webdataset shard 3 is named 0003039.jpg, we know the shard width is 4 and the last three digits are the index.
     :param shuffle_num: If not None, shuffle the dataset with this size buffer after sampling.
     :param shuffle_shards: If true, shuffle the shards before sampling. This cannot be true if resample is true.
     :param resample_shards: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.
