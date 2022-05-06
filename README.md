@@ -1047,4 +1047,14 @@ Once built, images will be saved to the same directory the command is invoked
 }
 ```
 
+```bibtex
+@article{Yu2022CoCaCC,
+    title   = {CoCa: Contrastive Captioners are Image-Text Foundation Models},
+    author  = {Jiahui Yu and Zirui Wang and Vijay Vasudevan and Legg Yeung and Mojtaba Seyedhosseini and Yonghui Wu},
+    journal = {ArXiv},
+    year    = {2022},
+    volume  = {abs/2205.01917}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>

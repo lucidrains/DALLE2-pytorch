@@ -26,6 +26,7 @@ from resize_right import resize
 # use x-clip
 
 from x_clip import CLIP
+from coca_pytorch import CoCa
 
 # helper functions
 
@@ -113,9 +114,10 @@ EmbeddedText = namedtuple('EmbedTextReturn', ['text_embed', 'text_encodings', 't
 EmbeddedImage = namedtuple('EmbedImageReturn', ['image_embed', 'image_encodings'])
 
 class BaseClipAdapter(nn.Module):
-    def __init__(self, clip):
+    def __init__(self, clip, **kwargs):
         super().__init__()
         self.clip = clip
+        self.overrides = kwargs
 
     @property
     def dim_latent(self):
@@ -172,6 +174,39 @@ class XClipAdapter(BaseClipAdapter):
         image_cls, image_encodings = encoder_output[:, 0], encoder_output[:, 1:]
         image_embed = self.clip.to_visual_latent(image_cls)
         return EmbeddedImage(l2norm(image_embed), image_encodings)
+
+class CoCaAdapter(BaseClipAdapter):
+    @property
+    def dim_latent(self):
+        return self.clip.dim
+
+    @property
+    def image_size(self):
+        assert 'image_size' in self.overrides
+        return self.overrides['image_size']
+
+    @property
+    def image_channels(self):
+        assert 'image_channels' in self.overrides
+        return self.overrides['image_channels']
+
+    @property
+    def max_text_len(self):
+        assert 'max_text_len' in self.overrides
+        return self.overrides['max_text_len']
+
+    @torch.no_grad()
+    def embed_text(self, text):
+        text = text[..., :self.max_text_len]
+        text_mask = text != 0
+        text_embed, text_encodings = self.clip.embed_text(text)
+        return EmbeddedText(text_embed, text_encodings, text_mask)
+
+    @torch.no_grad()
+    def embed_image(self, image):
+        image = resize_image_to(image, self.image_size)
+        image_embed, image_encodings = self.clip.embed_image(image)
+        return EmbeddedImage(image_embed, image_encodings)
 
 class OpenAIClipAdapter(BaseClipAdapter):
     def __init__(
@@ -755,6 +790,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
         sampling_clamp_l2norm = False,
         image_embed_scale = None,           # this is for scaling the l2-normed image embedding, so it is more suitable for gaussian diffusion, as outlined by Katherine (@crowsonkb) https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
+        clip_adapter_overrides = dict()
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -764,7 +800,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         if exists(clip):
             if isinstance(clip, CLIP):
-                clip = XClipAdapter(clip)
+                clip = XClipAdapter(clip, **clip_adapter_overrides)
+            elif isinstance(clip, CoCa):
+                clip = CoCaAdapter(clip, **clip_adapter_overrides)
 
             assert isinstance(clip, BaseClipAdapter)
             freeze_model_and_make_eval_(clip)
@@ -1487,7 +1525,8 @@ class Decoder(BaseGaussianDiffusion):
         blur_kernel_size = 3,                       # cascading ddpm - blur kernel size
         condition_on_text_encodings = False,        # the paper suggested that this didn't do much in the decoder, but i'm allowing the option for experimentation
         clip_denoised = True,
-        clip_x_start = True
+        clip_x_start = True,
+        clip_adapter_overrides = dict()
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -1500,7 +1539,9 @@ class Decoder(BaseGaussianDiffusion):
         self.clip = None
         if exists(clip):
             if isinstance(clip, CLIP):
-                clip = XClipAdapter(clip)
+                clip = XClipAdapter(clip, **clip_adapter_overrides)
+            elif isinstance(clip, CoCa):
+                clip = CoCaAdapter(clip, **clip_adapter_overrides)
 
             freeze_model_and_make_eval_(clip)
             assert isinstance(clip, BaseClipAdapter)
