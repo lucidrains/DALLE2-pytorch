@@ -902,7 +902,7 @@ Please note that the script internally passes text_embed and image_embed to the 
 ### Usage 
 
 ```bash
-$ pyhon train_diffusion_prior.py
+$ python train_diffusion_prior.py
 ```
 
 The most significant parameters for the script are as follows:
