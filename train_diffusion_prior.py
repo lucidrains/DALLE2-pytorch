@@ -169,14 +169,12 @@ def train(image_embed_dim,
             # Use NUM_TEST_EMBEDDINGS samples from the test set each time
             # Get embeddings from the most recently saved model
             if(step % REPORT_METRICS_EVERY) == 0:
-                diff_cosine_sim = report_cosine_sims(diffusion_prior,
+                report_cosine_sims(diffusion_prior,
                         image_reader,
                         text_reader,
                         train_set_size,
-                        val_set_size,
                         NUM_TEST_EMBEDDINGS,
                         device)
-                wandb.log({"Cosine similarity difference": diff_cosine_sim})
                  ### Evaluate model(validation run) ###
                 eval_model(diffusion_prior,
                         device,
@@ -269,8 +267,15 @@ def main():
         "Num Epochs":args.num_epochs})
 
     print("wandb logging setup done!")
-    # Obtain the utilized device.
+    
+    # Log hyperparameters for each run
+    wandb.log({"Learning Rate":args.learning_rate,
+        "Weight Decay":args.weight_decay,
+        "Max Gradient Clipping Norm":args.max_grad_norm,
+        "Batch size":args.batch_size,
+        "Num Epochs":args.num_epochs})
 
+    # Obtain the utilized device.
     has_cuda = torch.cuda.is_available()
     if has_cuda:
         device = torch.device("cuda:0")
