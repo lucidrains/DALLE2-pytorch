@@ -95,6 +95,7 @@ def train(image_embed_dim,
           device,
           RESUME,
           DPRIOR_PATH,
+          config,
           learning_rate=0.001,
           max_grad_norm=0.5,
           weight_decay=0.01,
@@ -168,7 +169,7 @@ def train(image_embed_dim,
 
                 save_model(
                     save_path,
-                    dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict()))
+                    dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(),config = config))
 
             # Log to wandb
             wandb.log({"Training loss": loss.item(),
@@ -252,20 +253,31 @@ def main():
     args = parser.parse_args()
 
     print("Setting up wandb logging... Please wait...")
-
-    wandb.init(
-      entity=args.wandb_entity,
-      project=args.wandb_project,
-      config={
-      "learning_rate": args.learning_rate,
+    
+    config = ({"learning_rate": args.learning_rate,
       "architecture": args.wandb_arch,
       "dataset": args.wandb_dataset,
       "Learning Rate":args.learning_rate,
       "Weight Decay":args.weight_decay,
       "Max Gradient Clipping Norm":args.max_grad_norm,
       "Batch size":args.batch_size,
-      "epochs": args.num_epochs
-      })
+      "epochs": args.num_epochs,
+      "Diffusion Prior Network depth":args.dpn_depth,
+      "Diffusion Prior Network dim-head":args.dpn_dim_head,
+      "Diffusion Prior Network heas":args.dpn_heads,
+      "Diffusion Prior condition-on-text-encodings": args.dp_condition_on_text_encodings,
+      "Diffusion Prior timesteps": args.dp_timesteps,
+      "Diffusion Prior normformer":args.dp_normformer,
+      "Diffusion Prior cond drop prob":args.dp_cond_drop_prob,
+      "Diffusion Prior loss type":args.dp_loss_type,
+      "Diffusion Prior clip":args.clip,
+      "Diffusion Prior amp" :args.amp})
+
+
+    wandb.init(
+      entity=args.wandb_entity,
+      project=args.wandb_project,
+      config=config)
 
     print("wandb logging setup done!")
 
@@ -304,6 +316,7 @@ def main():
           device,
           RESUME,
           DPRIOR_PATH,
+          config,
           args.learning_rate,
           args.max_grad_norm,
           args.weight_decay,
