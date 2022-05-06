@@ -133,7 +133,7 @@ def train(image_embed_dim,
         dprior_path = Path(CHECKPOINT_DIR)
         assert dprior_path.exists(), 'Dprior model file does not exist'
         loaded_obj = torch.load(str(dprior_path), map_location='cpu')
-        diffusion_prior = loaded_obj['model']
+        diffusion_prior.load_state_dict(loaded_obj['model'])
 
     ### Training code ###
     scaler = GradScaler(enabled=amp)
@@ -201,11 +201,6 @@ def train(image_embed_dim,
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad()
-
-        ### Evaluate model(validation run) ###
-        start = train_set_size
-        end=start+val_set_size
-        eval_model(diffusion_prior,device,image_reader,text_reader,start,end,batch_size,dp_loss_type,phase="Validation")
 
     ### Test run ###
     test_set_size = int(test_percent*train_set_size) 
@@ -307,12 +302,12 @@ def main():
           args.save_interval,
           args.save_path,
           device,
+          RESUME,
+          CHECKPOINT_DIR,
           args.learning_rate,
           args.max_grad_norm,
           args.weight_decay,
-          args.amp,
-          RESUME,
-          CHECKPOINT_DIR)
+          args.amp)
 
 if __name__ == "__main__":
   main()
