@@ -264,7 +264,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
         text_embed = self.clip.encode_text(text)
         text_encodings = self.text_encodings
         del self.text_encodings
-        return EmbeddedText(text_embed.float(), text_encodings.float(), text_mask)
+        return EmbeddedText(l2norm(text_embed.float()), text_encodings.float(), text_mask)
 
     @torch.no_grad()
     def embed_image(self, image):
@@ -272,7 +272,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
         image = resize_image_to(image, self.image_size)
         image = self.clip_normalize(unnormalize_img(image))
         image_embed = self.clip.encode_image(image)
-        return EmbeddedImage(image_embed.float(), None)
+        return EmbeddedImage(l2norm(image_embed.float()), None)
 
 # classifier free guidance functions
 
