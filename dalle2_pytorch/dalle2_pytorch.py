@@ -784,7 +784,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.predict_x_start = predict_x_start
 
         # @crowsonkb 's suggestion - https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
-        self.image_embed_scale = default(image_embed_scale, image_embed_dim ** 0.5)
+        self.image_embed_scale = default(image_embed_scale, self.image_embed_dim ** 0.5)
 
         # whether to force an l2norm, similar to clipping denoised, when sampling
         self.sampling_clamp_l2norm = sampling_clamp_l2norm
