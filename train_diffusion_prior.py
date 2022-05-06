@@ -93,12 +93,12 @@ def train(image_embed_dim,
           save_interval,
           save_path,
           device,
+          RESUME,
+          DPRIOR_PATH,
           learning_rate=0.001,
           max_grad_norm=0.5,
           weight_decay=0.01,
-          amp=False,
-          RESUME,
-          CHECKPOINT_DIR):
+          amp=False):
 
     # DiffusionPriorNetwork 
     prior_network = DiffusionPriorNetwork( 
@@ -128,9 +128,9 @@ def train(image_embed_dim,
     if not os.path.exists(save_path):
         os.makedirs(save_path)
         
-    # Load pre-trained model from CHECKPOINT_DIR
+    # Load pre-trained model from DPRIOR_PATH
     if RESUME:
-        dprior_path = Path(CHECKPOINT_DIR)
+        dprior_path = Path(DPRIOR_PATH)
         assert dprior_path.exists(), 'Dprior model file does not exist'
         loaded_obj = torch.load(str(dprior_path), map_location='cpu')
         diffusion_prior.load_state_dict(loaded_obj['model'])
@@ -275,8 +275,8 @@ def main():
         device = torch.device("cuda:0")
         torch.cuda.set_device(device)
             
-    # Check if CHECKPOINT_DIR exists(saved model path)
-    CHECKPOINT_DIR = args.save_path
+    # Check if DPRIOR_PATH exists(saved model path)
+    DPRIOR_PATH = args.save_path
     RESUME = False
     if os.path.exists(DPRIOR_PATH):
         RESUME = True
@@ -303,7 +303,7 @@ def main():
           args.save_path,
           device,
           RESUME,
-          CHECKPOINT_DIR,
+          DPRIOR_PATH,
           args.learning_rate,
           args.max_grad_norm,
           args.weight_decay,
