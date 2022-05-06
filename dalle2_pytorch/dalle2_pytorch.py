@@ -847,6 +847,18 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
     @torch.inference_mode()
     @eval_decorator
+    def sample_batch_size(self, batch_size, text_cond):
+        device = self.betas.device
+        shape = (batch_size, self.image_embed_dim)
+
+        img = torch.randn(shape, device = device)
+
+        for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
+            img = self.p_sample(img, torch.full((batch_size,), i, device = device, dtype = torch.long), text_cond = text_cond)
+        return img
+
+    @torch.inference_mode()
+    @eval_decorator
     def sample(self, text, num_samples_per_batch = 2):
         # in the paper, what they did was
         # sample 2 image embeddings, choose the top 1 similarity, as judged by CLIP
