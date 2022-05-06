@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.cuda.amp import autocast, GradScaler
 
-from dalle2_pytorch.dalle2_pytorch import Decoder
+from dalle2_pytorch.dalle2_pytorch import Decoder, DiffusionPrior
 from dalle2_pytorch.optimizer import get_optimizer
 
 # helper functions
@@ -89,7 +89,83 @@ class EMA(nn.Module):
     def __call__(self, *args, **kwargs):
         return self.ema_model(*args, **kwargs)
 
-# trainers
+# diffusion prior trainer
+
+class DiffusionPriorTrainer(nn.Module):
+    def __init__(
+        self,
+        diffusion_prior,
+        use_ema = True,
+        lr = 3e-4,
+        wd = 1e-2,
+        max_grad_norm = None,
+        amp = False,
+        **kwargs
+    ):
+        super().__init__()
+        assert isinstance(diffusion_prior, DiffusionPrior)
+        ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
+
+        self.diffusion_prior = diffusion_prior
+
+        # exponential moving average
+
+        self.use_ema = use_ema
+        if self.use_ema:
+            self.ema_diffusion_prior = EMA(diffusion_prior, **ema_kwargs)
+
+        # optimizer and mixed precision stuff
+
+        self.amp = amp
+
+        self.scaler = GradScaler(enabled = amp)
+
+        self.optimizer = get_optimizer(
+            diffusion_prior.parameters(),
+            lr = lr,
+            wd = wd,
+            **kwargs
+        )
+
+        # gradient clipping if needed
+
+        self.max_grad_norm = max_grad_norm
+
+    def update(self):
+        if exists(self.max_grad_norm):
+            self.scaler.unscale_(self.optimizer)
+            nn.utils.clip_grad_norm_(self.diffusion_prior.parameters(), self.max_grad_norm)
+
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+        self.optimizer.zero_grad()
+
+        if self.use_ema:
+            self.ema_diffusion_prior.update()
+
+    @torch.inference_mode()
+    def p_sample_loop(self, *args, **kwargs):
+        return self.ema_diffusion_prior.ema_model.p_sample_loop(*args, **kwargs)
+
+    @torch.inference_mode()
+    def sample(self, *args, **kwargs):
+        return self.ema_diffusion_prior.ema_model.sample(*args, **kwargs)
+
+    @torch.inference_mode()
+    def sample_batch_size(self, *args, **kwargs):
+        return self.ema_diffusion_prior.ema_model.sample_batch_size(*args, **kwargs)
+
+    def forward(
+        self,
+        *args,
+        divisor = 1,
+        **kwargs
+    ):
+        with autocast(enabled = self.amp):
+            loss = self.diffusion_prior(*args, **kwargs)
+        return self.scaler.scale(loss / divisor)
+
+# decoder trainer
 
 class DecoderTrainer(nn.Module):
     def __init__(

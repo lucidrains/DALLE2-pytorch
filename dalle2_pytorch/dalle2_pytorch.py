@@ -784,7 +784,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.predict_x_start = predict_x_start
 
         # @crowsonkb 's suggestion - https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
-        self.image_embed_scale = default(image_embed_scale, image_embed_dim ** 0.5)
+        self.image_embed_scale = default(image_embed_scale, self.image_embed_dim ** 0.5)
 
         # whether to force an l2norm, similar to clipping denoised, when sampling
         self.sampling_clamp_l2norm = sampling_clamp_l2norm
@@ -844,6 +844,18 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         loss = self.loss_fn(pred, target)
         return loss
+
+    @torch.inference_mode()
+    @eval_decorator
+    def sample_batch_size(self, batch_size, text_cond):
+        device = self.betas.device
+        shape = (batch_size, self.image_embed_dim)
+
+        img = torch.randn(shape, device = device)
+
+        for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
+            img = self.p_sample(img, torch.full((batch_size,), i, device = device, dtype = torch.long), text_cond = text_cond)
+        return img
 
     @torch.inference_mode()
     @eval_decorator
