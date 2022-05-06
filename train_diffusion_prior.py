@@ -96,7 +96,9 @@ def train(image_embed_dim,
           learning_rate=0.001,
           max_grad_norm=0.5,
           weight_decay=0.01,
-          amp=False):
+          amp=False,
+          RESUME,
+          CHECKPOINT_DIR):
 
     # DiffusionPriorNetwork 
     prior_network = DiffusionPriorNetwork( 
@@ -125,6 +127,13 @@ def train(image_embed_dim,
     # Create save_path if it doesn't exist
     if not os.path.exists(save_path):
         os.makedirs(save_path)
+        
+    # Load pre-trained model from CHECKPOINT_DIR
+    if RESUME:
+        dprior_path = Path(CHECKPOINT_DIR)
+        assert dprior_path.exists(), 'Dprior model file does not exist'
+        loaded_obj = torch.load(str(dprior_path), map_location='cpu')
+        diffusion_prior = loaded_obj['model']
 
     ### Training code ###
     scaler = GradScaler(enabled=amp)
@@ -256,30 +265,24 @@ def main():
       "learning_rate": args.learning_rate,
       "architecture": args.wandb_arch,
       "dataset": args.wandb_dataset,
-      "epochs": args.num_epochs,
+      "Learning Rate":args.learning_rate,
+      "Weight Decay":args.weight_decay,
+      "Max Gradient Clipping Norm":args.max_grad_norm,
+      "Batch size":args.batch_size,
+      "epochs": args.num_epochs
       })
-    
-    # Log hyperparameters for each run
-    wandb.log({"Learning Rate":args.learning_rate,
-        "Weight Decay":args.weight_decay,
-        "Max Gradient Clipping Norm":args.max_grad_norm,
-        "Batch size":args.batch_size,
-        "Num Epochs":args.num_epochs})
 
     print("wandb logging setup done!")
-    
-    # Log hyperparameters for each run
-    wandb.log({"Learning Rate":args.learning_rate,
-        "Weight Decay":args.weight_decay,
-        "Max Gradient Clipping Norm":args.max_grad_norm,
-        "Batch size":args.batch_size,
-        "Num Epochs":args.num_epochs})
 
     # Obtain the utilized device.
     has_cuda = torch.cuda.is_available()
     if has_cuda:
         device = torch.device("cuda:0")
         torch.cuda.set_device(device)
+            
+    # Check if CHECKPOINT_DIR exists(saved model path)
+    CHECKPOINT_DIR = args.save_path
+    RESUME = exists(CHECKPOINT_DIR)
 
     # Training loop
     train(args.image_embed_dim,
@@ -305,7 +308,9 @@ def main():
           args.learning_rate,
           args.max_grad_norm,
           args.weight_decay,
-          args.amp)
+          args.amp,
+          RESUME,
+          CHECKPOINT_DIR)
 
 if __name__ == "__main__":
   main()
