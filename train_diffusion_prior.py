@@ -282,7 +282,9 @@ def main():
             
     # Check if CHECKPOINT_DIR exists(saved model path)
     CHECKPOINT_DIR = args.save_path
-    RESUME = exists(CHECKPOINT_DIR)
+    RESUME = False
+    if os.path.exists(DPRIOR_PATH):
+        RESUME = True
 
     # Training loop
     train(args.image_embed_dim,
