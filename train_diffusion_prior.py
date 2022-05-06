@@ -85,7 +85,6 @@ def train(image_embed_dim,
           clip,
           dp_condition_on_text_encodings,
           dp_timesteps,
-          dp_l2norm_output,
           dp_normformer,
           dp_cond_drop_prob,
           dpn_depth,
@@ -105,8 +104,7 @@ def train(image_embed_dim,
             depth = dpn_depth, 
             dim_head = dpn_dim_head, 
             heads = dpn_heads,
-            normformer = dp_normformer,
-            l2norm_output = dp_l2norm_output).to(device)
+            normformer = dp_normformer).to(device)
     
     # DiffusionPrior with text embeddings and image embeddings pre-computed
     diffusion_prior = DiffusionPrior( 
@@ -273,7 +271,6 @@ def main():
           args.clip,
           args.dp_condition_on_text_encodings,
           args.dp_timesteps,
-          args.dp_l2norm_output,
           args.dp_normformer,
           args.dp_cond_drop_prob,
           args.dpn_depth,
