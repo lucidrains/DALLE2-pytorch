@@ -23,9 +23,14 @@ from dalle2_pytorch.vqgan_vae import NullVQGanVAE, VQGanVAE
 
 from resize_right import resize
 
+# rotary embeddings
+
+from rotary_embedding_torch import RotaryEmbedding
+
 # use x-clip
 
 from x_clip import CLIP
+from coca_pytorch import CoCa
 
 # helper functions
 
@@ -113,9 +118,10 @@ EmbeddedText = namedtuple('EmbedTextReturn', ['text_embed', 'text_encodings', 't
 EmbeddedImage = namedtuple('EmbedImageReturn', ['image_embed', 'image_encodings'])
 
 class BaseClipAdapter(nn.Module):
-    def __init__(self, clip):
+    def __init__(self, clip, **kwargs):
         super().__init__()
         self.clip = clip
+        self.overrides = kwargs
 
     @property
     def dim_latent(self):
@@ -172,6 +178,39 @@ class XClipAdapter(BaseClipAdapter):
         image_cls, image_encodings = encoder_output[:, 0], encoder_output[:, 1:]
         image_embed = self.clip.to_visual_latent(image_cls)
         return EmbeddedImage(l2norm(image_embed), image_encodings)
+
+class CoCaAdapter(BaseClipAdapter):
+    @property
+    def dim_latent(self):
+        return self.clip.dim
+
+    @property
+    def image_size(self):
+        assert 'image_size' in self.overrides
+        return self.overrides['image_size']
+
+    @property
+    def image_channels(self):
+        assert 'image_channels' in self.overrides
+        return self.overrides['image_channels']
+
+    @property
+    def max_text_len(self):
+        assert 'max_text_len' in self.overrides
+        return self.overrides['max_text_len']
+
+    @torch.no_grad()
+    def embed_text(self, text):
+        text = text[..., :self.max_text_len]
+        text_mask = text != 0
+        text_embed, text_encodings = self.clip.embed_text(text)
+        return EmbeddedText(text_embed, text_encodings, text_mask)
+
+    @torch.no_grad()
+    def embed_image(self, image):
+        image = resize_image_to(image, self.image_size)
+        image_embed, image_encodings = self.clip.embed_image(image)
+        return EmbeddedImage(image_embed, image_encodings)
 
 class OpenAIClipAdapter(BaseClipAdapter):
     def __init__(
@@ -531,7 +570,8 @@ class Attention(nn.Module):
         heads = 8,
         dropout = 0.,
         causal = False,
-        post_norm = False
+        post_norm = False,
+        rotary_emb = None
     ):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -547,6 +587,8 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias = False)
         self.to_kv = nn.Linear(dim, dim_head * 2, bias = False)
 
+        self.rotary_emb = rotary_emb
+
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim, bias = False),
             LayerNorm(dim) if post_norm else nn.Identity()
@@ -559,6 +601,12 @@ class Attention(nn.Module):
         q, k, v = (self.to_q(x), *self.to_kv(x).chunk(2, dim = -1))
 
         q = rearrange(q, 'b n (h d) -> b h n d', h = self.heads)
+        q = q * self.scale
+
+        # rotary embeddings
+
+        if exists(self.rotary_emb):
+            q, k = map(self.rotary_emb.rotate_queries_or_keys, (q, k))
 
         # add null key / value for classifier free guidance in prior net
 
@@ -566,7 +614,7 @@ class Attention(nn.Module):
         k = torch.cat((nk, k), dim = -2)
         v = torch.cat((nv, v), dim = -2)
 
-        q = q * self.scale
+        # calculate query / key similarities
 
         sim = einsum('b h i d, b j d -> b h i j', q, k)
 
@@ -616,15 +664,18 @@ class CausalTransformer(nn.Module):
         attn_dropout = 0.,
         ff_dropout = 0.,
         final_proj = True,
-        normformer = False
+        normformer = False,
+        rotary_emb = True
     ):
         super().__init__()
         self.rel_pos_bias = RelPosBias(heads = heads)
 
+        rotary_emb = RotaryEmbedding(dim = min(32, dim_head)) if rotary_emb else None
+
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim = dim, causal = True, dim_head = dim_head, heads = heads, dropout = attn_dropout, post_norm = normformer),
+                Attention(dim = dim, causal = True, dim_head = dim_head, heads = heads, dropout = attn_dropout, post_norm = normformer, rotary_emb = rotary_emb),
                 FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout, post_activation_norm = normformer)
             ]))
 
@@ -755,6 +806,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
         sampling_clamp_l2norm = False,
         image_embed_scale = None,           # this is for scaling the l2-normed image embedding, so it is more suitable for gaussian diffusion, as outlined by Katherine (@crowsonkb) https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
+        clip_adapter_overrides = dict()
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -764,7 +816,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         if exists(clip):
             if isinstance(clip, CLIP):
-                clip = XClipAdapter(clip)
+                clip = XClipAdapter(clip, **clip_adapter_overrides)
+            elif isinstance(clip, CoCa):
+                clip = CoCaAdapter(clip, **clip_adapter_overrides)
 
             assert isinstance(clip, BaseClipAdapter)
             freeze_model_and_make_eval_(clip)
@@ -1487,7 +1541,8 @@ class Decoder(BaseGaussianDiffusion):
         blur_kernel_size = 3,                       # cascading ddpm - blur kernel size
         condition_on_text_encodings = False,        # the paper suggested that this didn't do much in the decoder, but i'm allowing the option for experimentation
         clip_denoised = True,
-        clip_x_start = True
+        clip_x_start = True,
+        clip_adapter_overrides = dict()
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -1500,7 +1555,9 @@ class Decoder(BaseGaussianDiffusion):
         self.clip = None
         if exists(clip):
             if isinstance(clip, CLIP):
-                clip = XClipAdapter(clip)
+                clip = XClipAdapter(clip, **clip_adapter_overrides)
+            elif isinstance(clip, CoCa):
+                clip = CoCaAdapter(clip, **clip_adapter_overrides)
 
             freeze_model_and_make_eval_(clip)
             assert isinstance(clip, BaseClipAdapter)
