@@ -49,8 +49,8 @@ def save_model(save_path, state_dict):
 def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,val_set_size,NUM_TEST_EMBEDDINGS,device):
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 
-    tstart = train_set_size+val_set_size
-    tend = train_set_size+val_set_size+NUM_TEST_EMBEDDINGS
+    tstart = train_set_size
+    tend = train_set_size+NUM_TEST_EMBEDDINGS
 
     for embt, embi in zip(text_reader(batch_size = NUM_TEST_EMBEDDINGS, start=tstart, end = tend),image_reader(batch_size = NUM_TEST_EMBEDDINGS, start=tstart, end = tend)):
         text_embed = torch.tensor(embt[0]).to(device)
