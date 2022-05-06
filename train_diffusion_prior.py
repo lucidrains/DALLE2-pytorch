@@ -191,7 +191,7 @@ def train(image_embed_dim,
                         text_reader,
                         eval_start,
                         eval_start+5*NUM_TEST_EMBEDDINGS,
-                        batch_size,
+                        eval_start+5*NUM_TEST_EMBEDDINGS,
                         dp_loss_type,
                         phase="Validation")
 
