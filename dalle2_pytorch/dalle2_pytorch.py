@@ -805,6 +805,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         beta_schedule = "cosine",
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
         sampling_clamp_l2norm = False,
+        training_clamp_l2norm = False,
         image_embed_scale = None,           # this is for scaling the l2-normed image embedding, so it is more suitable for gaussian diffusion, as outlined by Katherine (@crowsonkb) https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
         clip_adapter_overrides = dict()
     ):
@@ -842,6 +843,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         # whether to force an l2norm, similar to clipping denoised, when sampling
         self.sampling_clamp_l2norm = sampling_clamp_l2norm
+        self.training_clamp_l2norm = training_clamp_l2norm
 
     def p_mean_variance(self, x, t, text_cond, clip_denoised: bool):
         pred = self.net(x, t, **text_cond)
@@ -893,6 +895,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
             cond_drop_prob = self.cond_drop_prob,
             **text_cond
         )
+
+        if self.predict_x_start and self.training_clamp_l2norm:
+            pred = l2norm(pred) * self.image_embed_scale
 
         target = noise if not self.predict_x_start else image_embed
 
