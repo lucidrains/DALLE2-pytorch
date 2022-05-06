@@ -980,6 +980,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 - [ ] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
+- [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
 
 ## Citations
 
