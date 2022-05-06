@@ -65,12 +65,12 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,v
 
         original_similarity = cos(text_embed,test_image_embeddings).cpu().numpy()
         predicted_similarity = cos(text_embed,predicted_image_embeddings).cpu().numpy()
+        image_similarity = cos(test_image_embeddings,predicted_image_embeddings).cpu().numpy()
 
-        wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity)})
-        wandb.log({"CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity)})
-
-    return np.mean(predicted_similarity - original_similarity)
-
+        wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
+            "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
+            "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(image_similarity),
+            "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
 
 
 def train(image_embed_dim,
@@ -138,6 +138,7 @@ def train(image_embed_dim,
 
     train_set_size = int(train_percent*num_data_points)
     val_set_size = int(val_percent*num_data_points)
+    eval_start = train_set_size
 
     for _ in range(epochs):
         diffusion_prior.train()
@@ -178,6 +179,16 @@ def train(image_embed_dim,
                         NUM_TEST_EMBEDDINGS,
                         device)
                 wandb.log({"Cosine similarity difference": diff_cosine_sim})
+                 ### Evaluate model(validation run) ###
+                eval_model(diffusion_prior,
+                        device,
+                        image_reader,
+                        text_reader,
+                        eval_start,
+                        eval_start+5*NUM_TEST_EMBEDDINGS,
+                        batch_size,
+                        dp_loss_type,
+                        phase="Validation")
 
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(diffusion_prior.parameters(), max_grad_norm)
@@ -251,6 +262,13 @@ def main():
       "dataset": args.wandb_dataset,
       "epochs": args.num_epochs,
       })
+    
+    # Log hyperparameters for each run
+    wandb.log({"Learning Rate":args.learning_rate,
+        "Weight Decay":args.weight_decay,
+        "Max Gradient Clipping Norm":args.max_grad_norm,
+        "Batch size":args.batch_size,
+        "Num Epochs":args.num_epochs})
 
     print("wandb logging setup done!")
     # Obtain the utilized device.
