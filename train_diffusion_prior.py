@@ -96,6 +96,8 @@ def train(image_embed_dim,
           RESUME,
           DPRIOR_PATH,
           config,
+          wandb_entity,
+          wandb_project,
           learning_rate=0.001,
           max_grad_norm=0.5,
           weight_decay=0.01,
@@ -118,23 +120,33 @@ def train(image_embed_dim,
             cond_drop_prob = dp_cond_drop_prob, 
             loss_type = dp_loss_type, 
             condition_on_text_encodings = dp_condition_on_text_encodings).to(device)
+    
+    # Load pre-trained model from DPRIOR_PATH
+    if RESUME:
+        dprior_path = Path(DPRIOR_PATH)
+        assert dprior_path.exists(), 'Dprior model file does not exist'
+
+        loaded_obj = torch.load(str(dprior_path), map_location='cpu')
+        diffusion_prior.load_state_dict(loaded_obj['model'])
+
+        # Get hyperparameters of loaded model 
+        config = loaded_obj['hyperpmts']
+
+        # Init a wandb session here
+        wandb.init(
+          entity=wandb_entity,
+          project=wandb_project,
+          config=config)
+        
+    # Create save_path if it doesn't exist
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
 
     # Get image and text embeddings from the servers
     print("==============Downloading embeddings - image and text====================")
     image_reader = EmbeddingReader(embeddings_folder=image_embed_url, file_format="npy")
     text_reader  = EmbeddingReader(embeddings_folder=text_embed_url, file_format="npy")
     num_data_points = text_reader.count
-
-    # Create save_path if it doesn't exist
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-        
-    # Load pre-trained model from DPRIOR_PATH
-    if RESUME:
-        dprior_path = Path(DPRIOR_PATH)
-        assert dprior_path.exists(), 'Dprior model file does not exist'
-        loaded_obj = torch.load(str(dprior_path), map_location='cpu')
-        diffusion_prior.load_state_dict(loaded_obj['model'])
 
     ### Training code ###
     scaler = GradScaler(enabled=amp)
@@ -169,7 +181,7 @@ def train(image_embed_dim,
 
                 save_model(
                     save_path,
-                    dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(),config = config))
+                    dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(),hyperpmts = config))
 
             # Log to wandb
             wandb.log({"Training loss": loss.item(),
@@ -251,8 +263,6 @@ def main():
     parser.add_argument("--save-path", type=str, default="./diffusion_prior_checkpoints")
 
     args = parser.parse_args()
-
-    print("Setting up wandb logging... Please wait...")
     
     config = ({"learning_rate": args.learning_rate,
       "architecture": args.wandb_arch,
@@ -273,13 +283,10 @@ def main():
       "Diffusion Prior clip":args.clip,
       "Diffusion Prior amp" :args.amp})
 
-
     wandb.init(
       entity=args.wandb_entity,
       project=args.wandb_project,
       config=config)
-
-    print("wandb logging setup done!")
 
     # Obtain the utilized device.
     has_cuda = torch.cuda.is_available()
@@ -287,11 +294,16 @@ def main():
         device = torch.device("cuda:0")
         torch.cuda.set_device(device)
             
-    # Check if DPRIOR_PATH exists(saved model path)
-    DPRIOR_PATH = args.save_path
     RESUME = False
-    if os.path.exists(DPRIOR_PATH):
+    # Check if DPRIOR_PATH exists(saved model path)
+    DPRIOR_PATH = args.pretrained_model_path
+    if(DPRIOR_PATH is not None):
         RESUME = True
+    else:
+        wandb.init(
+          entity=args.wandb_entity,
+          project=args.wandb_project,
+          config=config)
 
     # Training loop
     train(args.image_embed_dim,
@@ -317,6 +329,8 @@ def main():
           RESUME,
           DPRIOR_PATH,
           config,
+          wandb_entity,
+          wandb_project,
           args.learning_rate,
           args.max_grad_norm,
           args.weight_decay,
