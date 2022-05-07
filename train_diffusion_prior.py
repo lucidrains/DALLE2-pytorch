@@ -41,7 +41,7 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
         avg_loss = (total_loss / total_samples)
         wandb.log({f'{phase} {loss_type}': avg_loss})
 
-def save_model(save_path, state_dict):
+def save_diffusion_model(save_path, state_dict):
     # Saving State Dict
     print("====================================== Saving checkpoint ======================================")
     torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
@@ -214,7 +214,7 @@ def train(image_embed_dim,
             if(int(time.time()-t) >= 60*save_interval):
                 t = time.time()
 
-                save_model(
+                save_diffusion_model(
                     save_path,
                     dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(),hyperpmts = config))
 
