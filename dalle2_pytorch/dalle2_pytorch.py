@@ -16,13 +16,21 @@ from einops_exts import rearrange_many, repeat_many, check_shape
 from einops_exts.torch import EinopsToAndFrom
 
 from kornia.filters import gaussian_blur2d
+import kornia.augmentation as K
 
 from dalle2_pytorch.tokenizer import tokenizer
 from dalle2_pytorch.vqgan_vae import NullVQGanVAE, VQGanVAE
 
+from resize_right import resize
+
+# rotary embeddings
+
+from rotary_embedding_torch import RotaryEmbedding
+
 # use x-clip
 
 from x_clip import CLIP
+from coca_pytorch import CoCa
 
 # helper functions
 
@@ -85,14 +93,14 @@ def freeze_model_and_make_eval_(model):
 def l2norm(t):
     return F.normalize(t, dim = -1)
 
-def resize_image_to(t, image_size, mode = 'bilinear'): # take a look at https://github.com/assafshocher/ResizeRight
-    shape = cast_tuple(image_size, 2)
-    orig_image_size = t.shape[-2:]
+def resize_image_to(image, target_image_size):
+    orig_image_size = image.shape[-1]
 
-    if orig_image_size == shape:
-        return t
+    if orig_image_size == target_image_size:
+        return image
 
-    return F.interpolate(t, size = shape, mode = mode, align_corners = False)
+    scale_factors = target_image_size / orig_image_size
+    return resize(image, scale_factors = scale_factors)
 
 # image normalization functions
 # ddpms expect images to be in the range of -1 to 1
@@ -110,9 +118,10 @@ EmbeddedText = namedtuple('EmbedTextReturn', ['text_embed', 'text_encodings', 't
 EmbeddedImage = namedtuple('EmbedImageReturn', ['image_embed', 'image_encodings'])
 
 class BaseClipAdapter(nn.Module):
-    def __init__(self, clip):
+    def __init__(self, clip, **kwargs):
         super().__init__()
         self.clip = clip
+        self.overrides = kwargs
 
     @property
     def dim_latent(self):
@@ -170,6 +179,39 @@ class XClipAdapter(BaseClipAdapter):
         image_embed = self.clip.to_visual_latent(image_cls)
         return EmbeddedImage(l2norm(image_embed), image_encodings)
 
+class CoCaAdapter(BaseClipAdapter):
+    @property
+    def dim_latent(self):
+        return self.clip.dim
+
+    @property
+    def image_size(self):
+        assert 'image_size' in self.overrides
+        return self.overrides['image_size']
+
+    @property
+    def image_channels(self):
+        assert 'image_channels' in self.overrides
+        return self.overrides['image_channels']
+
+    @property
+    def max_text_len(self):
+        assert 'max_text_len' in self.overrides
+        return self.overrides['max_text_len']
+
+    @torch.no_grad()
+    def embed_text(self, text):
+        text = text[..., :self.max_text_len]
+        text_mask = text != 0
+        text_embed, text_encodings = self.clip.embed_text(text)
+        return EmbeddedText(text_embed, text_encodings, text_mask)
+
+    @torch.no_grad()
+    def embed_image(self, image):
+        image = resize_image_to(image, self.image_size)
+        image_embed, image_encodings = self.clip.embed_image(image)
+        return EmbeddedImage(image_embed, image_encodings)
+
 class OpenAIClipAdapter(BaseClipAdapter):
     def __init__(
         self,
@@ -222,7 +264,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
         text_embed = self.clip.encode_text(text)
         text_encodings = self.text_encodings
         del self.text_encodings
-        return EmbeddedText(text_embed.float(), text_encodings.float(), text_mask)
+        return EmbeddedText(l2norm(text_embed.float()), text_encodings.float(), text_mask)
 
     @torch.no_grad()
     def embed_image(self, image):
@@ -230,7 +272,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
         image = resize_image_to(image, self.image_size)
         image = self.clip_normalize(unnormalize_img(image))
         image_embed = self.clip.encode_image(image)
-        return EmbeddedImage(image_embed.float(), None)
+        return EmbeddedImage(l2norm(image_embed.float()), None)
 
 # classifier free guidance functions
 
@@ -528,7 +570,8 @@ class Attention(nn.Module):
         heads = 8,
         dropout = 0.,
         causal = False,
-        post_norm = False
+        post_norm = False,
+        rotary_emb = None
     ):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -544,6 +587,8 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias = False)
         self.to_kv = nn.Linear(dim, dim_head * 2, bias = False)
 
+        self.rotary_emb = rotary_emb
+
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim, bias = False),
             LayerNorm(dim) if post_norm else nn.Identity()
@@ -556,6 +601,12 @@ class Attention(nn.Module):
         q, k, v = (self.to_q(x), *self.to_kv(x).chunk(2, dim = -1))
 
         q = rearrange(q, 'b n (h d) -> b h n d', h = self.heads)
+        q = q * self.scale
+
+        # rotary embeddings
+
+        if exists(self.rotary_emb):
+            q, k = map(self.rotary_emb.rotate_queries_or_keys, (q, k))
 
         # add null key / value for classifier free guidance in prior net
 
@@ -563,7 +614,7 @@ class Attention(nn.Module):
         k = torch.cat((nk, k), dim = -2)
         v = torch.cat((nv, v), dim = -2)
 
-        q = q * self.scale
+        # calculate query / key similarities
 
         sim = einsum('b h i d, b j d -> b h i j', q, k)
 
@@ -613,15 +664,18 @@ class CausalTransformer(nn.Module):
         attn_dropout = 0.,
         ff_dropout = 0.,
         final_proj = True,
-        normformer = False
+        normformer = False,
+        rotary_emb = True
     ):
         super().__init__()
         self.rel_pos_bias = RelPosBias(heads = heads)
 
+        rotary_emb = RotaryEmbedding(dim = min(32, dim_head)) if rotary_emb else None
+
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim = dim, causal = True, dim_head = dim_head, heads = heads, dropout = attn_dropout, post_norm = normformer),
+                Attention(dim = dim, causal = True, dim_head = dim_head, heads = heads, dropout = attn_dropout, post_norm = normformer, rotary_emb = rotary_emb),
                 FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout, post_activation_norm = normformer)
             ]))
 
@@ -649,14 +703,12 @@ class DiffusionPriorNetwork(nn.Module):
         self,
         dim,
         num_timesteps = None,
-        l2norm_output = False,  # whether to restrict image embedding output with l2norm at the end (may make it easier to learn?)
         **kwargs
     ):
         super().__init__()
-        self.time_embeddings = nn.Embedding(num_timesteps, dim) if exists(num_timesteps) else nn.Sequential(Rearrange('b -> b 1'), MLP(1, dim)) # also offer a continuous version of timestep embeddings, with a 2 layer MLP
+        self.time_embeddings = nn.Embedding(num_timesteps, dim) if exists(num_timesteps) else nn.Sequential(SinusoidalPosEmb(dim), MLP(dim, dim)) # also offer a continuous version of timestep embeddings, with a 2 layer MLP
         self.learned_query = nn.Parameter(torch.randn(dim))
         self.causal_transformer = CausalTransformer(dim = dim, **kwargs)
-        self.l2norm_output = l2norm_output
 
     def forward_with_cond_scale(
         self,
@@ -713,7 +765,7 @@ class DiffusionPriorNetwork(nn.Module):
         # but let's just do it right
 
         if exists(mask):
-            mask = F.pad(mask, (0, 2), value = True) # extend mask for text embedding, noised image embedding, time step embedding, and learned query
+            mask = F.pad(mask, (0, 3), value = True) # extend mask for text embedding, noised image embedding, time step embedding, and learned query
 
         time_embed = self.time_embeddings(diffusion_timesteps)
         time_embed = rearrange(time_embed, 'b d -> b 1 d')
@@ -724,6 +776,7 @@ class DiffusionPriorNetwork(nn.Module):
             text_encodings,
             text_embed,
             time_embed,
+            image_embed,
             learned_queries
         ), dim = -2)
 
@@ -735,8 +788,7 @@ class DiffusionPriorNetwork(nn.Module):
 
         pred_image_embed = tokens[..., -1, :]
 
-        output_fn = l2norm if self.l2norm_output else identity
-        return output_fn(pred_image_embed)
+        return pred_image_embed
 
 class DiffusionPrior(BaseGaussianDiffusion):
     def __init__(
@@ -753,7 +805,11 @@ class DiffusionPrior(BaseGaussianDiffusion):
         predict_x_start = True,
         beta_schedule = "cosine",
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
-        sampling_clamp_l2norm = False
+        sampling_clamp_l2norm = False,
+        training_clamp_l2norm = False,
+        init_image_embed_l2norm = False,
+        image_embed_scale = None,           # this is for scaling the l2-normed image embedding, so it is more suitable for gaussian diffusion, as outlined by Katherine (@crowsonkb) https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
+        clip_adapter_overrides = dict()
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -763,7 +819,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         if exists(clip):
             if isinstance(clip, CLIP):
-                clip = XClipAdapter(clip)
+                clip = XClipAdapter(clip, **clip_adapter_overrides)
+            elif isinstance(clip, CoCa):
+                clip = CoCaAdapter(clip, **clip_adapter_overrides)
 
             assert isinstance(clip, BaseClipAdapter)
             freeze_model_and_make_eval_(clip)
@@ -779,11 +837,16 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.cond_drop_prob = cond_drop_prob
         self.condition_on_text_encodings = condition_on_text_encodings
 
-        self.predict_x_start = predict_x_start
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
+        self.predict_x_start = predict_x_start
+
+        # @crowsonkb 's suggestion - https://github.com/lucidrains/DALLE2-pytorch/issues/60#issue-1226116132
+        self.image_embed_scale = default(image_embed_scale, self.image_embed_dim ** 0.5)
 
         # whether to force an l2norm, similar to clipping denoised, when sampling
         self.sampling_clamp_l2norm = sampling_clamp_l2norm
+        self.training_clamp_l2norm = training_clamp_l2norm
+        self.init_image_embed_l2norm = init_image_embed_l2norm
 
     def p_mean_variance(self, x, t, text_cond, clip_denoised: bool):
         pred = self.net(x, t, **text_cond)
@@ -799,12 +862,12 @@ class DiffusionPrior(BaseGaussianDiffusion):
             x_recon.clamp_(-1., 1.)
 
         if self.predict_x_start and self.sampling_clamp_l2norm:
-            x_recon = l2norm(x_recon)
+            x_recon = l2norm(x_recon) * self.image_embed_scale
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def p_sample(self, x, t, text_cond = None, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, text_cond = text_cond, clip_denoised = clip_denoised)
@@ -813,16 +876,21 @@ class DiffusionPrior(BaseGaussianDiffusion):
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def p_sample_loop(self, shape, text_cond):
         device = self.betas.device
 
         b = shape[0]
-        img = torch.randn(shape, device=device)
+        image_embed = torch.randn(shape, device=device)
+
+        if self.init_image_embed_l2norm:
+            image_embed = l2norm(image_embed) * self.image_embed_scale
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
-            img = self.p_sample(img, torch.full((b,), i, device = device, dtype = torch.long), text_cond = text_cond)
-        return img
+            times = torch.full((b,), i, device = device, dtype = torch.long)
+            image_embed = self.p_sample(image_embed, times, text_cond = text_cond)
+
+        return image_embed
 
     def p_losses(self, image_embed, times, text_cond, noise = None):
         noise = default(noise, lambda: torch.randn_like(image_embed))
@@ -836,12 +904,27 @@ class DiffusionPrior(BaseGaussianDiffusion):
             **text_cond
         )
 
+        if self.predict_x_start and self.training_clamp_l2norm:
+            pred = l2norm(pred) * self.image_embed_scale
+
         target = noise if not self.predict_x_start else image_embed
 
         loss = self.loss_fn(pred, target)
         return loss
 
-    @torch.no_grad()
+    @torch.inference_mode()
+    @eval_decorator
+    def sample_batch_size(self, batch_size, text_cond):
+        device = self.betas.device
+        shape = (batch_size, self.image_embed_dim)
+
+        img = torch.randn(shape, device = device)
+
+        for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
+            img = self.p_sample(img, torch.full((batch_size,), i, device = device, dtype = torch.long), text_cond = text_cond)
+        return img
+
+    @torch.inference_mode()
     @eval_decorator
     def sample(self, text, num_samples_per_batch = 2):
         # in the paper, what they did was
@@ -859,6 +942,11 @@ class DiffusionPrior(BaseGaussianDiffusion):
             text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
         image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond)
+
+        # retrieve original unscaled image embed
+
+        image_embeds /= self.image_embed_scale
+
         text_embeds = text_cond['text_embed']
 
         text_embeds = rearrange(text_embeds, '(b r) d -> b r d', r = num_samples_per_batch)
@@ -905,6 +993,10 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         batch, device = image_embed.shape[0], image_embed.device
         times = torch.randint(0, self.num_timesteps, (batch,), device = device, dtype = torch.long)
+
+        # scale image embed (Katherine)
+
+        image_embed *= self.image_embed_scale
 
         # calculate forward loss
 
@@ -994,68 +1086,6 @@ class ResnetBlock(nn.Module):
             h = self.cross_attn(h, context = cond) + h
 
         h = self.block2(h)
-        return h + self.res_conv(x)
-
-class ConvNextBlock(nn.Module):
-    """ https://arxiv.org/abs/2201.03545 """
-
-    def __init__(
-        self,
-        dim,
-        dim_out,
-        *,
-        cond_dim = None,
-        time_cond_dim = None,
-        mult = 2
-    ):
-        super().__init__()
-        need_projection = dim != dim_out
-
-        self.cross_attn = None
-
-        if exists(cond_dim):
-            self.cross_attn = EinopsToAndFrom(
-                'b c h w',
-                'b (h w) c',
-                CrossAttention(
-                    dim = dim,
-                    context_dim = cond_dim
-                )
-            )
-
-        self.time_mlp = None
-
-        if exists(time_cond_dim):
-            self.time_mlp = nn.Sequential(
-                nn.GELU(),
-                nn.Linear(time_cond_dim, dim)
-            )
-
-        self.ds_conv = nn.Conv2d(dim, dim, 7, padding = 3, groups = dim)
-
-        inner_dim = int(dim_out * mult)
-        self.net = nn.Sequential(
-            ChanLayerNorm(dim),
-            nn.Conv2d(dim, inner_dim, 3, padding = 1),
-            nn.GELU(),
-            nn.Conv2d(inner_dim, dim_out, 3, padding = 1)
-        )
-
-        self.res_conv = nn.Conv2d(dim, dim_out, 1) if need_projection else nn.Identity()
-
-    def forward(self, x, cond = None, time = None):
-        h = self.ds_conv(x)
-
-        if exists(time) and exists(self.time_mlp):
-            t = self.time_mlp(time)
-            h = rearrange(t, 'b c -> b c 1 1') + h
-
-        if exists(self.cross_attn):
-            assert exists(cond)
-            h = self.cross_attn(h, context = cond) + h
-
-        h = self.net(h)
-
         return h + self.res_conv(x)
 
 class CrossAttention(nn.Module):
@@ -1197,7 +1227,6 @@ class Unet(nn.Module):
         init_conv_kernel_size = 7,
         block_type = 'resnet',
         block_resnet_groups = 8,
-        block_convnext_mult = 2,
         **kwargs
     ):
         super().__init__()
@@ -1273,14 +1302,9 @@ class Unet(nn.Module):
 
         attn_kwargs = dict(heads = attn_heads, dim_head = attn_dim_head)
 
-        # whether to use resnet or the (improved?) convnext blocks
+        # resnet block klass
 
-        if block_type == 'resnet':
-            block_klass = partial(ResnetBlock, groups = block_resnet_groups)
-        elif block_type == 'convnext':
-            block_klass = partial(ConvNextBlock, mult = block_convnext_mult)
-        else:
-            raise ValueError(f'unimplemented block type {block_type}')
+        block_klass = partial(ResnetBlock, groups = block_resnet_groups)
 
         # layers
 
@@ -1476,13 +1500,11 @@ class Unet(nn.Module):
 class LowresConditioner(nn.Module):
     def __init__(
         self,
-        cond_upsample_mode = 'bilinear',
         downsample_first = True,
         blur_sigma = 0.1,
         blur_kernel_size = 3,
     ):
         super().__init__()
-        self.cond_upsample_mode = cond_upsample_mode
         self.downsample_first = downsample_first
         self.blur_sigma = blur_sigma
         self.blur_kernel_size = blur_kernel_size
@@ -1496,10 +1518,8 @@ class LowresConditioner(nn.Module):
         blur_sigma = None,
         blur_kernel_size = None
     ):
-        target_image_size = cast_tuple(target_image_size, 2)
-
         if self.training and self.downsample_first and exists(downsample_image_size):
-            cond_fmap = resize_image_to(cond_fmap, downsample_image_size, mode = self.cond_upsample_mode)
+            cond_fmap = resize_image_to(cond_fmap, downsample_image_size)
 
         if self.training:
             # when training, blur the low resolution conditional image
@@ -1507,7 +1527,7 @@ class LowresConditioner(nn.Module):
             blur_kernel_size = default(blur_kernel_size, self.blur_kernel_size)
             cond_fmap = gaussian_blur2d(cond_fmap, cast_tuple(blur_kernel_size, 2), cast_tuple(blur_sigma, 2))
 
-        cond_fmap = resize_image_to(cond_fmap, target_image_size, mode = self.cond_upsample_mode)
+        cond_fmap = resize_image_to(cond_fmap, target_image_size)
 
         return cond_fmap
 
@@ -1516,7 +1536,9 @@ class Decoder(BaseGaussianDiffusion):
         self,
         unet,
         *,
-        clip,
+        clip = None,
+        image_size = None,
+        channels = 3,
         vae = tuple(),
         timesteps = 1000,
         image_cond_drop_prob = 0.1,
@@ -1526,13 +1548,14 @@ class Decoder(BaseGaussianDiffusion):
         predict_x_start = False,
         predict_x_start_for_latent_diffusion = False,
         image_sizes = None,                         # for cascading ddpm, image size at each stage
-        lowres_cond_upsample_mode = 'bilinear',     # cascading ddpm - low resolution upsample mode
+        random_crop_sizes = None,                   # whether to random crop the image at that stage in the cascade (super resoluting convolutions at the end may be able to generalize on smaller crops)
         lowres_downsample_first = True,             # cascading ddpm - resizes to lower resolution, then to next conditional resolution + blur
         blur_sigma = 0.1,                           # cascading ddpm - blur sigma
         blur_kernel_size = 3,                       # cascading ddpm - blur kernel size
         condition_on_text_encodings = False,        # the paper suggested that this didn't do much in the decoder, but i'm allowing the option for experimentation
         clip_denoised = True,
-        clip_x_start = True
+        clip_x_start = True,
+        clip_adapter_overrides = dict()
     ):
         super().__init__(
             beta_schedule = beta_schedule,
@@ -1540,15 +1563,24 @@ class Decoder(BaseGaussianDiffusion):
             loss_type = loss_type
         )
 
-        if isinstance(clip, CLIP):
-            clip = XClipAdapter(clip)
+        assert exists(clip) ^ exists(image_size), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
 
-        freeze_model_and_make_eval_(clip)
-        assert isinstance(clip, BaseClipAdapter)
+        self.clip = None
+        if exists(clip):
+            if isinstance(clip, CLIP):
+                clip = XClipAdapter(clip, **clip_adapter_overrides)
+            elif isinstance(clip, CoCa):
+                clip = CoCaAdapter(clip, **clip_adapter_overrides)
 
-        self.clip = clip
-        self.clip_image_size = clip.image_size
-        self.channels = clip.image_channels
+            freeze_model_and_make_eval_(clip)
+            assert isinstance(clip, BaseClipAdapter)
+
+            self.clip = clip
+            self.clip_image_size = clip.image_size
+            self.channels = clip.image_channels
+        else:
+            self.clip_image_size = image_size
+            self.channels = channels
 
         self.condition_on_text_encodings = condition_on_text_encodings
 
@@ -1581,12 +1613,16 @@ class Decoder(BaseGaussianDiffusion):
 
         # unet image sizes
 
-        image_sizes = default(image_sizes, (clip.image_size,))
+        image_sizes = default(image_sizes, (self.clip_image_size,))
         image_sizes = tuple(sorted(set(image_sizes)))
 
         assert len(self.unets) == len(image_sizes), f'you did not supply the correct number of u-nets ({len(self.unets)}) for resolutions {image_sizes}'
         self.image_sizes = image_sizes
         self.sample_channels = cast_tuple(self.channels, len(image_sizes))
+
+        # random crop sizes (for super-resoluting unets at the end of cascade?)
+
+        self.random_crop_sizes = cast_tuple(random_crop_sizes, len(image_sizes))
 
         # predict x0 config
 
@@ -1598,7 +1634,6 @@ class Decoder(BaseGaussianDiffusion):
         assert lowres_conditions == (False, *((True,) * (len(self.unets) - 1))), 'the first unet must be unconditioned (by low resolution image), and the rest of the unets must have `lowres_cond` set to True'
 
         self.to_lowres_cond = LowresConditioner(
-            cond_upsample_mode = lowres_cond_upsample_mode,
             downsample_first = lowres_downsample_first,
             blur_sigma = blur_sigma,
             blur_kernel_size = blur_kernel_size,
@@ -1633,12 +1668,6 @@ class Decoder(BaseGaussianDiffusion):
         yield
         unet.cpu()
 
-
-    @torch.no_grad()
-    def get_image_embed(self, image):
-        image_embed, _ = self.clip.embed_image(image)
-        return image_embed
-
     def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, lowres_cond_img = None, clip_denoised = True, predict_x_start = False, cond_scale = 1.):
         pred = unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img)
 
@@ -1653,7 +1682,7 @@ class Decoder(BaseGaussianDiffusion):
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def p_sample(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, cond_scale = 1., lowres_cond_img = None, predict_x_start = False, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised, predict_x_start = predict_x_start)
@@ -1662,7 +1691,7 @@ class Decoder(BaseGaussianDiffusion):
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, clip_denoised = True, lowres_cond_img = None, text_encodings = None, text_mask = None, cond_scale = 1):
         device = self.betas.device
 
@@ -1706,7 +1735,7 @@ class Decoder(BaseGaussianDiffusion):
         loss = self.loss_fn(pred, target)
         return loss
 
-    @torch.no_grad()
+    @torch.inference_mode()
     @eval_decorator
     def sample(
         self,
@@ -1777,10 +1806,10 @@ class Decoder(BaseGaussianDiffusion):
 
         unet = self.get_unet(unet_number)
 
-        target_image_size = self.image_sizes[unet_index]
-        vae = self.vaes[unet_index]
-        predict_x_start = self.predict_x_start[unet_index]
-
+        vae                 = self.vaes[unet_index]
+        target_image_size   = self.image_sizes[unet_index]
+        predict_x_start     = self.predict_x_start[unet_index]
+        random_crop_size    = self.random_crop_sizes[unet_index]
         b, c, h, w, device, = *image.shape, image.device
 
         check_shape(image, 'b c h w', c = self.channels)
@@ -1789,10 +1818,12 @@ class Decoder(BaseGaussianDiffusion):
         times = torch.randint(0, self.num_timesteps, (b,), device = device, dtype = torch.long)
 
         if not exists(image_embed):
+            assert exists(self.clip), 'if you want to derive CLIP image embeddings automatically, you must supply `clip` to the decoder on init'
             image_embed, _ = self.clip.embed_image(image)
 
         text_encodings = text_mask = None
         if exists(text) and not exists(text_encodings):
+            assert exists(self.clip), 'if you are passing in raw text, you need to supply `clip` to the decoder'
             _, text_encodings, text_mask = self.clip.embed_text(text)
 
         assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
@@ -1800,6 +1831,14 @@ class Decoder(BaseGaussianDiffusion):
 
         lowres_cond_img = self.to_lowres_cond(image, target_image_size = target_image_size, downsample_image_size = self.image_sizes[unet_index - 1]) if unet_number > 1 else None
         image = resize_image_to(image, target_image_size)
+
+        if exists(random_crop_size):
+            aug = K.RandomCrop((random_crop_size, random_crop_size), p = 1.)
+
+            # make sure low res conditioner and image both get augmented the same way
+            # detailed https://kornia.readthedocs.io/en/latest/augmentation.module.html?highlight=randomcrop#kornia.augmentation.RandomCrop
+            image = aug(image)
+            lowres_cond_img = aug(lowres_cond_img, params = aug._params)
 
         vae.eval()
         with torch.no_grad():
@@ -1831,7 +1870,7 @@ class DALLE2(nn.Module):
 
         self.to_pil = T.ToPILImage()
 
-    @torch.no_grad()
+    @torch.inference_mode()
     @eval_decorator
     def forward(
         self,

@@ -10,7 +10,7 @@ The main novelty seems to be an extra layer of indirection with the prior networ
 
 This model is SOTA for text-to-image for now.
 
-Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a> if you are interested in helping out with the replication
+Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a> if you are interested in helping out with the replication with the <a href="https://laion.ai/">LAION</a> community | <a href="https://www.youtube.com/watch?v=AIOE1l1W0Tw">Yannic Interview</a>
 
 There was enough interest for a <a href="https://github.com/lucidrains/dalle2-jax">Jax version</a>. I will also eventually extend this to <a href="https://github.com/lucidrains/dalle2-video">text to video</a>, once the repository is in a good place.
 
@@ -827,6 +827,149 @@ mock_image_embed = torch.randn(4, 512).cuda()
 images = decoder_trainer.sample(mock_image_embed, text = text) # (4, 3, 256, 256)
 ```
 
+### Diffusion Prior Training
+
+Similarly, one can use the `DiffusionPriorTrainer` to automatically instantiate and keep track of an exponential moving averaged prior.
+
+```python
+import torch
+from dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, DiffusionPriorTrainer, Unet, Decoder, CLIP
+
+clip = CLIP(
+    dim_text = 512,
+    dim_image = 512,
+    dim_latent = 512,
+    num_text_tokens = 49408,
+    text_enc_depth = 6,
+    text_seq_len = 256,
+    text_heads = 8,
+    visual_enc_depth = 6,
+    visual_image_size = 256,
+    visual_patch_size = 32,
+    visual_heads = 8
+).cuda()
+
+# mock data
+
+text = torch.randint(0, 49408, (4, 256)).cuda()
+images = torch.randn(4, 3, 256, 256).cuda()
+
+# prior networks (with transformer)
+
+prior_network = DiffusionPriorNetwork(
+    dim = 512,
+    depth = 6,
+    dim_head = 64,
+    heads = 8
+).cuda()
+
+diffusion_prior = DiffusionPrior(
+    net = prior_network,
+    clip = clip,
+    timesteps = 100,
+    cond_drop_prob = 0.2
+).cuda()
+
+diffusion_prior_trainer = DiffusionPriorTrainer(
+    diffusion_prior,
+    lr = 3e-4,
+    wd = 1e-2,
+    ema_beta = 0.99,
+    ema_update_after_step = 1000,
+    ema_update_every = 10,
+)
+
+loss = diffusion_prior_trainer(text, images)
+loss.backward()
+diffusion_prior_trainer.update()  # this will update the optimizer as well as the exponential moving averaged diffusion prior
+
+# after much of the above three lines in a loop
+# you can sample from the exponential moving average of the diffusion prior identically to how you do so for DiffusionPrior
+
+image_embeds = diffusion_prior_trainer.sample(text) # (4, 512) - exponential moving averaged image embeddings
+```
+
+### Decoder Dataloaders
+
+In order to make loading data simple and efficient, we include some general dataloaders that can be used to train portions of the network.
+
+#### Decoder: Image Embedding Dataset
+
+When training the decoder (and up samplers if training together) in isolation, you will need to load images and corresponding image embeddings. This dataset can read two similar types of datasets. First, it can read a [webdataset](https://github.com/webdataset/webdataset) that contains `.jpg` and `.npy` files in the `.tar`s that contain the images and associated image embeddings respectively. Alternatively, you can also specify a source for the embeddings outside of the webdataset. In this case, the path to the embeddings should contain `.npy` files with the same shard numbers as the webdataset and there should be a correspondence between the filename of the `.jpg` and the index of the embedding in the `.npy`. So, for example, `0001.tar` from the webdataset with image `00010509.jpg` (the first 4 digits are the shard number and the last 4 are the index) in it should be paralleled by a `img_emb_0001.npy` which contains a NumPy array with the embedding at index 509.
+
+Generating a dataset of this type: 
+1. Use [img2dataset](https://github.com/rom1504/img2dataset) to generate a webdataset.
+2. Use [clip-retrieval](https://github.com/rom1504/clip-retrieval) to convert the images to embeddings.
+3. Use [embedding-dataset-reordering](https://github.com/Veldrovive/embedding-dataset-reordering) to reorder the embeddings into the expected format.
+
+Usage:
+
+```python
+from dalle2_pytorch.dataloaders import ImageEmbeddingDataset, create_image_embedding_dataloader
+
+# Create a dataloader directly.
+dataloader = create_image_embedding_dataloader(
+    tar_url="/path/or/url/to/webdataset/{0000..9999}.tar", # Uses braket expanding notation. This specifies to read all tars from 0000.tar to 9999.tar
+    embeddings_url="path/or/url/to/embeddings/folder",     # Included if .npy files are not in webdataset. Left out or set to None otherwise
+    num_workers=4,
+    batch_size=32,
+    shard_width=4,                                         # If a file in the webdataset shard 3 is named 0003039.jpg, we know the shard width is 4 and the last three digits are the index
+    shuffle_num=200,                                       # Does a shuffle of the data with a buffer size of 200
+    shuffle_shards=True,                                   # Shuffle the order the shards are read in
+    resample_shards=False,                                 # Sample shards with replacement. If true, an epoch will be infinite unless stopped manually
+)
+for img, emb in dataloader:
+    print(img.shape)  # torch.Size([32, 3, 256, 256])
+    print(emb.shape)  # torch.Size([32, 512])
+    # Train decoder only as shown above
+
+# Or create a dataset without a loader so you can configure it manually
+dataset = ImageEmbeddingDataset(
+    urls="/path/or/url/to/webdataset/{0000..9999}.tar",
+    embedding_folder_url="path/or/url/to/embeddings/folder",
+    shard_width=4,
+    shuffle_shards=True,
+    resample=False
+)
+```
+
+## Scripts
+
+### Using the `train_diffusion_prior.py` script
+
+This script allows training the DiffusionPrior on pre-computed text and image embeddings. The working example below elucidates this process.
+Please note that the script internally passes text_embed and image_embed to the DiffusionPrior, unlike the example below.
+
+### Usage 
+
+```bash
+$ python train_diffusion_prior.py
+```
+
+The most significant parameters for the script are as follows:
+
+--image-embed-url, default = "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
+
+--text-embed-url, default = "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
+
+--image-embed-dim, default=768 - 768 corresponds to the ViT iL/14 embedding size,change it to what your chosen ViT generates
+
+--learning-rate, default=1.1e-4
+
+--weight-decay,  default=6.02e-2
+
+--max-grad-norm, default=0.5
+
+--batch-size, default=10 ** 4
+
+--num-epochs, default=5
+
+--clip, default=None # Signals the prior to use pre-computed embeddings
+
+### Sample wandb run log
+
+Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/aul0rhv5?workspace=
+
 ## CLI (wip)
 
 ```bash
@@ -863,8 +1006,9 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] bring in tools to train vqgan-vae
 - [x] add convnext backbone for vqgan-vae (in addition to vit [vit-vqgan] + resnet)
 - [x] make sure DDPMs can be run with traditional resnet blocks (but leave convnext as an option for experimentation)
-- [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo)
-- [ ] copy the cascading ddpm code to a separate repo (perhaps https://github.com/lucidrains/denoising-diffusion-pytorch) as the main contribution of dalle2 really is just the prior network
+- [x] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)
+- [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
+- [ ] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training
 - [ ] train on a toy task, offer in colab
@@ -874,10 +1018,10 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
 - [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove
 - [ ] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
-- [ ] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
-- [ ] make sure resnet | convnext block hyperparameters can be configurable across unet depth (groups and expansion factor)
+- [ ] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
+- [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
 
 ## Citations
 
@@ -904,14 +1048,6 @@ Once built, images will be saved to the same directory the command is invoked
     eprint  = {2112.10752},
     archivePrefix = {arXiv},
     primaryClass = {cs.CV}
-}
-```
-
-```bibtex
-@inproceedings{Liu2022ACF,
-    title   = {A ConvNet for the 2020s},
-    author  = {Zhuang Liu and Hanzi Mao and Chaozheng Wu and Christoph Feichtenhofer and Trevor Darrell and Saining Xie},
-    year    = {2022}
 }
 ```
 
@@ -950,6 +1086,16 @@ Once built, images will be saved to the same directory the command is invoked
     journal = {ArXiv},
     year    = {2021},
     volume  = {abs/2110.09456}
+}
+```
+
+```bibtex
+@article{Yu2022CoCaCC,
+    title   = {CoCa: Contrastive Captioners are Image-Text Foundation Models},
+    author  = {Jiahui Yu and Zirui Wang and Vijay Vasudevan and Legg Yeung and Mojtaba Seyedhosseini and Yonghui Wu},
+    journal = {ArXiv},
+    year    = {2022},
+    volume  = {abs/2205.01917}
 }
 ```
 

@@ -3,14 +3,15 @@ import copy
 from random import choice
 from pathlib import Path
 from shutil import rmtree
+from PIL import Image
 
 import torch
 from torch import nn
-
-from PIL import Image
-from torchvision.datasets import ImageFolder
-import torchvision.transforms as T
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import Dataset, DataLoader, random_split
+
+import torchvision.transforms as T
+from torchvision.datasets import ImageFolder
 from torchvision.utils import make_grid, save_image
 
 from einops import rearrange
@@ -99,6 +100,7 @@ class VQGanVAETrainer(nn.Module):
         ema_update_after_step = 2000,
         ema_update_every = 10,
         apply_grad_penalty_every = 4,
+        amp = False
     ):
         super().__init__()
         assert isinstance(vae, VQGanVAE), 'vae must be instance of VQGanVAE'
@@ -119,6 +121,10 @@ class VQGanVAETrainer(nn.Module):
 
         self.optim = get_optimizer(vae_parameters, lr = lr, wd = wd)
         self.discr_optim = get_optimizer(discr_parameters, lr = lr, wd = wd)
+
+        self.amp = amp
+        self.scaler = GradScaler(enabled = amp)
+        self.discr_scaler = GradScaler(enabled = amp)
 
         # create dataset
 
@@ -178,19 +184,21 @@ class VQGanVAETrainer(nn.Module):
             img = next(self.dl)
             img = img.to(device)
 
-            loss = self.vae(
-                img,
-                return_loss = True,
-                apply_grad_penalty = apply_grad_penalty
-            )
+            with autocast(enabled = self.amp):
+                loss = self.vae(
+                    img,
+                    return_loss = True,
+                    apply_grad_penalty = apply_grad_penalty
+                )
+
+
+                self.scaler.scale(loss / self.grad_accum_every).backward()
 
             accum_log(logs, {'loss': loss.item() / self.grad_accum_every})
 
-            (loss / self.grad_accum_every).backward()
-
-        self.optim.step()
+        self.scaler.step(self.optim)
+        self.scaler.update()
         self.optim.zero_grad()
-
 
         # update discriminator
 
@@ -200,12 +208,15 @@ class VQGanVAETrainer(nn.Module):
                 img = next(self.dl)
                 img = img.to(device)
 
-                loss = self.vae(img, return_discr_loss = True)
+                with autocast(enabled = self.amp):
+                    loss = self.vae(img, return_discr_loss = True)
+
+                    self.discr_scaler.scale(loss / self.grad_accum_every).backward()
+
                 accum_log(logs, {'discr_loss': loss.item() / self.grad_accum_every})
 
-                (loss / self.grad_accum_every).backward()
-
-            self.discr_optim.step()
+            self.discr_scaler.step(self.discr_optim)
+            self.discr_scaler.update()
             self.discr_optim.zero_grad()
 
             # log
