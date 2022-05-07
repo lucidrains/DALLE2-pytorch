@@ -283,11 +283,6 @@ def main():
       "Diffusion Prior clip":args.clip,
       "Diffusion Prior amp" :args.amp})
 
-    wandb.init(
-      entity=args.wandb_entity,
-      project=args.wandb_project,
-      config=config)
-
     # Obtain the utilized device.
     has_cuda = torch.cuda.is_available()
     if has_cuda:
