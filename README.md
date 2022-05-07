@@ -981,6 +981,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 - [ ] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
 - [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
+- [ ] offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention
 
 ## Citations
 
