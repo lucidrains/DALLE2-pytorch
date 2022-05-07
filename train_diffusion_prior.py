@@ -56,11 +56,11 @@ def report_cosine_sims(diffusion_prior, image_reader, text_reader, train_set_siz
     for embt, embi in zip(text_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend), image_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend)):
         # make a copy of the text embeddings for shuffling
         text_embed = torch.tensor(embt[0]).to(device)
-        text_embed_shuffled = text_embed.clone().to(device)
+        text_embed_shuffled = text_embed.clone()
 
-        # shuffle the text embeddings to simulate "unrelated" captions
-        rand_idx = torch.rand(NUM_TEST_EMBEDDINGS).argsort(dim=0)
-        text_embed_shuffled = text_embed_shuffled[rand_idx]
+        # roll the text embeddings to simulate "unrelated" captions
+        rolled_idx = torch.roll(torch.arange(NUM_TEST_EMBEDDINGS), 1)
+        text_embed_shuffled = text_embed_shuffled[rolled_idx]
         text_embed_shuffled = text_embed_shuffled / \
             text_embed_shuffled.norm(dim=1, keepdim=True)
         test_text_shuffled_cond = dict(text_embed=text_embed_shuffled)
