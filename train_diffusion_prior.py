@@ -45,6 +45,54 @@ def save_model(save_path, state_dict):
     # Saving State Dict
     print("====================================== Saving checkpoint ======================================")
     torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
+    
+def load_diffusion_model(dprior_path, 
+                         image_embed_dim, 
+                         device, 
+                         wandb_entity, 
+                         wandb_project):
+
+        dprior_path = Path(dprior_path)
+        assert dprior_path.exists(), 'Dprior model file does not exist'
+        loaded_obj = torch.load(str(dprior_path), map_location='cpu')
+
+        # Get hyperparameters of loaded model 
+        dpn_config = loaded_obj['hyperpmts']['Diffusion_Prior_Network']
+        dp_config = loaded_obj['hyperpmts']['Diffusion_Prior']
+
+        print("keys = ",dpn_config.keys())
+
+        # Create DiffusionPriorNetwork and DiffusionPrior with loaded hyperparameters
+
+        # DiffusionPriorNetwork 
+        prior_network = DiffusionPriorNetwork(
+            dim = image_embed_dim,
+            depth = dpn_config['dpn_depth'],
+            dim_head = dpn_config['dpn_dim_head'],
+            heads = dpn_config['dpn_heads'],
+            normformer = dp_config['dp_normformer']).to(device)
+
+        # DiffusionPrior with text embeddings and image embeddings pre-computed
+        diffusion_prior = DiffusionPrior(
+            net = prior_network,
+            clip = dp_config['dp_clip'],
+            image_embed_dim = image_embed_dim,
+            timesteps = dp_config['dp_timesteps'],
+            cond_drop_prob = dp_config['dp_cond_drop_prob'],
+            loss_type = dp_config['dp_loss_type'],
+            condition_on_text_encodings = dp_config['dp_condition_on_text_encodings']).to(device)
+
+        # Load state dict from saved model
+        diffusion_prior.load_state_dict(loaded_obj['model'])
+
+        # Init a wandb session here
+        wandb.init(
+          entity=wandb_entity,
+          project=wandb_project,
+          config={"Diffusion_Prior_Network":dpn_config,"Diffusion_Prior":dp_config})
+
+        return diffusion_prior
+
 
 def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,val_set_size,NUM_TEST_EMBEDDINGS,device):
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
@@ -123,20 +171,7 @@ def train(image_embed_dim,
     
     # Load pre-trained model from DPRIOR_PATH
     if RESUME:
-        dprior_path = Path(DPRIOR_PATH)
-        assert dprior_path.exists(), 'Dprior model file does not exist'
-
-        loaded_obj = torch.load(str(dprior_path), map_location='cpu')
-        diffusion_prior.load_state_dict(loaded_obj['model'])
-
-        # Get hyperparameters of loaded model 
-        config = loaded_obj['hyperpmts']
-
-        # Init a wandb session here
-        wandb.init(
-          entity=wandb_entity,
-          project=wandb_project,
-          config=config)
+        diffusion_prior=load_diffusion_model(DPRIOR_PATH,image_embed_dim,device,wandb_entity,wandb_project)
         
     # Create save_path if it doesn't exist
     if not os.path.exists(save_path):
@@ -272,16 +307,18 @@ def main():
       "Max Gradient Clipping Norm":args.max_grad_norm,
       "Batch size":args.batch_size,
       "epochs": args.num_epochs,
-      "Diffusion Prior Network depth":args.dpn_depth,
-      "Diffusion Prior Network dim-head":args.dpn_dim_head,
-      "Diffusion Prior Network heas":args.dpn_heads,
-      "Diffusion Prior condition-on-text-encodings": args.dp_condition_on_text_encodings,
-      "Diffusion Prior timesteps": args.dp_timesteps,
-      "Diffusion Prior normformer":args.dp_normformer,
-      "Diffusion Prior cond drop prob":args.dp_cond_drop_prob,
-      "Diffusion Prior loss type":args.dp_loss_type,
-      "Diffusion Prior clip":args.clip,
-      "Diffusion Prior amp" :args.amp})
+      "Diffusion_Prior_Network":{"dpn_depth":args.dpn_depth,
+      "dpn_dim_head":args.dpn_dim_head,
+      "dpn_heads":args.dpn_heads},
+      "Diffusion_Prior":{"dp_condition_on_text_encodings": args.dp_condition_on_text_encodings,
+      "dp_timesteps": args.dp_timesteps,
+      "dp_normformer":args.dp_normformer,
+      "dp_cond_drop_prob":args.dp_cond_drop_prob,
+      "dp_loss_type":args.dp_loss_type,
+      "dp_clip":args.clip,
+      "dp_amp" :args.amp}
+      })
+
 
     # Obtain the utilized device.
     has_cuda = torch.cuda.is_available()
