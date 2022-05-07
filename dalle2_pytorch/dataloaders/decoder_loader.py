@@ -115,6 +115,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             embedding_folder_url=None,
             index_width=None,
             img_preproc=None,
+            extra_keys=[],
             handler=wds.handlers.reraise_exception,
             resample=False,
             shuffle_shards=True
@@ -171,17 +172,13 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
         self.append(verify_keys)
         # Apply preprocessing
         self.append(wds.map(self.preproc))
-        self.append(wds.to_tuple("jpg", "npy"))
+        self.append(wds.to_tuple("jpg", "npy", *extra_keys))
 
     def preproc(self, sample):
         """Applies the preprocessing for images"""
-        img, emb = sample["jpg"], sample["npy"]
         if self.img_preproc is not None:
-            img = self.img_preproc(img)
-        return {
-            "jpg": img,
-            "npy": emb
-        }
+            sample["jpg"] = self.img_preproc(sample["jpg"])
+        return sample
 
 def create_image_embedding_dataloader(
     tar_url,
@@ -193,6 +190,7 @@ def create_image_embedding_dataloader(
     shuffle_shards = True,
     resample_shards = False, 
     img_preproc=None,
+    extra_keys=[],
     handler=wds.handlers.warn_and_continue
 ):
     """
@@ -216,6 +214,7 @@ def create_image_embedding_dataloader(
         index_width=index_width,
         shuffle_shards=shuffle_shards,
         resample=resample_shards,
+        extra_keys=extra_keys,
         img_preproc=img_preproc,
         handler=handler
     )
@@ -235,6 +234,8 @@ if __name__ == "__main__":
     import time
     webdataset_url = os.environ["WEBDATASET_URL"]
     embeddings_url = os.environ["EMBEDDINGS_URL"]
+    print(webdataset_url)
+    print(embeddings_url)
     imagepreproc = T.Compose([
         T.RandomResizedCrop((256, 256),
                             scale=(0.75, 1.),
