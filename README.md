@@ -982,6 +982,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
 - [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
 - [ ] offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention
+- [ ] bring in skip-layer excitatons (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
 
 ## Citations
 
