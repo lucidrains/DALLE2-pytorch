@@ -46,54 +46,6 @@ def save_diffusion_model(save_path, state_dict):
     print("====================================== Saving checkpoint ======================================")
     torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
     
-def load_diffusion_model(dprior_path, 
-                         image_embed_dim, 
-                         device, 
-                         wandb_entity, 
-                         wandb_project):
-
-        dprior_path = Path(dprior_path)
-        assert dprior_path.exists(), 'Dprior model file does not exist'
-        loaded_obj = torch.load(str(dprior_path), map_location='cpu')
-
-        # Get hyperparameters of loaded model 
-        dpn_config = loaded_obj['hyperpmts']['Diffusion_Prior_Network']
-        dp_config = loaded_obj['hyperpmts']['Diffusion_Prior']
-
-        print("keys = ",dpn_config.keys())
-
-        # Create DiffusionPriorNetwork and DiffusionPrior with loaded hyperparameters
-
-        # DiffusionPriorNetwork 
-        prior_network = DiffusionPriorNetwork(
-            dim = image_embed_dim,
-            depth = dpn_config['dpn_depth'],
-            dim_head = dpn_config['dpn_dim_head'],
-            heads = dpn_config['dpn_heads'],
-            normformer = dp_config['dp_normformer']).to(device)
-
-        # DiffusionPrior with text embeddings and image embeddings pre-computed
-        diffusion_prior = DiffusionPrior(
-            net = prior_network,
-            clip = dp_config['dp_clip'],
-            image_embed_dim = image_embed_dim,
-            timesteps = dp_config['dp_timesteps'],
-            cond_drop_prob = dp_config['dp_cond_drop_prob'],
-            loss_type = dp_config['dp_loss_type'],
-            condition_on_text_encodings = dp_config['dp_condition_on_text_encodings']).to(device)
-
-        # Load state dict from saved model
-        diffusion_prior.load_state_dict(loaded_obj['model'])
-
-        # Init a wandb session here
-        wandb.init(
-          entity=wandb_entity,
-          project=wandb_project,
-          config={"Diffusion_Prior_Network":dpn_config,"Diffusion_Prior":dp_config})
-
-        return diffusion_prior
-
-
 def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,val_set_size,NUM_TEST_EMBEDDINGS,device):
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 
