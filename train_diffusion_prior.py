@@ -254,7 +254,6 @@ def main():
     config = ({"learning_rate": args.learning_rate,
       "architecture": args.wandb_arch,
       "dataset": args.wandb_dataset,
-      "Learning Rate":args.learning_rate,
       "Weight Decay":args.weight_decay,
       "Max Gradient Clipping Norm":args.max_grad_norm,
       "Batch size":args.batch_size,
