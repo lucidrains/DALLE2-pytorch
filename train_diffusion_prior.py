@@ -168,7 +168,9 @@ def train(image_embed_dim,
 
                 save_diffusion_model(
                     save_path,
-                    dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(),hyperpmts = config))
+                    diffusion_prior,
+                    optimizer,
+                    scaler)
 
             # Log to wandb
             wandb.log({"Training loss": loss.item(),
