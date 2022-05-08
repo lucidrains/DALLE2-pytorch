@@ -74,7 +74,7 @@ def pad_tuple_to_length(t, length, fillvalue = None):
 
 # Diffusion prior model loading and saving helper functions
 
-def load_diffusion_model(dprior_path, image_embed_dim, device, wandb_entity, wandb_project):
+def load_diffusion_model(dprior_path, device:
 
         dprior_path = Path(dprior_path)
         assert dprior_path.exists(), 'Dprior model file does not exist'
