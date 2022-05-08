@@ -834,7 +834,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.image_embed_dim = default(image_embed_dim, lambda: clip.dim_latent)
         self.channels = default(image_channels, lambda: clip.image_channels)
 
-        self.cond_drop_prob = cond_drop_prob if not predict_x_start else 0.
+        self.cond_drop_prob = cond_drop_prob
         self.condition_on_text_encodings = condition_on_text_encodings
 
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
