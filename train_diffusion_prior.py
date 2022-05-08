@@ -40,11 +40,6 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
 
         avg_loss = (total_loss / total_samples)
         wandb.log({f'{phase} {loss_type}': avg_loss})
-
-def save_diffusion_model(save_path, state_dict):
-    # Saving State Dict
-    print("====================================== Saving checkpoint ======================================")
-    torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
     
 def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,val_set_size,NUM_TEST_EMBEDDINGS,device):
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
@@ -170,7 +165,7 @@ def train(image_embed_dim,
                     save_path,
                     diffusion_prior,
                     optimizer,
-                    scaler)
+                    scaler, image_embed_dim)
 
             # Log to wandb
             wandb.log({"Training loss": loss.item(),
