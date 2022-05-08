@@ -109,7 +109,7 @@ def load_diffusion_model(dprior_path, device:
 
         return diffusion_prior
 
-def save_diffusion_model(save_path, model, optimizer, scaler):
+def save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim):
     # Saving State Dict
     print("====================================== Saving checkpoint ======================================")
     state_dict = dict(model=diffusion_prior.state_dict(), 
