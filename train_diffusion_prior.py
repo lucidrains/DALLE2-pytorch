@@ -194,7 +194,9 @@ def train(image_embed_dim,
                     save_path,
                     diffusion_prior,
                     optimizer,
-                    scaler, image_embed_dim)
+                    scaler,
+                    config,
+                    image_embed_dim)
 
             # Log to wandb
             wandb.log({"Training loss": loss.item(),
@@ -284,16 +286,16 @@ def main():
       "Max Gradient Clipping Norm":args.max_grad_norm,
       "Batch size":args.batch_size,
       "epochs": args.num_epochs,
-      "Diffusion_Prior_Network":{"dpn_depth":args.dpn_depth,
-      "dpn_dim_head":args.dpn_dim_head,
-      "dpn_heads":args.dpn_heads},
-      "Diffusion_Prior":{"dp_condition_on_text_encodings": args.dp_condition_on_text_encodings,
-      "dp_timesteps": args.dp_timesteps,
-      "dp_normformer":args.dp_normformer,
-      "dp_cond_drop_prob":args.dp_cond_drop_prob,
-      "dp_loss_type":args.dp_loss_type,
-      "dp_clip":args.clip,
-      "dp_amp" :args.amp}
+      "Diffusion_Prior_Network":{"depth":args.dpn_depth,
+      "dim_head":args.dpn_dim_head,
+      "heads":args.dpn_heads,
+      "normformer":args.dp_normformer},
+      "Diffusion_Prior":{"condition_on_text_encodings": args.dp_condition_on_text_encodings,
+      "timesteps": args.dp_timesteps,
+      "normformer":args.dp_normformer,
+      "cond_drop_prob":args.dp_cond_drop_prob,
+      "loss_type":args.dp_loss_type,
+      "clip":args.clip}
       })
 
 
