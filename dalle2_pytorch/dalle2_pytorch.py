@@ -112,7 +112,11 @@ def load_diffusion_model(dprior_path, image_embed_dim, device, wandb_entity, wan
 def save_diffusion_model(save_path, model, optimizer, scaler):
     # Saving State Dict
     print("====================================== Saving checkpoint ======================================")
-    state_dict = dict(model=diffusion_prior.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(), hyperpmts = config)
+    state_dict = dict(model=diffusion_prior.state_dict(), 
+                      optimizer=optimizer.state_dict(), 
+                      scaler=scaler.state_dict(), 
+                      hyperpmts = config, 
+                      image_embed_dim = {'image_embed_dim':image_embed_dim})
     torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
 
 
