@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 from embedding_reader import EmbeddingReader
-from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork
+from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, load_diffusion_model, save_diffusion_model
 from dalle2_pytorch.optimizer import get_optimizer
 from torch.cuda.amp import autocast,GradScaler
 
