@@ -87,22 +87,10 @@ def load_diffusion_model(dprior_path, device:
         # Create DiffusionPriorNetwork and DiffusionPrior with loaded hyperparameters
 
         # DiffusionPriorNetwork 
-        prior_network = DiffusionPriorNetwork(
-            dim = image_embed_dim,
-            depth = dpn_config['dpn_depth'],
-            dim_head = dpn_config['dpn_dim_head'],
-            heads = dpn_config['dpn_heads'],
-            normformer = dp_config['dp_normformer']).to(device)
+        prior_network = DiffusionPriorNetwork( dim = image_embed_dim, **dpn_config)
 
         # DiffusionPrior with text embeddings and image embeddings pre-computed
-        diffusion_prior = DiffusionPrior(
-            net = prior_network,
-            clip = dp_config['dp_clip'],
-            image_embed_dim = image_embed_dim,
-            timesteps = dp_config['dp_timesteps'],
-            cond_drop_prob = dp_config['dp_cond_drop_prob'],
-            loss_type = dp_config['dp_loss_type'],
-            condition_on_text_encodings = dp_config['dp_condition_on_text_encodings']).to(device)
+        diffusion_prior = DiffusionPrior(net = prior_network, **dp_config, image_embed_dim = image_embed_dim)
 
         # Load state dict from saved model
         diffusion_prior.load_state_dict(loaded_obj['model'])
