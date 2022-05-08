@@ -147,7 +147,7 @@ def train(image_embed_dim,
     
     # Load pre-trained model from DPRIOR_PATH
     if RESUME:
-        diffusion_prior=load_diffusion_model(DPRIOR_PATH,image_embed_dim,device,wandb_entity,wandb_project)
+        diffusion_prior=load_diffusion_model(DPRIOR_PATH,device)    
         
     # Create save_path if it doesn't exist
     if not os.path.exists(save_path):
