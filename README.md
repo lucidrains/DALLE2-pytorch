@@ -966,6 +966,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] add convnext backbone for vqgan-vae (in addition to vit [vit-vqgan] + resnet)
 - [x] make sure DDPMs can be run with traditional resnet blocks (but leave convnext as an option for experimentation)
 - [x] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)
+- [x] offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
 - [ ] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
@@ -981,7 +982,6 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 - [ ] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
 - [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
-- [ ] offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention
 - [ ] bring in skip-layer excitatons (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
 
 ## Citations
