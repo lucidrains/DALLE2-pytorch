@@ -937,7 +937,7 @@ load_diffusion_model(dprior_path, device)
 
     dprior_path : path to saved model(.pth)
     
-    device : the cuda device you're running on
+    device      : the cuda device you're running on
     
 save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
     
