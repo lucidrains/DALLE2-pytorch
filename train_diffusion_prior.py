@@ -207,7 +207,6 @@ def train(image_embed_dim,
                         train_set_size,
                         NUM_TEST_EMBEDDINGS,
                         device)
-                wandb.log({"Cosine similarity difference": diff_cosine_sim})
                 ### Evaluate model(validation run) ###
                 eval_model(diffusion_prior,
                         device,
