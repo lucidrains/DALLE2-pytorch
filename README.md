@@ -933,7 +933,7 @@ Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/r
 
 Two methods are provided, load_diffusion_model and save_diffusion_model, the names being self-explanatory. 
 
-## from dalle2_pytorch import load_diffusion_model, save_diffusion_model
+## from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model
 
     load_diffusion_model(dprior_path, device) 
 
