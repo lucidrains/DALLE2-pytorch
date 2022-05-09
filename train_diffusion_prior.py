@@ -290,7 +290,6 @@ def main():
         "normformer":args.dp_normformer},
         "Diffusion_Prior":{"condition_on_text_encodings": args.dp_condition_on_text_encodings,
         "timesteps": args.dp_timesteps,
-        "normformer":args.dp_normformer,
         "cond_drop_prob":args.dp_cond_drop_prob,
         "loss_type":args.dp_loss_type,
         "clip":args.clip}
