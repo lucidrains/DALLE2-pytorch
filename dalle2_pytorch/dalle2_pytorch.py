@@ -43,8 +43,8 @@ def load_diffusion_model(dprior_path, device ):
         loaded_obj = torch.load(str(dprior_path), map_location='cpu')
 
         # Get hyperparameters of loaded model 
-        dpn_config = loaded_obj['hyperpmts']['Diffusion_Prior_Network']
-        dp_config = loaded_obj['hyperpmts']['Diffusion_Prior']
+        dpn_config = loaded_obj['hparams']['diffusion_prior_network']
+        dp_config = loaded_obj['hparams']['diffusion_prior']
         image_embed_dim = loaded_obj['image_embed_dim']['image_embed_dim']
 
         # Create DiffusionPriorNetwork and DiffusionPrior with loaded hyperparameters
@@ -63,7 +63,11 @@ def load_diffusion_model(dprior_path, device ):
 def save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim):
     # Saving State Dict
     print("====================================== Saving checkpoint ======================================")
-    state_dict = dict(model=model.state_dict(), optimizer=optimizer.state_dict(), scaler=scaler.state_dict(), hyperpmts = config, image_embed_dim = {"image_embed_dim":image_embed_dim})
+    state_dict = dict(model=model.state_dict(), 
+                      optimizer=optimizer.state_dict(), 
+                      scaler=scaler.state_dict(), 
+                      hparams = config, 
+                      image_embed_dim = {"image_embed_dim":image_embed_dim})
     torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
 
 # helper functions
