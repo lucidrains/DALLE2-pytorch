@@ -949,17 +949,17 @@ Two methods are provided, load_diffusion_model and save_diffusion_model, the nam
     
         optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
     
-        e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
+            e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
     
         scaler    : a GradScaler object.
     
-        e.g: scaler = GradScaler(enabled=amp)
+            e.g: scaler = GradScaler(enabled=amp)
     
-        config    : config object created in train_diffusion_prior.py - see for examples. 
+        config    : config object created in train_diffusion_prior.py - see file for example. 
     
         image_embed_dim - the dimension of the image_embedding
     
-        e.g: 768
+            e.g: 768
 
 ## CLI (wip)
 
