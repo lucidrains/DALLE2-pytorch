@@ -85,7 +85,7 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,N
            text_embed, predicted_unrelated_embeddings).cpu().numpy()
        predicted_img_similarity = cos(
            test_image_embeddings, predicted_image_embeddings).cpu().numpy()
-        wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
+       wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
             "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
             "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
             "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
