@@ -933,15 +933,15 @@ Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/r
 
 Two methods are provided, load_diffusion_model and save_diffusion_model, the names being self-explanatory. 
 
-from dalle2_pytorch import load_diffusion_model, save_diffusion_model
+## from dalle2_pytorch import load_diffusion_model, save_diffusion_model
 
-load_diffusion_model(dprior_path, device) 
+## load_diffusion_model(dprior_path, device) 
 
     dprior_path : path to saved model(.pth)
     
     device      : the cuda device you're running on
     
-save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
+## save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
     
     save_path : path to save at
     
