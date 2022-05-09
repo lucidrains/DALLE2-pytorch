@@ -261,7 +261,6 @@ def main():
     # DiffusionPrior(dp) parameters
     parser.add_argument("--dp-condition-on-text-encodings", type=bool, default=False)
     parser.add_argument("--dp-timesteps", type=int, default=100)
-    parser.add_argument("--dp-l2norm-output", type=bool, default=False)
     parser.add_argument("--dp-normformer", type=bool, default=False)
     parser.add_argument("--dp-cond-drop-prob", type=float, default=0.1)
     parser.add_argument("--dp-loss-type", type=str, default="l2")
