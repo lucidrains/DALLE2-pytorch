@@ -927,7 +927,7 @@ The most significant parameters for the script are as follows:
 
 ### Sample wandb run log
 
-Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/aul0rhv5?workspace=
+Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/3t9bgzxx
 
 ### Loading and saving the Diffusion Prior model
 
