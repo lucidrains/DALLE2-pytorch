@@ -677,7 +677,7 @@ class Attention(nn.Module):
 
         # attention
 
-        sim = sim - sim.amax(dim = -1, keepdim = True)
+        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
         attn = sim.softmax(dim = -1)
         attn = self.dropout(attn)
 
@@ -1204,7 +1204,7 @@ class CrossAttention(nn.Module):
             mask = rearrange(mask, 'b j -> b 1 1 j')
             sim = sim.masked_fill(~mask, max_neg_value)
 
-        sim = sim - sim.amax(dim = -1, keepdim = True)
+        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
         attn = sim.softmax(dim = -1)
 
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
