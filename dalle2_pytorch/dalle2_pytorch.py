@@ -4,9 +4,6 @@ from inspect import isfunction
 from functools import partial
 from contextlib import contextmanager
 from collections import namedtuple
-from pathlib import Path
-import time
-
 
 import torch
 import torch.nn.functional as F
@@ -52,13 +49,13 @@ def load_diffusion_model(dprior_path, device ):
 
         # DiffusionPriorNetwork 
         prior_network = DiffusionPriorNetwork( dim = image_embed_dim, **dpn_config).to(device)
-    
+
         # DiffusionPrior with text embeddings and image embeddings pre-computed
         diffusion_prior = DiffusionPrior(net = prior_network, **dp_config, image_embed_dim = image_embed_dim).to(device)
 
         # Load state dict from saved model
         diffusion_prior.load_state_dict(loaded_obj['model'])
-        
+
         return diffusion_prior
 
 def save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim):
@@ -1932,3 +1929,4 @@ class DALLE2(nn.Module):
             return images[0]
 
         return images
+
