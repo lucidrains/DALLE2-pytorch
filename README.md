@@ -935,31 +935,31 @@ Two methods are provided, load_diffusion_model and save_diffusion_model, the nam
 
 ## from dalle2_pytorch import load_diffusion_model, save_diffusion_model
 
-## load_diffusion_model(dprior_path, device) 
+    load_diffusion_model(dprior_path, device) 
 
-    dprior_path : path to saved model(.pth)
+        dprior_path : path to saved model(.pth)
     
-    device      : the cuda device you're running on
+        device      : the cuda device you're running on
     
-## save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
+    save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
     
-    save_path : path to save at
+        save_path : path to save at
     
-    model     : object of Diffusion_Prior
+        model     : object of Diffusion_Prior
     
-    optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
+        optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
     
-    e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
+        e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
     
-    scaler    : a GradScaler object.
+        scaler    : a GradScaler object.
     
-    e.g: scaler = GradScaler(enabled=amp)
+        e.g: scaler = GradScaler(enabled=amp)
     
-    config    : config object created in train_diffusion_prior.py - see for examples. 
+        config    : config object created in train_diffusion_prior.py - see for examples. 
     
-    image_embed_dim - the dimension of the image_embedding
+        image_embed_dim - the dimension of the image_embedding
     
-    e.g: 768
+        e.g: 768
 
 ## CLI (wip)
 
