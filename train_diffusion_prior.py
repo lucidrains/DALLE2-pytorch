@@ -48,55 +48,48 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,N
     tstart = train_set_size
     tend = train_set_size+NUM_TEST_EMBEDDINGS
 
-     for embt, embi in zip(text_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend), 
-             image_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend)):
-        # make a copy of the text embeddings for shuffling
-        text_embed = torch.tensor(embt[0]).to(device)
-        text_embed_shuffled = text_embed.clone()
-
+    for embt, embi in zip(text_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend), 
+            image_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend)):
+       # make a copy of the text embeddings for shuffling
+       text_embed = torch.tensor(embt[0]).to(device)
+       text_embed_shuffled = text_embed.clone()
         # roll the text embeddings to simulate "unrelated" captions
-        rolled_idx = torch.roll(torch.arange(NUM_TEST_EMBEDDINGS), 1)
-        text_embed_shuffled = text_embed_shuffled[rolled_idx]
-        text_embed_shuffled = text_embed_shuffled / \
-            text_embed_shuffled.norm(dim=1, keepdim=True)
-        test_text_shuffled_cond = dict(text_embed=text_embed_shuffled)
-
+       rolled_idx = torch.roll(torch.arange(NUM_TEST_EMBEDDINGS), 1)
+       text_embed_shuffled = text_embed_shuffled[rolled_idx]
+       text_embed_shuffled = text_embed_shuffled / \
+           text_embed_shuffled.norm(dim=1, keepdim=True)
+       test_text_shuffled_cond = dict(text_embed=text_embed_shuffled)
         # prepare the text embedding
-        text_embed = text_embed / text_embed.norm(dim=1, keepdim=True)
-        test_text_cond = dict(text_embed=text_embed)
-
+       text_embed = text_embed / text_embed.norm(dim=1, keepdim=True)
+       test_text_cond = dict(text_embed=text_embed)
         # prepare image embeddings
-        test_image_embeddings = torch.tensor(embi[0]).to(device)
-        test_image_embeddings = test_image_embeddings / \
-            test_image_embeddings.norm(dim=1, keepdim=True)
-
+       test_image_embeddings = torch.tensor(embi[0]).to(device)
+       test_image_embeddings = test_image_embeddings / \
+           test_image_embeddings.norm(dim=1, keepdim=True)
         # predict on the unshuffled text embeddings
-        predicted_image_embeddings = diffusion_prior.p_sample_loop(
-            (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_cond)
-        predicted_image_embeddings = predicted_image_embeddings / \
-            predicted_image_embeddings.norm(dim=1, keepdim=True)
-
+       predicted_image_embeddings = diffusion_prior.p_sample_loop(
+           (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_cond)
+       predicted_image_embeddings = predicted_image_embeddings / \
+           predicted_image_embeddings.norm(dim=1, keepdim=True)
         # predict on the shuffled embeddings
-        predicted_unrelated_embeddings = diffusion_prior.p_sample_loop(
-            (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_shuffled_cond)
-        predicted_unrelated_embeddings = predicted_unrelated_embeddings / \
-            predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
-
+       predicted_unrelated_embeddings = diffusion_prior.p_sample_loop(
+           (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_shuffled_cond)
+       predicted_unrelated_embeddings = predicted_unrelated_embeddings / \
+           predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
         # calculate similarities
-        original_similarity = cos(
-            text_embed, test_image_embeddings).cpu().numpy()
-        predicted_similarity = cos(
-            text_embed, predicted_image_embeddings).cpu().numpy()
-        unrelated_similarity = cos(
-            text_embed, predicted_unrelated_embeddings).cpu().numpy()
-        predicted_img_similarity = cos(
-            test_image_embeddings, predicted_image_embeddings).cpu().numpy()
-
+       original_similarity = cos(
+           text_embed, test_image_embeddings).cpu().numpy()
+       predicted_similarity = cos(
+           text_embed, predicted_image_embeddings).cpu().numpy()
+       unrelated_similarity = cos(
+           text_embed, predicted_unrelated_embeddings).cpu().numpy()
+       predicted_img_similarity = cos(
+           test_image_embeddings, predicted_image_embeddings).cpu().numpy()
         wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
-             "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
-             "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
-             "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
-             "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
+            "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
+            "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
+            "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
+            "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
 
 def train(image_embed_dim,
           image_embed_url,
@@ -279,6 +272,8 @@ def main():
     # Model checkpointing interval(minutes)
     parser.add_argument("--save-interval", type=int, default=30)
     parser.add_argument("--save-path", type=str, default="./diffusion_prior_checkpoints")
+    # Saved model path 
+    parser.add_argument("--pretrained-model-path", type=str, default=None)
 
     args = parser.parse_args()
 
