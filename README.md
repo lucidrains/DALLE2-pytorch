@@ -927,7 +927,39 @@ The most significant parameters for the script are as follows:
 
 ### Sample wandb run log
 
-Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/aul0rhv5?workspace=
+Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/1blxu24j
+
+### Loading and saving the Diffusion Prior model
+
+Two methods are provided, load_diffusion_model and save_diffusion_model, the names being self-explanatory. 
+
+## from dalle2_pytorch import load_diffusion_model, save_diffusion_model
+
+    load_diffusion_model(dprior_path, device) 
+
+        dprior_path : path to saved model(.pth)
+    
+        device      : the cuda device you're running on
+    
+    save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
+    
+        save_path : path to save at
+    
+        model     : object of Diffusion_Prior
+    
+        optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
+    
+            e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
+    
+        scaler    : a GradScaler object.
+    
+            e.g: scaler = GradScaler(enabled=amp)
+    
+        config    : config object created in train_diffusion_prior.py - see file for example. 
+    
+        image_embed_dim - the dimension of the image_embedding
+    
+            e.g: 768
 
 ## CLI (wip)
 
