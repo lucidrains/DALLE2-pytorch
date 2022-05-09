@@ -236,7 +236,6 @@ def main():
     # Logging
     parser.add_argument("--wandb-entity", type=str, default="laion")
     parser.add_argument("--wandb-project", type=str, default="diffusion-prior")
-    parser.add_argument("--wandb-name", type=str, default="laion-dprior")
     parser.add_argument("--wandb-dataset", type=str, default="LAION-5B")
     parser.add_argument("--wandb-arch", type=str, default="DiffusionPrior")
     # URLs for embeddings 
