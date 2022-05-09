@@ -41,10 +41,10 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
         avg_loss = (total_loss / total_samples)
         wandb.log({f'{phase} {loss_type}': avg_loss})
 
-	model.train()
+    model.train()
 
 def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,NUM_TEST_EMBEDDINGS,device):
-	diffusion_prior.eval()
+    diffusion_prior.eval()
 
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 
@@ -94,7 +94,7 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,N
             "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
             "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
 
-	diffusion_prior.train()
+    diffusion_prior.train()
 
 def train(image_embed_dim,
           image_embed_url,
