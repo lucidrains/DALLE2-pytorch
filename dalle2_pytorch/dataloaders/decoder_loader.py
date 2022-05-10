@@ -85,6 +85,7 @@ def unassociated_shard_skipper(tarfiles, embeddings_url, handler=wds.handlers.re
                 continue
             else:
                 break
+    
 skip_unassociated_shards = wds.filters.pipelinefilter(unassociated_shard_skipper)
 
 def verify_keys(samples, handler=wds.handlers.reraise_exception):
@@ -136,6 +137,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
 
         """
         super().__init__()
+        self.resampling = resample
         self.img_preproc = img_preproc
         # If s3, check if s3fs is installed and s3cmd is installed and check if the data is piped instead of straight up
         if (isinstance(urls, str) and "s3:" in urls) or (isinstance(urls, list) and any(["s3:" in url for url in urls])):
@@ -191,7 +193,7 @@ def create_image_embedding_dataloader(
     resample_shards = False, 
     img_preproc=None,
     extra_keys=[],
-    handler=wds.handlers.warn_and_continue
+    handler=wds.handlers.reraise_exception#warn_and_continue
 ):
     """
     Convenience function to create an image embedding dataseta and dataloader in one line
@@ -254,10 +256,15 @@ if __name__ == "__main__":
         img_preproc=imagepreproc,
         handler=wds.handlers.warn_and_continue
     )
+
     start = time.perf_counter()
     total = 0
+    print("Starting loading")
     for img, emb in test_loader:
         total += img.shape[0]
         print(f"{total} Data: img {img.shape} - emb {emb.shape}")
+        break
     end = time.perf_counter()
     print(f"Samples/s = {total}/{round(end-start, 2)}={round(total/(end-start), 2)}")
+
+    
