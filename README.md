@@ -1015,6 +1015,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 - [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
 - [ ] bring in skip-layer excitatons (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
+- [ ] cross embed layers for downsampling, as an option
 - [ ] decoder needs one day worth of refactor for tech debt
 
 ## Citations
