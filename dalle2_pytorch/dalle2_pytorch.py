@@ -1382,12 +1382,13 @@ class Unet(nn.Module):
         *,
         lowres_cond,
         channels,
-        cond_on_image_embeds
+        cond_on_image_embeds,
+        cond_on_text_encodings
     ):
-        if lowres_cond == self.lowres_cond and channels == self.channels and cond_on_image_embeds == self.cond_on_image_embeds:
+        if lowres_cond == self.lowres_cond and channels == self.channels and cond_on_image_embeds == self.cond_on_image_embeds and cond_on_text_encodings == self.cond_on_text_encodings:
             return self
 
-        updated_kwargs = {'lowres_cond': lowres_cond, 'channels': channels, 'cond_on_image_embeds': cond_on_image_embeds}
+        updated_kwargs = {'lowres_cond': lowres_cond, 'channels': channels, 'cond_on_image_embeds': cond_on_image_embeds, 'cond_on_text_encodings': cond_on_text_encodings}
         return self.__class__(**{**self._locals, **updated_kwargs})
 
     def forward_with_cond_scale(
@@ -1583,13 +1584,17 @@ class Decoder(BaseGaussianDiffusion):
         condition_on_text_encodings = False,        # the paper suggested that this didn't do much in the decoder, but i'm allowing the option for experimentation
         clip_denoised = True,
         clip_x_start = True,
-        clip_adapter_overrides = dict()
+        clip_adapter_overrides = dict(),
+        unconditional = False
     ):
         super().__init__(
             beta_schedule = beta_schedule,
             timesteps = timesteps,
             loss_type = loss_type
         )
+
+        self.unconditional = unconditional
+        assert not (condition_on_text_encodings and unconditional), 'unconditional decoder image generation cannot be set to True if conditioning on text is present'
 
         assert exists(clip) ^ exists(image_size), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
 
@@ -1632,7 +1637,8 @@ class Decoder(BaseGaussianDiffusion):
 
             one_unet = one_unet.cast_model_parameters(
                 lowres_cond = not is_first,
-                cond_on_image_embeds = is_first,
+                cond_on_image_embeds = is_first and not unconditional,
+                cond_on_text_encodings = one_unet.cond_on_text_encodings and not unconditional,
                 channels = unet_channels
             )
 
@@ -1767,12 +1773,16 @@ class Decoder(BaseGaussianDiffusion):
     @eval_decorator
     def sample(
         self,
-        image_embed,
+        image_embed = None,
         text = None,
+        batch_size = 1,
         cond_scale = 1.,
         stop_at_unet_number = None
     ):
-        batch_size = image_embed.shape[0]
+        assert self.unconditional or exists(image_embed), 'image embed must be present on sampling from decoder unless if trained unconditionally'
+
+        if not self.unconditional:
+            batch_size = image_embed.shape[0]
 
         text_encodings = text_mask = None
         if exists(text):
@@ -1782,10 +1792,11 @@ class Decoder(BaseGaussianDiffusion):
         assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
 
         img = None
+        is_cuda = next(self.parameters()).is_cuda
 
         for unet_number, unet, vae, channel, image_size, predict_x_start in tqdm(zip(range(1, len(self.unets) + 1), self.unets, self.vaes, self.sample_channels, self.image_sizes, self.predict_x_start)):
 
-            context = self.one_unet_in_gpu(unet = unet) if image_embed.is_cuda else null_context()
+            context = self.one_unet_in_gpu(unet = unet) if is_cuda else null_context()
 
             with context:
                 lowres_cond_img = None
