@@ -4,6 +4,7 @@ from inspect import isfunction
 from functools import partial
 from contextlib import contextmanager
 from collections import namedtuple
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
@@ -639,7 +640,7 @@ class Attention(nn.Module):
 
         # attention
 
-        sim = sim - sim.amax(dim = -1, keepdim = True)
+        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
         attn = sim.softmax(dim = -1)
         attn = self.dropout(attn)
 
@@ -703,10 +704,31 @@ class DiffusionPriorNetwork(nn.Module):
         self,
         dim,
         num_timesteps = None,
+        num_time_embeds = 1,
+        num_image_embeds = 1,
+        num_text_embeds = 1,
         **kwargs
     ):
         super().__init__()
-        self.time_embeddings = nn.Embedding(num_timesteps, dim) if exists(num_timesteps) else nn.Sequential(SinusoidalPosEmb(dim), MLP(dim, dim)) # also offer a continuous version of timestep embeddings, with a 2 layer MLP
+        self.num_time_embeds = num_time_embeds
+        self.num_image_embeds = num_image_embeds
+        self.num_text_embeds = num_text_embeds
+
+        self.to_text_embeds = nn.Sequential(
+            nn.Linear(dim, dim * num_text_embeds) if num_text_embeds > 1 else nn.Identity(),
+            Rearrange('b (n d) -> b n d', n = num_text_embeds)
+        )
+
+        self.to_time_embeds = nn.Sequential(
+            nn.Embedding(num_timesteps, dim * num_time_embeds) if exists(num_timesteps) else nn.Sequential(SinusoidalPosEmb(dim), MLP(dim, dim * num_time_embeds)), # also offer a continuous version of timestep embeddings, with a 2 layer MLP
+            Rearrange('b (n d) -> b n d', n = num_time_embeds)
+        )
+
+        self.to_image_embeds = nn.Sequential(
+            nn.Linear(dim, dim * num_image_embeds) if num_image_embeds > 1 else nn.Identity(),
+            Rearrange('b (n d) -> b n d', n = num_image_embeds)
+        )
+
         self.learned_query = nn.Parameter(torch.randn(dim))
         self.causal_transformer = CausalTransformer(dim = dim, **kwargs)
 
@@ -736,10 +758,13 @@ class DiffusionPriorNetwork(nn.Module):
     ):
         batch, dim, device, dtype = *image_embed.shape, image_embed.device, image_embed.dtype
 
+        num_time_embeds, num_image_embeds, num_text_embeds = self.num_time_embeds, self.num_image_embeds, self.num_text_embeds
+
         # in section 2.2, last paragraph
         # "... consisting of encoded text, CLIP text embedding, diffusion timestep embedding, noised CLIP image embedding, final embedding for prediction"
 
-        text_embed, image_embed = rearrange_many((text_embed, image_embed), 'b d -> b 1 d')
+        text_embed = self.to_text_embeds(text_embed)
+        image_embed = self.to_image_embeds(image_embed)
 
         # make text encodings optional
         # although the paper seems to suggest it is present <--
@@ -759,16 +784,17 @@ class DiffusionPriorNetwork(nn.Module):
 
         # whether text embedding is masked or not depends on the classifier free guidance conditional masking
 
+        keep_mask = repeat(keep_mask, 'b 1 -> b n', n = num_text_embeds)
         mask = torch.cat((mask, keep_mask), dim = 1)
 
         # whether text embedding is used for conditioning depends on whether text encodings are available for attention (for classifier free guidance, even though it seems from the paper it was not used in the prior ddpm, as the objective is different)
         # but let's just do it right
 
         if exists(mask):
-            mask = F.pad(mask, (0, 3), value = True) # extend mask for text embedding, noised image embedding, time step embedding, and learned query
+            attend_padding = 1 + num_time_embeds + num_image_embeds # 1 for learned queries + number of image embeds + time embeds
+            mask = F.pad(mask, (0, attend_padding), value = True) # extend mask for text embedding, noised image embedding, time step embedding, and learned query
 
-        time_embed = self.time_embeddings(diffusion_timesteps)
-        time_embed = rearrange(time_embed, 'b d -> b 1 d')
+        time_embed = self.to_time_embeds(diffusion_timesteps)
 
         learned_queries = repeat(self.learned_query, 'd -> b 1 d', b = batch)
 
@@ -800,7 +826,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         image_size = None,
         image_channels = 3,
         timesteps = 1000,
-        cond_drop_prob = 0.2,
+        cond_drop_prob = 0.,
         loss_type = "l1",
         predict_x_start = True,
         beta_schedule = "cosine",
@@ -1141,7 +1167,7 @@ class CrossAttention(nn.Module):
             mask = rearrange(mask, 'b j -> b 1 1 j')
             sim = sim.masked_fill(~mask, max_neg_value)
 
-        sim = sim - sim.amax(dim = -1, keepdim = True)
+        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
         attn = sim.softmax(dim = -1)
 
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
@@ -1202,6 +1228,33 @@ class LinearAttention(nn.Module):
         out = self.nonlin(out)
         return self.to_out(out)
 
+class CrossEmbedLayer(nn.Module):
+    def __init__(
+        self,
+        dim_in,
+        kernel_sizes,
+        dim_out = None,
+        stride = 2
+    ):
+        super().__init__()
+        assert all([*map(lambda t: (t % 2) == (stride % 2), kernel_sizes)])
+        dim_out = default(dim_out, dim_in)
+
+        kernel_sizes = sorted(kernel_sizes)
+        num_scales = len(kernel_sizes)
+
+        # calculate the dimension at each scale
+        dim_scales = [int(dim_out / (2 ** i)) for i in range(1, num_scales)]
+        dim_scales = [*dim_scales, dim_out - sum(dim_scales)]
+
+        self.convs = nn.ModuleList([])
+        for kernel, dim_scale in zip(kernel_sizes, dim_scales):
+            self.convs.append(nn.Conv2d(dim_in, dim_scale, kernel, stride = stride, padding = (kernel - stride) // 2))
+
+    def forward(self, x):
+        fmaps = tuple(map(lambda conv: conv(x), self.convs))
+        return torch.cat(fmaps, dim = 1)
+
 class Unet(nn.Module):
     def __init__(
         self,
@@ -1225,8 +1278,10 @@ class Unet(nn.Module):
         cond_on_image_embeds = False,
         init_dim = None,
         init_conv_kernel_size = 7,
-        block_type = 'resnet',
-        block_resnet_groups = 8,
+        resnet_groups = 8,
+        init_cross_embed_kernel_sizes = (3, 7, 15),
+        cross_embed_downsample = False,
+        cross_embed_downsample_kernel_sizes = (2, 4),
         **kwargs
     ):
         super().__init__()
@@ -1245,10 +1300,9 @@ class Unet(nn.Module):
         self.channels = channels
 
         init_channels = channels if not lowres_cond else channels * 2 # in cascading diffusion, one concats the low resolution image, blurred, for conditioning the higher resolution synthesis
-        init_dim = default(init_dim, dim // 2)
+        init_dim = default(init_dim, dim // 3 * 2)
 
-        assert (init_conv_kernel_size % 2) == 1
-        self.init_conv = nn.Conv2d(init_channels, init_dim, init_conv_kernel_size, padding = init_conv_kernel_size // 2)
+        self.init_conv = CrossEmbedLayer(init_channels, dim_out = init_dim, kernel_sizes = init_cross_embed_kernel_sizes, stride = 1)
 
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
@@ -1304,7 +1358,15 @@ class Unet(nn.Module):
 
         # resnet block klass
 
-        block_klass = partial(ResnetBlock, groups = block_resnet_groups)
+        resnet_groups = cast_tuple(resnet_groups, len(in_out))
+
+        assert len(resnet_groups) == len(in_out)
+
+        # downsample klass
+
+        downsample_klass = Downsample
+        if cross_embed_downsample:
+            downsample_klass = partial(CrossEmbedLayer, kernel_sizes = cross_embed_downsample_kernel_sizes)
 
         # layers
 
@@ -1312,38 +1374,39 @@ class Unet(nn.Module):
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
 
-        for ind, (dim_in, dim_out) in enumerate(in_out):
+        for ind, ((dim_in, dim_out), groups) in enumerate(zip(in_out, resnet_groups)):
             is_first = ind == 0
             is_last = ind >= (num_resolutions - 1)
             layer_cond_dim = cond_dim if not is_first else None
 
             self.downs.append(nn.ModuleList([
-                block_klass(dim_in, dim_out, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_in, dim_out, time_cond_dim = time_cond_dim, groups = groups),
                 Residual(LinearAttention(dim_out, **attn_kwargs)) if sparse_attn else nn.Identity(),
-                block_klass(dim_out, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim),
-                Downsample(dim_out) if not is_last else nn.Identity()
+                ResnetBlock(dim_out, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
+                downsample_klass(dim_out) if not is_last else nn.Identity()
             ]))
 
         mid_dim = dims[-1]
 
-        self.mid_block1 = block_klass(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim)
+        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
         self.mid_attn = EinopsToAndFrom('b c h w', 'b (h w) c', Residual(Attention(mid_dim, **attn_kwargs))) if attend_at_middle else None
-        self.mid_block2 = block_klass(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
 
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
+        for ind, ((dim_in, dim_out), groups) in enumerate(zip(reversed(in_out[1:]), reversed(resnet_groups))):
             is_last = ind >= (num_resolutions - 2)
             layer_cond_dim = cond_dim if not is_last else None
 
             self.ups.append(nn.ModuleList([
-                block_klass(dim_out * 2, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_out * 2, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
                 Residual(LinearAttention(dim_in, **attn_kwargs)) if sparse_attn else nn.Identity(),
-                block_klass(dim_in, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_in, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
                 Upsample(dim_in)
             ]))
 
         out_dim = default(out_dim, channels)
+
         self.final_conv = nn.Sequential(
-            block_klass(dim, dim),
+            ResnetBlock(dim, dim, groups = resnet_groups[0]),
             nn.Conv2d(dim, out_dim, 1)
         )
 
@@ -1354,12 +1417,13 @@ class Unet(nn.Module):
         *,
         lowres_cond,
         channels,
-        cond_on_image_embeds
+        cond_on_image_embeds,
+        cond_on_text_encodings
     ):
-        if lowres_cond == self.lowres_cond and channels == self.channels and cond_on_image_embeds == self.cond_on_image_embeds:
+        if lowres_cond == self.lowres_cond and channels == self.channels and cond_on_image_embeds == self.cond_on_image_embeds and cond_on_text_encodings == self.cond_on_text_encodings:
             return self
 
-        updated_kwargs = {'lowres_cond': lowres_cond, 'channels': channels, 'cond_on_image_embeds': cond_on_image_embeds}
+        updated_kwargs = {'lowres_cond': lowres_cond, 'channels': channels, 'cond_on_image_embeds': cond_on_image_embeds, 'cond_on_text_encodings': cond_on_text_encodings}
         return self.__class__(**{**self._locals, **updated_kwargs})
 
     def forward_with_cond_scale(
@@ -1555,13 +1619,17 @@ class Decoder(BaseGaussianDiffusion):
         condition_on_text_encodings = False,        # the paper suggested that this didn't do much in the decoder, but i'm allowing the option for experimentation
         clip_denoised = True,
         clip_x_start = True,
-        clip_adapter_overrides = dict()
+        clip_adapter_overrides = dict(),
+        unconditional = False
     ):
         super().__init__(
             beta_schedule = beta_schedule,
             timesteps = timesteps,
             loss_type = loss_type
         )
+
+        self.unconditional = unconditional
+        assert not (condition_on_text_encodings and unconditional), 'unconditional decoder image generation cannot be set to True if conditioning on text is present'
 
         assert exists(clip) ^ exists(image_size), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
 
@@ -1604,7 +1672,8 @@ class Decoder(BaseGaussianDiffusion):
 
             one_unet = one_unet.cast_model_parameters(
                 lowres_cond = not is_first,
-                cond_on_image_embeds = is_first,
+                cond_on_image_embeds = is_first and not unconditional,
+                cond_on_text_encodings = one_unet.cond_on_text_encodings and not unconditional,
                 channels = unet_channels
             )
 
@@ -1739,12 +1808,16 @@ class Decoder(BaseGaussianDiffusion):
     @eval_decorator
     def sample(
         self,
-        image_embed,
+        image_embed = None,
         text = None,
+        batch_size = 1,
         cond_scale = 1.,
         stop_at_unet_number = None
     ):
-        batch_size = image_embed.shape[0]
+        assert self.unconditional or exists(image_embed), 'image embed must be present on sampling from decoder unless if trained unconditionally'
+
+        if not self.unconditional:
+            batch_size = image_embed.shape[0]
 
         text_encodings = text_mask = None
         if exists(text):
@@ -1754,10 +1827,11 @@ class Decoder(BaseGaussianDiffusion):
         assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
 
         img = None
+        is_cuda = next(self.parameters()).is_cuda
 
         for unet_number, unet, vae, channel, image_size, predict_x_start in tqdm(zip(range(1, len(self.unets) + 1), self.unets, self.vaes, self.sample_channels, self.image_sizes, self.predict_x_start)):
 
-            context = self.one_unet_in_gpu(unet = unet) if image_embed.is_cuda else null_context()
+            context = self.one_unet_in_gpu(unet = unet) if is_cuda else null_context()
 
             with context:
                 lowres_cond_img = None
@@ -1897,3 +1971,4 @@ class DALLE2(nn.Module):
             return images[0]
 
         return images
+

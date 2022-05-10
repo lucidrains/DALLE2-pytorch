@@ -968,7 +968,39 @@ The most significant parameters for the script are as follows:
 
 ### Sample wandb run log
 
-Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/aul0rhv5?workspace=
+Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/1blxu24j
+
+### Loading and saving the Diffusion Prior model
+
+Two methods are provided, load_diffusion_model and save_diffusion_model, the names being self-explanatory. 
+
+## from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model
+
+    load_diffusion_model(dprior_path, device) 
+
+        dprior_path : path to saved model(.pth)
+    
+        device      : the cuda device you're running on
+    
+    save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
+    
+        save_path : path to save at
+    
+        model     : object of Diffusion_Prior
+    
+        optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
+    
+            e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
+    
+        scaler    : a GradScaler object.
+    
+            e.g: scaler = GradScaler(enabled=amp)
+    
+        config    : config object created in train_diffusion_prior.py - see file for example. 
+    
+        image_embed_dim - the dimension of the image_embedding
+    
+            e.g: 768
 
 ## CLI (wip)
 
@@ -1007,21 +1039,25 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] add convnext backbone for vqgan-vae (in addition to vit [vit-vqgan] + resnet)
 - [x] make sure DDPMs can be run with traditional resnet blocks (but leave convnext as an option for experimentation)
 - [x] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)
+- [x] offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention
+- [x] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
+- [x] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training
+- [x] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
+- [x] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14
+- [x] cross embed layers for downsampling, as an option
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
-- [ ] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
-- [ ] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training
 - [ ] train on a toy task, offer in colab
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
-- [ ] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
 - [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove
 - [ ] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
-- [ ] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
 - [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
+- [ ] bring in skip-layer excitatons (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
+- [ ] decoder needs one day worth of refactor for tech debt
 
 ## Citations
 
@@ -1096,6 +1132,17 @@ Once built, images will be saved to the same directory the command is invoked
     journal = {ArXiv},
     year    = {2022},
     volume  = {abs/2205.01917}
+}
+```
+
+```bibtex
+@misc{wang2021crossformer,
+    title   = {CrossFormer: A Versatile Vision Transformer Hinging on Cross-scale Attention},
+    author  = {Wenxiao Wang and Lu Yao and Long Chen and Binbin Lin and Deng Cai and Xiaofei He and Wei Liu},
+    year    = {2021},
+    eprint  = {2108.00154},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
 }
 ```
 
