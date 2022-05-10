@@ -84,7 +84,7 @@ def create_decoder(device):
         "loss_type": "l1"  # l1, l2, huber
     }]
     unet1 = Unet(
-        **unet_conifg[0],
+        **unet_conifg[0]
     )
     unet1.to(device)
 
@@ -131,7 +131,9 @@ def generate_samples(decoder, dataloader, epoch, device, step, n=5, text_prepend
 def save_trainer(save_folder, trainer, epoch, step):
     # Saves the trainer state_dict
     print("====================================== Saving trainer ======================================")
-    state_dict = trainer.state_dict()
+    state_dict = {}
+    state_dict["trainer"] = trainer.state_dict()
+    state_dict["decoder"] = trainer.decoder.state_dict()
     state_dict['epoch'] = epoch
     state_dict['step'] = step
     filename = f"trainer_epoch_{epoch}_step_{step}.pth"
@@ -194,7 +196,15 @@ def overfit(
 
             if (i + 1) % min(800, epoch_length) == 0:
                 print(f"Generating sample...")
-                images = generate_samples(decoder, dataloader, epoch, device, step, n=n_samples)
+                images = generate_samples(
+                    trainer,
+                    dataloader,
+                    epoch,
+                    device,
+                    step,
+                    n=n_samples,
+                    text_prepend="Overfit: "
+                )
                 wandb.log({"Samples": images}, step=step)
 
 
@@ -407,61 +417,61 @@ def main(
 
 if __name__ == "__main__":
     # main(False, epoch_length=None, validation_length=None, n_samples=5, learning_rate=4e-3)
-    # main(False, epoch_length=10000, n_samples=3, do_overfit=True)
+    main(False, epoch_length=10000, n_samples=3, do_overfit=True)
 
-    all_shards = list(range(169230, 169400+1))
-    dataloaders = create_dataloaders (
-        available_shards=all_shards,
-        webdataset_base_url="pipe:s3cmd get s3://laion-us-east-1/laion-data/laion2B-data/{}.tar -",
-        embeddings_url="s3://dalle2-training-dataset/new_shard_width/reordered_embeddings/",
-        num_workers=4,
-        batch_size=32,
-        shuffle_train=False,
-        shuffle_val_test=False,
-        img_size=(256, 256),
-        img_preproc = T.ToTensor(),
-        index_width=4,
-        train_prop = 0.75,
-        val_prop = 0.15,
-        test_prop = 0.10
-    )
+    # all_shards = list(range(169230, 169400+1))
+    # dataloaders = create_dataloaders (
+    #     available_shards=all_shards,
+    #     webdataset_base_url="pipe:s3cmd get s3://laion-us-east-1/laion-data/laion2B-data/{}.tar -",
+    #     embeddings_url="s3://dalle2-training-dataset/new_shard_width/reordered_embeddings/",
+    #     num_workers=4,
+    #     batch_size=32,
+    #     shuffle_train=False,
+    #     shuffle_val_test=False,
+    #     img_size=(256, 256),
+    #     img_preproc = T.ToTensor(),
+    #     index_width=4,
+    #     train_prop = 0.75,
+    #     val_prop = 0.15,
+    #     test_prop = 0.10
+    # )
 
-    import clip
-    import torchvision.transforms as T
-    import numpy as np
-    transform = T.ToPILImage()
-    device = torch.device("cpu")
-    model, preprocess = clip.load("ViT-L/14", device=device)
-    skip = 10
-    with torch.no_grad(), open("./failed_embeddings.txt", "w") as f, open("./success_embeddings.txt", "w") as g:
-        print("Starting testing")
-        sample = 0
-        for imgs, embs, txts in dataloaders["test"]:
-            for img, emb, txt in zip(imgs, embs, txts):
-                sample += 1
-                if skip > 0 and sample % skip != 0:
-                    continue
-                try:
-                    image = preprocess(transform(img)).unsqueeze(0).to(device)
-                    text = clip.tokenize(txt).to(device)
-                    image_features = model.encode_image(image).squeeze(0)
-                    image_features /= image_features.norm(dim=-1, keepdim=True)
-                    image_features = image_features.detach().cpu().numpy()
-                    text_features = model.encode_text(text).squeeze(0)
-                    text_features /= text_features.norm(dim=-1, keepdim=True)
-                    text_features = text_features.detach().cpu().numpy()
-                    emb /= emb.norm(dim=-1, keepdim=True)
-                    emb = emb.detach().cpu().numpy()
-                    img_alignment = np.dot(image_features, emb)
-                    txt_alignment = np.dot(text_features, emb)
-                    print(f"{sample} {img_alignment} {txt_alignment}")
-                    if img_alignment < 0.9:
-                        print("Image alignment low:", img_alignment)
-                        # Write a line with the sample index and the alignment
-                        f.write(f"{sample}\t{img_alignment}\t{txt_alignment}\n")
-                        f.flush()
-                    else:
-                        g.write(f"{sample}\t{img_alignment}\t{txt_alignment}\n")
-                        g.flush()
-                except Exception as e:
-                    print(e)
+    # import clip
+    # import torchvision.transforms as T
+    # import numpy as np
+    # transform = T.ToPILImage()
+    # device = torch.device("cpu")
+    # model, preprocess = clip.load("ViT-L/14", device=device)
+    # skip = 10
+    # with torch.no_grad(), open("./failed_embeddings.txt", "w") as f, open("./success_embeddings.txt", "w") as g:
+    #     print("Starting testing")
+    #     sample = 0
+    #     for imgs, embs, txts in dataloaders["test"]:
+    #         for img, emb, txt in zip(imgs, embs, txts):
+    #             sample += 1
+    #             if skip > 0 and sample % skip != 0:
+    #                 continue
+    #             try:
+    #                 image = preprocess(transform(img)).unsqueeze(0).to(device)
+    #                 text = clip.tokenize(txt).to(device)
+    #                 image_features = model.encode_image(image).squeeze(0)
+    #                 image_features /= image_features.norm(dim=-1, keepdim=True)
+    #                 image_features = image_features.detach().cpu().numpy()
+    #                 text_features = model.encode_text(text).squeeze(0)
+    #                 text_features /= text_features.norm(dim=-1, keepdim=True)
+    #                 text_features = text_features.detach().cpu().numpy()
+    #                 emb /= emb.norm(dim=-1, keepdim=True)
+    #                 emb = emb.detach().cpu().numpy()
+    #                 img_alignment = np.dot(image_features, emb)
+    #                 txt_alignment = np.dot(text_features, emb)
+    #                 print(f"{sample} {img_alignment} {txt_alignment}")
+    #                 if img_alignment < 0.9:
+    #                     print("Image alignment low:", img_alignment)
+    #                     # Write a line with the sample index and the alignment
+    #                     f.write(f"{sample}\t{img_alignment}\t{txt_alignment}\n")
+    #                     f.flush()
+    #                 else:
+    #                     g.write(f"{sample}\t{img_alignment}\t{txt_alignment}\n")
+    #                     g.flush()
+    #             except Exception as e:
+    #                 print(e)
