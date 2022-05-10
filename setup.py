@@ -23,6 +23,7 @@ setup(
     'text to image'
   ],
   install_requires=[
+    'aiohttp>=3.8.0',
     'click',
     'clip-anytorch',
     'coca-pytorch>=0.0.5',
@@ -39,6 +40,7 @@ setup(
     'vector-quantize-pytorch',
     'x-clip>=0.4.4',
     'youtokentome',
+    'wandb>=0.12.16',
     'webdataset>=0.2.5',
     'fsspec>=2022.1.0'
   ],
