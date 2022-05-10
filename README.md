@@ -1000,10 +1000,10 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)
 - [x] offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention
 - [x] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
+- [x] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
 - [ ] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
-- [ ] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training
 - [ ] train on a toy task, offer in colab
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
