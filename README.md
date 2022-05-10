@@ -1002,12 +1002,12 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)
 - [x] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training
 - [x] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
+- [x] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] train on a toy task, offer in colab
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
-- [ ] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
 - [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove
 - [ ] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
@@ -1090,6 +1090,17 @@ Once built, images will be saved to the same directory the command is invoked
     journal = {ArXiv},
     year    = {2022},
     volume  = {abs/2205.01917}
+}
+```
+
+```bibtex
+@misc{wang2021crossformer,
+    title   = {CrossFormer: A Versatile Vision Transformer Hinging on Cross-scale Attention},
+    author  = {Wenxiao Wang and Lu Yao and Long Chen and Binbin Lin and Deng Cai and Xiaofei He and Wei Liu},
+    year    = {2021},
+    eprint  = {2108.00154},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
 }
 ```
 
