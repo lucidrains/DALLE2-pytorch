@@ -1251,8 +1251,7 @@ class Unet(nn.Module):
         cond_on_image_embeds = False,
         init_dim = None,
         init_conv_kernel_size = 7,
-        block_type = 'resnet',
-        block_resnet_groups = 8,
+        resnet_groups = 8,
         **kwargs
     ):
         super().__init__()
@@ -1330,7 +1329,9 @@ class Unet(nn.Module):
 
         # resnet block klass
 
-        block_klass = partial(ResnetBlock, groups = block_resnet_groups)
+        resnet_groups = cast_tuple(resnet_groups, len(in_out))
+
+        assert len(resnet_groups) == len(in_out)
 
         # layers
 
@@ -1338,38 +1339,39 @@ class Unet(nn.Module):
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
 
-        for ind, (dim_in, dim_out) in enumerate(in_out):
+        for ind, ((dim_in, dim_out), groups) in enumerate(zip(in_out, resnet_groups)):
             is_first = ind == 0
             is_last = ind >= (num_resolutions - 1)
             layer_cond_dim = cond_dim if not is_first else None
 
             self.downs.append(nn.ModuleList([
-                block_klass(dim_in, dim_out, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_in, dim_out, time_cond_dim = time_cond_dim, groups = groups),
                 Residual(LinearAttention(dim_out, **attn_kwargs)) if sparse_attn else nn.Identity(),
-                block_klass(dim_out, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_out, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
                 Downsample(dim_out) if not is_last else nn.Identity()
             ]))
 
         mid_dim = dims[-1]
 
-        self.mid_block1 = block_klass(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim)
+        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
         self.mid_attn = EinopsToAndFrom('b c h w', 'b (h w) c', Residual(Attention(mid_dim, **attn_kwargs))) if attend_at_middle else None
-        self.mid_block2 = block_klass(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
 
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
+        for ind, ((dim_in, dim_out), groups) in enumerate(zip(reversed(in_out[1:]), reversed(resnet_groups))):
             is_last = ind >= (num_resolutions - 2)
             layer_cond_dim = cond_dim if not is_last else None
 
             self.ups.append(nn.ModuleList([
-                block_klass(dim_out * 2, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_out * 2, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
                 Residual(LinearAttention(dim_in, **attn_kwargs)) if sparse_attn else nn.Identity(),
-                block_klass(dim_in, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim),
+                ResnetBlock(dim_in, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
                 Upsample(dim_in)
             ]))
 
         out_dim = default(out_dim, channels)
+
         self.final_conv = nn.Sequential(
-            block_klass(dim, dim),
+            ResnetBlock(dim, dim, groups = resnet_groups[0]),
             nn.Conv2d(dim, out_dim, 1)
         )
 
