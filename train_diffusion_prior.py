@@ -342,7 +342,7 @@ def main():
           RESUME,
           DPRIOR_PATH,
           config,
-          atgs.wandb_entity,
+          args.wandb_entity,
           args.wandb_project,
           args.learning_rate,
           args.max_grad_norm,
