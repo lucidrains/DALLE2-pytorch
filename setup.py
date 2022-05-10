@@ -15,6 +15,7 @@ setup(
   description = 'DALL-E 2',
   author = 'Phil Wang',
   author_email = 'lucidrains@gmail.com',
+  long_description_content_type = 'text/markdown',
   url = 'https://github.com/lucidrains/dalle2-pytorch',
   keywords = [
     'artificial intelligence',
