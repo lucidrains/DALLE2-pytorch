@@ -333,6 +333,7 @@ def train(
 def main(
     webdataset_base_url,
     embeddings_url,
+    device_name="cuda",
     cuda=True,
     epochs=20,
     epoch_length=None,
@@ -353,7 +354,7 @@ def main(
         os.makedirs(save_path)
     cuda = cuda and torch.cuda.is_available()
     if cuda:
-        device = torch.device("cuda:7")
+        device = torch.device(device_name)
         torch.cuda.set_device(device)
     else:
         device = torch.device("cpu")
@@ -422,6 +423,7 @@ if __name__ == "__main__":
     main(
         "pipe:s3cmd get s3://laion-us-east-1/laion-data/laion2B-data/{}.tar -",
         "s3://dalle2-training-dataset/new_shard_width/reordered_embeddings/",
+        device_name="cuda:7",
         cuda=False,
         epoch_length=10000,
         n_samples=3,
