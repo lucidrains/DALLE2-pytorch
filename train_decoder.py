@@ -332,7 +332,7 @@ def train(
     
 def main(
     webdataset_base_url,
-    embeddings_url
+    embeddings_url,
     cuda=True,
     epochs=20,
     epoch_length=None,
