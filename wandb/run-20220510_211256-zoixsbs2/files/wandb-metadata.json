@@ -1,0 +1,24 @@
+{
+    "os": "Linux-5.4.0-1071-aws-x86_64-with-Ubuntu-18.04-bionic",
+    "python": "3.6.9",
+    "heartbeatAt": "2022-05-10T21:12:57.411903",
+    "startedAt": "2022-05-10T21:12:56.557786",
+    "docker": null,
+    "gpu": "NVIDIA A100-SXM4-40GB",
+    "gpu_count": 8,
+    "cpu_count": 96,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "train_decoder.py",
+    "codePath": "train_decoder.py",
+    "git": {
+        "remote": "https://github.com/Veldrovive/DALLE2-pytorch",
+        "commit": "95653ef691d2970b9183bc9e6b362172e3abc98d"
+    },
+    "email": "aidan.dempster@gmail.com",
+    "root": "/opt/dalle2_generator/DALLE2-pytorch",
+    "host": "ip-172-31-3-41",
+    "username": "aidan",
+    "executable": "/opt/dalle2_generator/DALLE2-pytorch/.env/bin/python"
+}

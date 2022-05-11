@@ -331,6 +331,8 @@ def train(
 
     
 def main(
+    webdataset_base_url,
+    embeddings_url
     cuda=True,
     epochs=20,
     epoch_length=None,
@@ -359,8 +361,8 @@ def main(
 
     dataloaders = create_dataloaders (
         available_shards=all_shards,
-        webdataset_base_url="pipe:s3cmd get s3://laion-us-east-1/laion-data/laion2B-data/{}.tar -",
-        embeddings_url="s3://dalle2-training-dataset/new_shard_width/reordered_embeddings/",
+        webdataset_base_url=webdataset_base_url,
+        embeddings_url=embeddings_url,
         num_workers=4,
         batch_size=batch_size,
         shuffle_train=False,
@@ -417,7 +419,14 @@ def main(
 
 if __name__ == "__main__":
     # main(False, epoch_length=None, validation_length=None, n_samples=5, learning_rate=4e-3)
-    main(False, epoch_length=10000, n_samples=3, do_overfit=True)
+    main(
+        "pipe:s3cmd get s3://laion-us-east-1/laion-data/laion2B-data/{}.tar -",
+        "s3://dalle2-training-dataset/new_shard_width/reordered_embeddings/",
+        cuda=False,
+        epoch_length=10000,
+        n_samples=3,
+        do_overfit=True
+    )
 
     # all_shards = list(range(169230, 169400+1))
     # dataloaders = create_dataloaders (
