@@ -1890,6 +1890,11 @@ class Decoder(BaseGaussianDiffusion):
             # return simple loss if not using learned variance
             return loss
 
+        # most of the code below is transcribed from
+        # https://github.com/hojonathanho/diffusion/blob/master/diffusion_tf/diffusion_utils_2.py
+        # the Improved DDPM paper then further modified it so that the mean is detached (shown a couple lines before), and weighted to be smaller than the l1 or l2 "simple" loss
+        # it is questionable whether this is really needed, looking at some of the figures in the paper, but may as well stay faithful to their implementation
+
         # if learning the variance, also include the extra weight kl loss
 
         true_mean, _, true_log_variance_clipped = self.q_posterior(x_start = x_start, x_t = x_noisy, t = times)
