@@ -831,7 +831,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         image_channels = 3,
         timesteps = 1000,
         cond_drop_prob = 0.,
-        loss_type = "l1",
+        loss_type = "l2",
         predict_x_start = True,
         beta_schedule = "cosine",
         condition_on_text_encodings = True, # the paper suggests this is needed, but you can turn it off for your CLIP preprocessed text embed -> image embed training
@@ -1614,7 +1614,7 @@ class Decoder(BaseGaussianDiffusion):
         timesteps = 1000,
         image_cond_drop_prob = 0.1,
         text_cond_drop_prob = 0.5,
-        loss_type = 'l1',
+        loss_type = 'l2',
         beta_schedule = 'cosine',
         predict_x_start = False,
         predict_x_start_for_latent_diffusion = False,
