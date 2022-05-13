@@ -262,9 +262,21 @@ class OpenAIClipAdapter(BaseClipAdapter):
         text_mask = text != 0
         assert not self.cleared
 
-        text_embed = self.clip.encode_text(text)
-        text_encodings = self.text_encodings
-        del self.text_encodings
+        # taken from official clip github
+        x = self.clip.token_embedding(text).type(self.clip.dtype)
+        x = x + self.clip.positional_embedding.type(self.clip.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.clip.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.clip.ln_final(x).type(self.clip.dtype)
+
+        # clone at this part to grab hidden state of text
+        text_encodings = x.clone()
+
+        # continue and compute the full embedding
+        text_embed = x[torch.arange(x.shape[0]), text.argmax(
+            dim=-1)] @ self.clip.text_projection
+
         return EmbeddedText(l2norm(text_embed.float()), text_encodings.float(), text_mask)
 
     @torch.no_grad()
