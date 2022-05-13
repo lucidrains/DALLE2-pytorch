@@ -1008,7 +1008,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] train on a toy task, offer in colab
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
-- [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
+- [ ] extend diffusion head to use diffusion-gan (potentially using [lightweight-gan](https://github.com/lucidrains/lightweight-gan) or [projected gan](https://github.com/autonomousvision/projected_gan)) to speed up inference
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
 - [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove
 - [ ] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
