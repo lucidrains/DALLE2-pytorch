@@ -221,7 +221,7 @@ class DecoderTrainer(nn.Module):
         self,
         decoder,
         use_ema = True,
-        lr = 3e-4,
+        lr = 2e-5,
         wd = 1e-2,
         max_grad_norm = None,
         amp = False,
