@@ -7,7 +7,7 @@ def separate_weight_decayable_params(params):
 
 def get_optimizer(
     params,
-    lr = 3e-4,
+    lr = 2e-5,
     wd = 1e-2,
     betas = (0.9, 0.999),
     filter_by_requires_grad = False
