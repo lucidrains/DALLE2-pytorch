@@ -775,7 +775,6 @@ decoder_trainer = DecoderTrainer(
 
 for unet_number in (1, 2):
     loss = decoder_trainer(images, text = text, unet_number = unet_number)  # use the decoder_trainer forward
-    loss.backward()
 
     decoder_trainer.update(unet_number) # update the specific unet as well as its exponential moving average
 
@@ -839,7 +838,6 @@ diffusion_prior_trainer = DiffusionPriorTrainer(
 )
 
 loss = diffusion_prior_trainer(text, images)
-loss.backward()
 diffusion_prior_trainer.update()  # this will update the optimizer as well as the exponential moving averaged diffusion prior
 
 # after much of the above three lines in a loop
