@@ -10,13 +10,14 @@ def get_optimizer(
     lr = 2e-5,
     wd = 1e-2,
     betas = (0.9, 0.999),
+    eps = 1e-8,
     filter_by_requires_grad = False
 ):
     if filter_by_requires_grad:
         params = list(filter(lambda t: t.requires_grad, params))
 
     if wd == 0:
-        return Adam(params, lr = lr, betas = betas)
+        return Adam(params, lr = lr, betas = betas, eps = eps)
 
     params = set(params)
     wd_params, no_wd_params = separate_weight_decayable_params(params)
@@ -26,4 +27,4 @@ def get_optimizer(
         {'params': list(no_wd_params), 'weight_decay': 0},
     ]
 
-    return AdamW(param_groups, lr = lr, weight_decay = wd, betas = betas)
+    return AdamW(param_groups, lr = lr, weight_decay = wd, betas = betas, eps = eps)
