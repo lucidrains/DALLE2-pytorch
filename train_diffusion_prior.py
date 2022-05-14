@@ -4,12 +4,13 @@ import argparse
 import numpy as np
 
 import torch
+import clip
 from torch import nn
 from embedding_reader import EmbeddingReader
-from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork
+from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter
 from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model, print_ribbon
 from dalle2_pytorch.optimizer import get_optimizer
-from torch.cuda.amp import autocast,GradScaler
+from torch.cuda.amp import autocast, GradScaler
 
 import time
 from tqdm import tqdm
@@ -19,18 +20,22 @@ os.environ["WANDB_SILENT"] = "true"
 NUM_TEST_EMBEDDINGS = 100 # for cosine similarity reporting during training
 REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting during training
 
+def caption_to_tokens(captions):
+    return clip.tokenize(captions['caption'].to_list(), truncate=True)
 
-def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_type,phase="Validation"):
+def tokens_to_embedding(tokenized_text, diffusion_prior):
+    return diffusion_prior.clip.embed_text(tokenized_text)[0]
+
+def eval_model(model,device,image_reader,start,end,batch_size,loss_type,phase="Validation"):
     model.eval()
     with torch.no_grad():
         total_loss = 0.
         total_samples = 0.
 
-        for emb_images, emb_text in zip(image_reader(batch_size=batch_size, start=start, end=end),
-                text_reader(batch_size=batch_size, start=start, end=end)):
-
-            emb_images_tensor = torch.tensor(emb_images[0]).to(device)
-            emb_text_tensor = torch.tensor(emb_text[0]).to(device)
+        for emb_images, captions in image_reader(batch_size=batch_size, start=start, end=end):
+            tokenized_text = caption_to_tokens(captions).to(device)
+            emb_text_tensor = tokens_to_embedding(tokenized_text, model)
+            emb_images_tensor = torch.tensor(emb_images).to(device)
 
             batches = emb_images_tensor.shape[0]
 
@@ -42,7 +47,7 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
         avg_loss = (total_loss / total_samples)
         wandb.log({f'{phase} {loss_type}': avg_loss})
 
-def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,NUM_TEST_EMBEDDINGS,device):
+def report_cosine_sims(diffusion_prior,image_reader,train_set_size,NUM_TEST_EMBEDDINGS,device):
     diffusion_prior.eval()
 
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
@@ -50,32 +55,30 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,N
     tstart = train_set_size
     tend = train_set_size+NUM_TEST_EMBEDDINGS
 
-    for embt, embi in zip(text_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend), 
-            image_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend)):
+    for embi, captions in image_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend):
+       # tokenize text & embed text
+       tokenized_text = caption_to_tokens(captions).to(device)
+       text_embed = tokens_to_embedding(tokenized_text, diffusion_prior)
+
        # make a copy of the text embeddings for shuffling
-       text_embed = torch.tensor(embt[0]).to(device)
        text_embed_shuffled = text_embed.clone()
         # roll the text embeddings to simulate "unrelated" captions
        rolled_idx = torch.roll(torch.arange(NUM_TEST_EMBEDDINGS), 1)
        text_embed_shuffled = text_embed_shuffled[rolled_idx]
        text_embed_shuffled = text_embed_shuffled / \
            text_embed_shuffled.norm(dim=1, keepdim=True)
-       test_text_shuffled_cond = dict(text_embed=text_embed_shuffled)
         # prepare the text embedding
        text_embed = text_embed / text_embed.norm(dim=1, keepdim=True)
-       test_text_cond = dict(text_embed=text_embed)
         # prepare image embeddings
-       test_image_embeddings = torch.tensor(embi[0]).to(device)
+       test_image_embeddings = torch.tensor(embi).to(device)
        test_image_embeddings = test_image_embeddings / \
            test_image_embeddings.norm(dim=1, keepdim=True)
         # predict on the unshuffled text embeddings
-       predicted_image_embeddings = diffusion_prior.p_sample_loop(
-           (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_cond)
+       predicted_image_embeddings = diffusion_prior.sample(tokenized_text)
        predicted_image_embeddings = predicted_image_embeddings / \
            predicted_image_embeddings.norm(dim=1, keepdim=True)
         # predict on the shuffled embeddings
-       predicted_unrelated_embeddings = diffusion_prior.p_sample_loop(
-           (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_shuffled_cond)
+       predicted_unrelated_embeddings = diffusion_prior.sample(tokenized_text)
        predicted_unrelated_embeddings = predicted_unrelated_embeddings / \
            predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
         # calculate similarities
@@ -95,14 +98,14 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,N
 
 def train(image_embed_dim,
           image_embed_url,
-          text_embed_url,
+          meta_url,
           batch_size,
           train_percent,
           val_percent,
           test_percent,
           num_epochs,
           dp_loss_type,
-          clip,
+          clip_model,
           dp_condition_on_text_encodings,
           dp_timesteps,
           dp_normformer,
@@ -137,7 +140,7 @@ def train(image_embed_dim,
     # DiffusionPrior with text embeddings and image embeddings pre-computed
     diffusion_prior = DiffusionPrior( 
             net = prior_network, 
-            clip = clip, 
+            clip = OpenAIClipAdapter(clip_model),
             image_embed_dim = image_embed_dim, 
             timesteps = dp_timesteps,
             cond_drop_prob = dp_cond_drop_prob, 
@@ -154,10 +157,10 @@ def train(image_embed_dim,
         os.makedirs(save_path)
 
     # Get image and text embeddings from the servers
-    print_ribbon("Downloading embeddings - image and text")
-    image_reader = EmbeddingReader(embeddings_folder=image_embed_url, file_format="npy")
-    text_reader  = EmbeddingReader(embeddings_folder=text_embed_url, file_format="npy")
-    num_data_points = text_reader.count
+    print_ribbon("Downloading Image Embeddings")
+    image_reader = EmbeddingReader(embeddings_folder=image_embed_url,
+                                   metadata_folder=meta_url, meta_columns=['caption'], file_format="parquet_npy")
+    num_data_points = image_reader.count
 
     ### Training code ###
     scaler = GradScaler(enabled=amp)
@@ -173,16 +176,16 @@ def train(image_embed_dim,
 
     for _ in range(epochs):
 
-        for emb_images,emb_text in zip(image_reader(batch_size=batch_size, start=0, end=train_set_size),
-                text_reader(batch_size=batch_size, start=0, end=train_set_size)):
+        for emb_images, captions in image_reader(batch_size=batch_size, start=0, end=train_set_size):
 
             diffusion_prior.train()
-            
-            emb_images_tensor = torch.tensor(emb_images[0]).to(device)
-            emb_text_tensor = torch.tensor(emb_text[0]).to(device)
+
+            # tokenize the text & prepare image embeddings
+            tokenized_text = caption_to_tokens(captions).to(device)
+            emb_images_tensor = torch.tensor(emb_images).to(device)
 
             with autocast(enabled=amp):
-                loss = diffusion_prior(text_embed = emb_text_tensor,image_embed = emb_images_tensor)
+                loss = diffusion_prior(text = tokenized_text, image_embed = emb_images_tensor)
                 scaler.scale(loss).backward()
 
             # Samples per second
@@ -210,7 +213,6 @@ def train(image_embed_dim,
             if(step % REPORT_METRICS_EVERY) == 0:
                 report_cosine_sims(diffusion_prior,
                         image_reader,
-                        text_reader,
                         train_set_size,
                         NUM_TEST_EMBEDDINGS,
                         device)
@@ -218,7 +220,6 @@ def train(image_embed_dim,
                 eval_model(diffusion_prior,
                         device,
                         image_reader,
-                        text_reader,
                         eval_start,
                         eval_start+NUM_TEST_EMBEDDINGS,
                         NUM_TEST_EMBEDDINGS,
@@ -236,7 +237,7 @@ def train(image_embed_dim,
     test_set_size = int(test_percent*train_set_size) 
     start=train_set_size+val_set_size
     end=num_data_points
-    eval_model(diffusion_prior,device,image_reader,text_reader,start,end,batch_size,dp_loss_type,phase="Test")
+    eval_model(diffusion_prior,device,image_reader,start,end,batch_size,dp_loss_type,phase="Test")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -247,38 +248,39 @@ def main():
     parser.add_argument("--wandb-arch", type=str, default="DiffusionPrior")
     # URLs for embeddings 
     parser.add_argument("--image-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
-    parser.add_argument("--text-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
+    parser.add_argument("--meta-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/laion2B-en-metadata/")
     # Hyperparameters
     parser.add_argument("--learning-rate", type=float, default=1.1e-4)
     parser.add_argument("--weight-decay", type=float, default=6.02e-2)
     parser.add_argument("--dropout", type=float, default=5e-2)
     parser.add_argument("--max-grad-norm", type=float, default=0.5)
-    parser.add_argument("--batch-size", type=int, default=10**4)
-    parser.add_argument("--num-epochs", type=int, default=5)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--num-epochs", type=int, default=1)
     # Image embed dimension
     parser.add_argument("--image-embed-dim", type=int, default=768)
     # Train-test split
     parser.add_argument("--train-percent", type=float, default=0.7)
     parser.add_argument("--val-percent", type=float, default=0.2)
     parser.add_argument("--test-percent", type=float, default=0.1)
-    # LAION training(pre-computed embeddings)
     # DiffusionPriorNetwork(dpn) parameters
-    parser.add_argument("--dpn-depth", type=int, default=6)
+    parser.add_argument("--dpn-depth", type=int, default=12)
     parser.add_argument("--dpn-dim-head", type=int, default=64)
-    parser.add_argument("--dpn-heads", type=int, default=8)
+    parser.add_argument("--dpn-heads", type=int, default=12)
     # DiffusionPrior(dp) parameters
-    parser.add_argument("--dp-condition-on-text-encodings", type=bool, default=False)
-    parser.add_argument("--dp-timesteps", type=int, default=100)
-    parser.add_argument("--dp-normformer", type=bool, default=False)
+    parser.add_argument("--dp-condition-on-text-encodings", type=bool, default=True)
+    parser.add_argument("--dp-timesteps", type=int, default=1000)
+    parser.add_argument("--dp-normformer", type=bool, default=True)
     parser.add_argument("--dp-cond-drop-prob", type=float, default=0.1)
     parser.add_argument("--dp-loss-type", type=str, default="l2")
-    parser.add_argument("--clip", type=str, default=None)
+    parser.add_argument("--clip", type=str, default="ViT-L/14")
     parser.add_argument("--amp", type=bool, default=False)
     # Model checkpointing interval(minutes)
-    parser.add_argument("--save-interval", type=int, default=30)
+    parser.add_argument("--save-interval", type=int, default=120)
     parser.add_argument("--save-path", type=str, default="./diffusion_prior_checkpoints")
     # Saved model path 
     parser.add_argument("--pretrained-model-path", type=str, default=None)
+    # GPU selection
+    parser.add_argument("--gpu-device", type=int, default=0)
 
     args = parser.parse_args()
 
@@ -315,13 +317,13 @@ def main():
 
     has_cuda = torch.cuda.is_available()
     if has_cuda:
-        device = torch.device("cuda:0")
+        device = torch.device(f"cuda:{args.gpu_device}")
         torch.cuda.set_device(device)
 
     # Training loop
     train(args.image_embed_dim,
           args.image_embed_url,
-          args.text_embed_url,
+          args.meta_url,
           args.batch_size,
           args.train_percent,
           args.val_percent,
