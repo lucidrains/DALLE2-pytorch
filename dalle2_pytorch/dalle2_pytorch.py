@@ -1163,6 +1163,7 @@ class CrossAttention(nn.Module):
         dim_head = 64,
         heads = 8,
         dropout = 0.,
+        norm_context = False
     ):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -1172,7 +1173,7 @@ class CrossAttention(nn.Module):
         context_dim = default(context_dim, dim)
 
         self.norm = LayerNorm(dim)
-        self.norm_context = LayerNorm(context_dim)
+        self.norm_context = LayerNorm(context_dim) if norm_context else nn.Identity()
         self.dropout = nn.Dropout(dropout)
 
         self.null_kv = nn.Parameter(torch.randn(2, dim_head))
@@ -1377,6 +1378,9 @@ class Unet(nn.Module):
             nn.Linear(image_embed_dim, cond_dim * num_image_tokens),
             Rearrange('b (n d) -> b n d', n = num_image_tokens)
         ) if image_embed_dim != cond_dim else nn.Identity()
+
+        self.norm_cond = nn.LayerNorm(cond_dim)
+        self.norm_mid_cond = nn.LayerNorm(cond_dim)
 
         # text encoding conditioning (optional)
 
@@ -1592,6 +1596,11 @@ class Unet(nn.Module):
         # to save on compute, only do cross attention based conditioning on the inner most layers of the Unet
 
         mid_c = c if not exists(text_tokens) else torch.cat((c, text_tokens), dim = -2)
+
+        # normalize conditioning tokens
+
+        c = self.norm_cond(c)
+        mid_c = self.norm_mid_cond(mid_c)
 
         # go through the layers of the unet, down and up
 
