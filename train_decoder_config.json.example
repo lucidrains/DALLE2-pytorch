@@ -54,8 +54,9 @@
     },
     "train": {
         "epochs": 100,
-        "lr": 1.2e-4,
+        "lr": 2e-5,
         "wd": 0.0,
+        "max_grad_norm": null,
         "save_every_n_samples": 100000,
         "n_sample_images": 16,
         "device": "cuda:6",
