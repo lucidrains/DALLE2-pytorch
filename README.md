@@ -732,8 +732,8 @@ clip = CLIP(
 
 # mock data
 
-text = torch.randint(0, 49408, (4, 256)).cuda()
-images = torch.randn(4, 3, 256, 256).cuda()
+text = torch.randint(0, 49408, (32, 256)).cuda()
+images = torch.randn(32, 3, 256, 256).cuda()
 
 # decoder (with unet)
 
@@ -774,7 +774,12 @@ decoder_trainer = DecoderTrainer(
 )
 
 for unet_number in (1, 2):
-    loss = decoder_trainer(images, text = text, unet_number = unet_number)  # use the decoder_trainer forward
+    loss = decoder_trainer(
+        images,
+        text = text,
+        unet_number = unet_number, # which unet to train on
+        max_batch_size = 4         # gradient accumulation - this sets the maximum batch size in which to do forward and backwards pass - for this example 32 / 4 == 8 times
+    )
 
     decoder_trainer.update(unet_number) # update the specific unet as well as its exponential moving average
 
