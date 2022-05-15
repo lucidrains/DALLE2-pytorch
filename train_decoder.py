@@ -120,14 +120,48 @@ def generate_samples(trainer, dataloader, epoch, device, step, n=5, text_prepend
                     trainer.to(device)  # Again, don't ask me why but something here moves the model to the cpu
                     return images
 
+def get_trainer_state_dict(trainer):
+    """
+    Returns a state dict for the trainer that includes the optimizers, scalers, EMA model, and actual decoder
+    """
+    state_dict = {
+        "optimizers": [],
+        "scalers": [],
+        "ema_model": [],
+        "decoder": None
+    }
+    for unet_index in range(trainer.num_unets):
+        optimizer = getattr(trainer, f'optim{unet_index}')
+        scaler = getattr(trainer, f'scaler{unet_index}')
+        state_dict["optimizers"].append(optimizer.state_dict())
+        state_dict["scalers"].append(scaler.state_dict())
+    
+    for EMA_unet in trainer.unets:
+        state_dict["ema_model"].append(EMA_unet.state_dict())
+
+    state_dict["decoder"] = trainer.decoder.state_dict()
+
+def apply_trainer_state_dict(trainer, state_dict):
+    """
+    Loads the state dict back into the trainer
+    """
+    for unet_index in range(trainer.num_unets):
+        optimizer = getattr(trainer, f'optim{unet_index}')
+        optimizer.load_state_dict(state_dict["optimizers"][unet_index])
+        scaler = getattr(trainer, f'scaler{unet_index}')
+        scaler.load_state_dict(state_dict["scalers"][unet_index])
+    
+    for EMA_unet in trainer.unets:
+        EMA_unet.load_state_dict(state_dict["ema_model"][unet_index])
+    
+    trainer.decoder.load_state_dict(state_dict["decoder"])
+
 def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=True, latest=False, best=False, checkpoint=False):
     """
     Saves the state of the trainer and decoder to wandb.
     """
     print(print_ribon("Saving trainer", repeat=40))
-    state_dict = {}
-    state_dict["trainer"] = trainer.state_dict()
-    state_dict["decoder"] = trainer.decoder.state_dict()
+    state_dict = get_trainer_state_dict(trainer)
     state_dict['epoch'] = epoch
     state_dict['step'] = step
     state_dict['validation_losses'] = validation_losses
@@ -155,8 +189,7 @@ def recall_trainer(trainer, wandb_run_path=None, wandb_file_path=None, local_fil
         # Then we are recalling from a file
         print(f"Recalling trainer from file: {local_filepath}")
         state_dict = torch.load(local_filepath)
-    trainer.load_state_dict(state_dict["trainer"])
-    trainer.decoder.load_state_dict(state_dict["decoder"])
+    apply_trainer_state_dict(trainer, state_dict)
     return trainer, state_dict["epoch"], state_dict["step"], state_dict["validation_losses"] if "validation_losses" in state_dict else []
 
 def train(
