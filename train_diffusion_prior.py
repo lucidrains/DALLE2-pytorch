@@ -1,14 +1,14 @@
-import os
+from pathlib import Path
+import click
 import math
 import time
-import argparse
 import numpy as np
 
 import torch
 import clip
 from torch import nn
 from dalle2_pytorch.dataloaders import make_splits
-from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork
+from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter
 from dalle2_pytorch.train import DiffusionPriorTrainer, load_diffusion_model, save_diffusion_model, print_ribbon
 from dalle2_pytorch.trackers import ConsoleTracker, WandbTracker
 
@@ -23,6 +23,20 @@ REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting du
 
 tracker = WandbTracker()
 
+# helpers functions
+
+def exists(val):
+    val is not None
+
+class Timer:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.last_time = time.time()
+
+    def elapsed(self):
+        return time.time() - self.last_time
 # functions
 
 def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation"):
@@ -122,39 +136,117 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
             "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
             "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
 
-def train(image_embed_dim,
-          image_embed_url,
-          text_embed_url,
-          meta_url,
-          batch_size,
-          num_data_points,
-          train_percent,
-          val_percent,
-          test_percent,
-          num_epochs,
-          dp_loss_type,
-          clip_model,
-          dp_condition_on_text_encodings,
-          dp_timesteps,
-          dp_normformer,
-          dp_cond_drop_prob,
-          dpn_depth,
-          dpn_dim_head,
-          dpn_heads,
-          save_interval,
-          save_path,
-          device,
-          RESUME,
-          DPRIOR_PATH,
-          config,
-          wandb_entity,
-          wandb_project,
-          learning_rate=0.001,
-          max_grad_norm=0.5,
-          weight_decay=0.01,
-          dropout=0.05,
-          amp=False):
 
+@click.command()
+@click.option("--wandb-entity", default="laion")
+@click.option("--wandb-project", default="diffusion-prior")
+@click.option("--wandb-dataset", default="LAION-5B")
+@click.option("--wandb-arch", default="DiffusionPrior")
+@click.option("--image-embed-url", default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
+@click.option("--text-embed-url", default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
+@click.option("--meta-url", default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/laion2B-en-metadata/")
+@click.option("--learning-rate", default=1.1e-4)
+@click.option("--weight-decay", default=6.02e-2)
+@click.option("--dropout", default=5e-2)
+@click.option("--max-grad-norm", default=0.5)
+@click.option("--num-data-points", default=250e6)
+@click.option("--batch-size", default=10**4)
+@click.option("--num-epochs", default=5)
+@click.option("--image-embed-dim", default=768)
+@click.option("--train-percent", default=0.7)
+@click.option("--val-percent", default=0.2)
+@click.option("--test-percent", default=0.1)
+@click.option("--dpn-depth", default=6)
+@click.option("--dpn-dim-head", default=64)
+@click.option("--dpn-heads", default=8)
+@click.option("--dp-condition-on-text-encodings", default=False)
+@click.option("--dp-timesteps", default=100)
+@click.option("--dp-normformer", default=False)
+@click.option("--dp-cond-drop-prob", default=0.1)
+@click.option("--dp-loss-type", default="l2")
+@click.option("--clip", default=None)
+@click.option("--amp", default=False)
+@click.option("--save-interval", default=30)
+@click.option("--save-path", default="./diffusion_prior_checkpoints")
+@click.option("--pretrained-model-path", default=None)
+@click.option("--gpu-device", default=0)
+def train(
+    wandb_entity,
+    wandb_project,
+    wandb_dataset,
+    wandb_arch,
+    image_embed_url,
+    text_embed_url,
+    meta_url,
+    learning_rate,
+    weight_decay,
+    dropout,
+    max_grad_norm,
+    num_data_points,
+    batch_size,
+    num_epochs,
+    image_embed_dim,
+    train_percent,
+    val_percent,
+    test_percent,
+    dpn_depth,
+    dpn_dim_head,
+    dpn_heads,
+    dp_condition_on_text_encodings,
+    dp_timesteps,
+    dp_normformer,
+    dp_cond_drop_prob,
+    dp_loss_type,
+    clip,
+    amp,
+    save_interval,
+    save_path,
+    pretrained_model_path,
+    gpu_device
+):
+    config = {
+        "learning_rate": learning_rate,
+        "architecture": wandb_arch,
+        "dataset": wandb_dataset,
+        "weight_decay": weight_decay,
+        "max_gradient_clipping_norm": max_grad_norm,
+        "batch_size": batch_size,
+        "epochs": num_epochs,
+        "diffusion_prior_network": {
+            "depth": dpn_depth,
+            "dim_head": dpn_dim_head,
+            "heads": dpn_heads,
+            "normformer": dp_normformer
+        },
+        "diffusion_prior": {
+            "condition_on_text_encodings": dp_condition_on_text_encodings,
+            "timesteps": dp_timesteps,
+            "cond_drop_prob": dp_cond_drop_prob,
+            "loss_type": dp_loss_type,
+            "clip": clip
+        }
+    }
+
+    # Check if DPRIOR_PATH exists(saved model path)
+
+    DPRIOR_PATH = args.pretrained_model_path
+    RESUME = exists(DPRIOR_PATH)
+
+    if not RESUME:
+        tracker.init(
+            entity = wandb_entity,
+            project = wandb_project,
+            config = config
+        )
+
+    # Obtain the utilized device.
+
+    has_cuda = torch.cuda.is_available()
+    if has_cuda:
+        device = torch.device(f"cuda:{gpu_device}")
+        torch.cuda.set_device(device)
+
+    # Training loop
     # diffusion prior network
 
     prior_network = DiffusionPriorNetwork( 
@@ -169,7 +261,7 @@ def train(image_embed_dim,
     
     # Load clip model if text-conditioning
     if dp_condition_on_text_encodings:
-        clip_adapter = OpenAIClipAdapter(clip_model)
+        clip_adapter = OpenAIClipAdapter(clip)
     else:
         clip_adapter = None
         
@@ -188,10 +280,7 @@ def train(image_embed_dim,
     # Load pre-trained model from DPRIOR_PATH
 
     if RESUME:
-        diffusion_prior = load_diffusion_model(DPRIOR_PATH, device)
-
-        # TODO, optimizer and scaler needs to be loaded as well
-
+        diffusion_prior, loaded_obj = load_diffusion_model(DPRIOR_PATH, device)
         tracker.init(entity = wandb_entity, project = wandb_project, config = config)
 
     # diffusion prior trainer
@@ -204,10 +293,15 @@ def train(image_embed_dim,
         amp = amp,
     ).to(device)
 
+    # load optimizer and scaler
+
+    if RESUME:
+        trainer.optimizer.load_state_dict(loaded_obj['optimizer'])
+        trainer.scaler.load_state_dict(loaded_obj['scaler'])
+
     # Create save_path if it doesn't exist
 
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    Path(save_path).mkdir(exist_ok = True, parents = True)
 
     # Utilize wrapper to abstract away loader logic
     print_ribbon("Downloading Embeddings")
@@ -224,8 +318,8 @@ def train(image_embed_dim,
     ### Training code ###
 
     step = 1 
+    timer = Timer()
     epochs = num_epochs
-    t = time.time()
 
     for _ in range(epochs):
 
@@ -239,16 +333,15 @@ def train(image_embed_dim,
             else:
                 input_args = dict(**input_args, text_embed=text)
 
-
             loss = trainer(**input_args)
 
             # Samples per second
 
-            samples_per_sec = batch_size*step/(time.time()-t)
+            samples_per_sec = batch_size * step / timer.elapsed()
 
             # Save checkpoint every save_interval minutes
-            if(int(time.time()-t) >= 60*save_interval):
-                t = time.time()
+            if(int(timer.elapsed()) >= 60 * save_interval):
+                timer.reset()
 
                 save_diffusion_model(
                     save_path,
@@ -275,126 +368,6 @@ def train(image_embed_dim,
     ### Test run ###
     eval_model(diffusion_prior, test_loader, dp_condition_on_text_encodings, dp_loss_type, phase="Test")
 
-def main():
-    parser = argparse.ArgumentParser()
-    # Logging
-    parser.add_argument("--wandb-entity", type=str, default="laion")
-    parser.add_argument("--wandb-project", type=str, default="diffusion-prior")
-    parser.add_argument("--wandb-dataset", type=str, default="LAION-5B")
-    parser.add_argument("--wandb-arch", type=str, default="DiffusionPrior")
-    # URLs for embeddings 
-    parser.add_argument("--image-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
-    parser.add_argument("--text-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
-    parser.add_argument("--meta-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/laion2B-en-metadata/")
-    # Hyperparameters
-    parser.add_argument("--learning-rate", type=float, default=1.1e-4)
-    parser.add_argument("--weight-decay", type=float, default=6.02e-2)
-    parser.add_argument("--dropout", type=float, default=5e-2)
-    parser.add_argument("--max-grad-norm", type=float, default=0.5)
-    parser.add_argument("--batch-size", type=int, default=256)
-    parser.add_argument("--num-epochs", type=int, default=1)
-    # Image embed dimension
-    parser.add_argument("--image-embed-dim", type=int, default=768)
-    # Train-test split
-    parser.add_argument("--num-data-points", type=float, default=250e6)
-    parser.add_argument("--train-percent", type=float, default=0.7)
-    parser.add_argument("--val-percent", type=float, default=0.2)
-    parser.add_argument("--test-percent", type=float, default=0.1)
-    # DiffusionPriorNetwork(dpn) parameters
-    parser.add_argument("--dpn-depth", type=int, default=12)
-    parser.add_argument("--dpn-dim-head", type=int, default=64)
-    parser.add_argument("--dpn-heads", type=int, default=12)
-    # DiffusionPrior(dp) parameters
-    parser.add_argument("--dp-condition-on-text-encodings", type=bool, default=True)
-    parser.add_argument("--dp-timesteps", type=int, default=1000)
-    parser.add_argument("--dp-normformer", type=bool, default=True)
-    parser.add_argument("--dp-cond-drop-prob", type=float, default=0.1)
-    parser.add_argument("--dp-loss-type", type=str, default="l2")
-    parser.add_argument("--clip-model", type=str, default="ViT-L/14")
-    parser.add_argument("--amp", type=bool, default=False)
-    # Model checkpointing interval(minutes)
-    parser.add_argument("--save-interval", type=int, default=120)
-    parser.add_argument("--save-path", type=str, default="./diffusion_prior_checkpoints")
-    # Saved model path 
-    parser.add_argument("--pretrained-model-path", type=str, default=None)
-    # GPU selection
-    parser.add_argument("--gpu-device", type=int, default=0)
-
-    args = parser.parse_args()
-
-    config = ({"learning_rate": args.learning_rate,
-        "architecture": args.wandb_arch,
-        "dataset": args.wandb_dataset,
-        "weight_decay":args.weight_decay,
-        "max_gradient_clipping_norm":args.max_grad_norm,
-        "batch_size":args.batch_size,
-        "epochs": args.num_epochs,
-        "diffusion_prior_network":{"depth":args.dpn_depth,
-        "dim_head":args.dpn_dim_head,
-        "heads":args.dpn_heads,
-        "normformer":args.dp_normformer},
-        "diffusion_prior":{"condition_on_text_encodings": args.dp_condition_on_text_encodings,
-        "timesteps": args.dp_timesteps,
-        "cond_drop_prob":args.dp_cond_drop_prob,
-        "loss_type":args.dp_loss_type,
-        "clip_model":args.clip_model}
-        })
-
-    RESUME = False
-
-    # Check if DPRIOR_PATH exists(saved model path)
-
-    DPRIOR_PATH = args.pretrained_model_path
-
-    if(DPRIOR_PATH is not None):
-        RESUME = True
-    else:
-        tracker.init(
-          entity=args.wandb_entity,
-          project=args.wandb_project,
-          config=config)
-
-    # Obtain the utilized device.
-
-    has_cuda = torch.cuda.is_available()
-    if has_cuda:
-        device = torch.device(f"cuda:{args.gpu_device}")
-        torch.cuda.set_device(device)
-
-    # Training loop
-    train(args.image_embed_dim,
-          args.image_embed_url,
-          args.text_embed_url,
-          args.meta_url,
-          args.batch_size,
-          args.num_data_points,
-          args.train_percent,
-          args.val_percent,
-          args.test_percent,
-          args.num_epochs,
-          args.dp_loss_type,
-          args.clip_model,
-          args.dp_condition_on_text_encodings,
-          args.dp_timesteps,
-          args.dp_normformer,
-          args.dp_cond_drop_prob,
-          args.dpn_depth,
-          args.dpn_dim_head,
-          args.dpn_heads,
-          args.save_interval,
-          args.save_path,
-          device,
-          RESUME,
-          DPRIOR_PATH,
-          config,
-          args.wandb_entity,
-          args.wandb_project,
-          args.learning_rate,
-          args.max_grad_norm,
-          args.weight_decay,
-          args.dropout,
-          args.amp)
-
 
 if __name__ == "__main__":
-    main()
+    train()
