@@ -75,15 +75,16 @@ def split_args_and_kwargs(x, *args, split_size = None, **kwargs):
     dict_keys = kwargs.keys()
     all_args = (x, *args, *kwargs.values())
     len_all_args = len(all_args)
-    split_index = len_all_args - dict_len
+    split_kwargs_index = len_all_args - dict_len
 
     split_all_args = [split(arg, split_size = split_size) if exists(arg) and isinstance(arg, (torch.Tensor, Iterable)) else ((arg,) * chunk_size) for arg in all_args]
     chunk_sizes = tuple(map(len, split_all_args[0]))
 
     for (chunk_size, *chunked_all_args) in tuple(zip(chunk_sizes, *split_all_args)):
-        chunked_args, chunked_kwargs_values = chunked_all_args[:split_index], chunked_all_args[split_index:]
+        chunked_args, chunked_kwargs_values = chunked_all_args[:split_kwargs_index], chunked_all_args[split_kwargs_index:]
         chunked_kwargs = dict(tuple(zip(dict_keys, chunked_kwargs_values)))
-        yield chunk_size, (chunked_args, chunked_kwargs)
+        chunk_size_frac = chunk_size / batch_size
+        yield chunk_size_frac, (chunked_args, chunked_kwargs)
 
 # print helpers
 
@@ -258,20 +259,17 @@ class DiffusionPriorTrainer(nn.Module):
         max_batch_size = None,
         **kwargs
     ):
-        batch_size = x.shape[0]
-        total_samples = 0
         total_loss = 0.
 
-        for chunk_size, (chunked_args, chunked_kwargs) in split_args_and_kwargs(x, *args, split_size = max_batch_size, **kwargs):
+        for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(x, *args, split_size = max_batch_size, **kwargs):
             with autocast(enabled = self.amp):
                 loss = self.diffusion_prior(*chunked_args, **chunked_kwargs)
+                loss = loss * chunk_size_frac
 
-                total_loss += loss.item() * chunk_size
-                total_samples += chunk_size
+                total_loss += loss.item()
+                self.scaler.scale(loss).backward()
 
-                self.scaler.scale(loss * (chunk_size / batch_size)).backward()
-
-        return total_loss / total_samples
+        return total_loss
 
 # decoder trainer
 
@@ -385,17 +383,14 @@ class DecoderTrainer(nn.Module):
         max_batch_size = None,
         **kwargs
     ):
-        batch_size = x.shape[0]
-        total_samples = 0
         total_loss = 0.
 
-        for chunk_size, (chunked_args, chunked_kwargs) in split_args_and_kwargs(x, split_size = max_batch_size, **kwargs):
+        for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(x, split_size = max_batch_size, **kwargs):
             with autocast(enabled = self.amp):
                 loss = self.decoder(*chunked_args, unet_number = unet_number, **chunked_kwargs)
+                loss = loss * chunk_size_frac
 
-                total_loss += loss.item() * chunk_size
-                total_samples += chunk_size
+                total_loss += loss.item()
+                self.scale(loss, unet_number = unet_number).backward()
 
-                self.scale(loss * (chunk_size / batch_size), unet_number = unet_number).backward()
-
-        return total_loss / total_samples
+        return total_loss
