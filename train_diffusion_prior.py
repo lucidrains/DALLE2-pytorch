@@ -1,3 +1,5 @@
+#TODO: ensure that the code runs and that arguments passed around match for the eval and test functions
+
 import os
 import math
 import argparse
@@ -5,8 +7,8 @@ import numpy as np
 
 import torch
 from torch import nn
-from embedding_reader import EmbeddingReader
-from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork
+from dalle2_pytorch.dataloaders import make_splits
+from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter
 from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model, print_ribbon
 from dalle2_pytorch.optimizer import get_optimizer
 from torch.cuda.amp import autocast,GradScaler
@@ -20,21 +22,27 @@ NUM_TEST_EMBEDDINGS = 100 # for cosine similarity reporting during training
 REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting during training
 
 
-def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_type,phase="Validation"):
+def tokens_to_embedding(tokenized_text, diffusion_prior):
+    return diffusion_prior.clip.embed_text(tokenized_text)[0]
+
+def eval_model(model, text_conditioned, dataloader, loss_type, phase="Validation"):
     model.eval()
+
     with torch.no_grad():
         total_loss = 0.
         total_samples = 0.
 
-        for emb_images, emb_text in zip(image_reader(batch_size=batch_size, start=start, end=end),
-                text_reader(batch_size=batch_size, start=start, end=end)):
+        for image_embeddings, text_data in dataloader:
 
-            emb_images_tensor = torch.tensor(emb_images[0]).to(device)
-            emb_text_tensor = torch.tensor(emb_text[0]).to(device)
+            batches = image_embeddings.shape[0]
 
-            batches = emb_images_tensor.shape[0]
+            input_args = dict(image_embed=image_embeddings)
+            if text_conditioned:
+                input_args = dict(**input_args, text = text_data)
+            else:
+                input_args = dict(**input_args, text_embed=text_data)
 
-            loss = model(text_embed = emb_text_tensor, image_embed = emb_images_tensor)
+            loss = model(**input_args)
 
             total_loss += loss.item() * batches
             total_samples += batches
@@ -42,67 +50,85 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
         avg_loss = (total_loss / total_samples)
         wandb.log({f'{phase} {loss_type}': avg_loss})
 
-def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,NUM_TEST_EMBEDDINGS,device):
+
+def report_cosine_sims(diffusion_prior, dataloader, text_conditioned, device):
     diffusion_prior.eval()
 
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 
-    tstart = train_set_size
-    tend = train_set_size+NUM_TEST_EMBEDDINGS
+    for image_embedding, text_data in dataloader:
 
-    for embt, embi in zip(text_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend), 
-            image_reader(batch_size=NUM_TEST_EMBEDDINGS, start=tstart, end=tend)):
-       # make a copy of the text embeddings for shuffling
-       text_embed = torch.tensor(embt[0]).to(device)
-       text_embed_shuffled = text_embed.clone()
-        # roll the text embeddings to simulate "unrelated" captions
-       rolled_idx = torch.roll(torch.arange(NUM_TEST_EMBEDDINGS), 1)
-       text_embed_shuffled = text_embed_shuffled[rolled_idx]
-       text_embed_shuffled = text_embed_shuffled / \
-           text_embed_shuffled.norm(dim=1, keepdim=True)
-       test_text_shuffled_cond = dict(text_embed=text_embed_shuffled)
+        # we are text conditioned, we produce an embedding from the tokenized text
+        if text_conditioned:
+            text_embedding, text_encodings, text_mask = diffusion_prior.clip.embed_text(
+                text_data)
+            text_cond = dict(text_embed=text_embedding,
+                             text_encodings=text_encodings, mask=text_mask)
+        else:
+            text_embedding = text_data
+            text_cond = dict(text_embed=text_embedding)
+
+        # make a copy of the text embeddings for shuffling
+        text_embed_shuffled = text_embedding.clone()
+
+        # roll the text to simulate "unrelated" captions
+        rolled_idx = torch.roll(torch.arange(text_embedding.shape[0]), 1)
+        text_encodings_shuffled = text_encodings[rolled_idx]
+        text_mask_shuffled = text_mask[rolled_idx]
+        text_embed_shuffled = text_embed_shuffled[rolled_idx]
+        text_embed_shuffled = text_embed_shuffled / \
+            text_embed_shuffled.norm(dim=1, keepdim=True)
+        text_cond_shuffled = dict(text_embed=text_embed_shuffled,
+                                  text_encodings=text_encodings_shuffled, mask=text_mask_shuffled)
+
         # prepare the text embedding
-       text_embed = text_embed / text_embed.norm(dim=1, keepdim=True)
-       test_text_cond = dict(text_embed=text_embed)
+        text_embed = text_embedding / text_embedding.norm(dim=1, keepdim=True)
+
         # prepare image embeddings
-       test_image_embeddings = torch.tensor(embi[0]).to(device)
-       test_image_embeddings = test_image_embeddings / \
-           test_image_embeddings.norm(dim=1, keepdim=True)
+        test_image_embeddings = torch.tensor(image_embedding).to(device)
+        test_image_embeddings = test_image_embeddings / \
+            test_image_embeddings.norm(dim=1, keepdim=True)
+
         # predict on the unshuffled text embeddings
-       predicted_image_embeddings = diffusion_prior.p_sample_loop(
-           (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_cond)
-       predicted_image_embeddings = predicted_image_embeddings / \
-           predicted_image_embeddings.norm(dim=1, keepdim=True)
+        predicted_image_embeddings = diffusion_prior.p_sample_loop(
+            test_image_embeddings.shape, text_cond)
+        predicted_image_embeddings = predicted_image_embeddings / \
+            predicted_image_embeddings.norm(dim=1, keepdim=True)
+
         # predict on the shuffled embeddings
-       predicted_unrelated_embeddings = diffusion_prior.p_sample_loop(
-           (NUM_TEST_EMBEDDINGS, 768), text_cond=test_text_shuffled_cond)
-       predicted_unrelated_embeddings = predicted_unrelated_embeddings / \
-           predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
+        predicted_unrelated_embeddings = diffusion_prior.p_sample_loop(
+            test_image_embeddings.shape, text_cond_shuffled)
+        predicted_unrelated_embeddings = predicted_unrelated_embeddings / \
+            predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
+
         # calculate similarities
-       original_similarity = cos(
-           text_embed, test_image_embeddings).cpu().numpy()
-       predicted_similarity = cos(
-           text_embed, predicted_image_embeddings).cpu().numpy()
-       unrelated_similarity = cos(
-           text_embed, predicted_unrelated_embeddings).cpu().numpy()
-       predicted_img_similarity = cos(
-           test_image_embeddings, predicted_image_embeddings).cpu().numpy()
-       wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
-            "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
-            "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
-            "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
-            "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
+        original_similarity = cos(
+            text_embed, test_image_embeddings).cpu().numpy()
+        predicted_similarity = cos(
+            text_embed, predicted_image_embeddings).cpu().numpy()
+        unrelated_similarity = cos(
+            text_embed, predicted_unrelated_embeddings).cpu().numpy()
+        predicted_img_similarity = cos(
+            test_image_embeddings, predicted_image_embeddings).cpu().numpy()
+
+        wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
+                   "CosineSimilarity(text_embed,predicted_image_embed)": np.mean(predicted_similarity),
+                   "CosineSimilarity(orig_image_embed,predicted_image_embed)": np.mean(predicted_img_similarity),
+                   "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
+                   "Cosine similarity difference": np.mean(predicted_similarity - original_similarity)})
 
 def train(image_embed_dim,
           image_embed_url,
           text_embed_url,
+          meta_url,
           batch_size,
+          num_data_points,
           train_percent,
           val_percent,
           test_percent,
           num_epochs,
           dp_loss_type,
-          clip,
+          clip_model,
           dp_condition_on_text_encodings,
           dp_timesteps,
           dp_normformer,
@@ -134,10 +160,16 @@ def train(image_embed_dim,
             ff_dropout = dropout,
             normformer = dp_normformer).to(device)
     
+    # Load clip model if text-conditioning
+    if dp_condition_on_text_encodings:
+        clip_adapter = OpenAIClipAdapter(clip_model)
+    else:
+        clip_adapter = None
+    
     # DiffusionPrior with text embeddings and image embeddings pre-computed
     diffusion_prior = DiffusionPrior( 
             net = prior_network, 
-            clip = clip, 
+            clip = clip_adapter, 
             image_embed_dim = image_embed_dim, 
             timesteps = dp_timesteps,
             cond_drop_prob = dp_cond_drop_prob, 
@@ -153,11 +185,17 @@ def train(image_embed_dim,
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    # Get image and text embeddings from the servers
-    print_ribbon("Downloading embeddings - image and text")
-    image_reader = EmbeddingReader(embeddings_folder=image_embed_url, file_format="npy")
-    text_reader  = EmbeddingReader(embeddings_folder=text_embed_url, file_format="npy")
-    num_data_points = text_reader.count
+    # Utilize wrapper to abstract away loader logic
+    print_ribbon("Downloading Embeddings")
+    loader_args = dict(text_conditioned=dp_condition_on_text_encodings, batch_size=batch_size, num_data_points=num_data_points,
+                       train_split=train_percent, eval_split=val_percent, device=device, img_url=image_embed_url)
+
+    if dp_condition_on_text_encodings:
+        loader_args = dict(**loader_args, meta_url=meta_url)
+    else:
+        loader_args = dict(**loader_args, text_url=text_embed_url)
+
+    train_loader, eval_loader, test_loader = make_splits(**loader_args)
 
     ### Training code ###
     scaler = GradScaler(enabled=amp)
@@ -167,22 +205,20 @@ def train(image_embed_dim,
     step = 0
     t = time.time()
 
-    train_set_size = int(train_percent*num_data_points)
-    val_set_size = int(val_percent*num_data_points)
-    eval_start = train_set_size
-
     for _ in range(epochs):
 
-        for emb_images,emb_text in zip(image_reader(batch_size=batch_size, start=0, end=train_set_size),
-                text_reader(batch_size=batch_size, start=0, end=train_set_size)):
-
+        for image, text in train_loader:
+            
             diffusion_prior.train()
             
-            emb_images_tensor = torch.tensor(emb_images[0]).to(device)
-            emb_text_tensor = torch.tensor(emb_text[0]).to(device)
+            input_args = dict(image_embed=image)
+            if dp_condition_on_text_encodings:
+                input_args = dict(**input_args, text = text)
+            else:
+                input_args = dict(**input_args, text_embed=text)
 
             with autocast(enabled=amp):
-                loss = diffusion_prior(text_embed = emb_text_tensor,image_embed = emb_images_tensor)
+                loss = diffusion_prior(**input_args)
                 scaler.scale(loss).backward()
 
             # Samples per second
@@ -208,22 +244,9 @@ def train(image_embed_dim,
             # Use NUM_TEST_EMBEDDINGS samples from the test set each time
             # Get embeddings from the most recently saved model
             if(step % REPORT_METRICS_EVERY) == 0:
-                report_cosine_sims(diffusion_prior,
-                        image_reader,
-                        text_reader,
-                        train_set_size,
-                        NUM_TEST_EMBEDDINGS,
-                        device)
+                report_cosine_sims(diffusion_prior, eval_loader, device)
                 ### Evaluate model(validation run) ###
-                eval_model(diffusion_prior,
-                        device,
-                        image_reader,
-                        text_reader,
-                        eval_start,
-                        eval_start+NUM_TEST_EMBEDDINGS,
-                        NUM_TEST_EMBEDDINGS,
-                        dp_loss_type,
-                        phase="Validation")
+                eval_model(diffusion_prior, eval_loader, device, dp_loss_type, phase="Validation")
 
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(diffusion_prior.parameters(), max_grad_norm)
@@ -233,10 +256,7 @@ def train(image_embed_dim,
             optimizer.zero_grad()
 
     ### Test run ###
-    test_set_size = int(test_percent*train_set_size) 
-    start=train_set_size+val_set_size
-    end=num_data_points
-    eval_model(diffusion_prior,device,image_reader,text_reader,start,end,batch_size,dp_loss_type,phase="Test")
+    eval_model(diffusion_prior, dp_condition_on_text_encodings, test_loader, dp_loss_type, phase="Test")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -248,6 +268,7 @@ def main():
     # URLs for embeddings 
     parser.add_argument("--image-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
     parser.add_argument("--text-embed-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
+    parser.add_argument("--meta-url", type=str, default="https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
     # Hyperparameters
     parser.add_argument("--learning-rate", type=float, default=1.1e-4)
     parser.add_argument("--weight-decay", type=float, default=6.02e-2)
@@ -258,6 +279,7 @@ def main():
     # Image embed dimension
     parser.add_argument("--image-embed-dim", type=int, default=768)
     # Train-test split
+    parser.add_argument("--num-data-pooints", type=float, default=250e6)
     parser.add_argument("--train-percent", type=float, default=0.7)
     parser.add_argument("--val-percent", type=float, default=0.2)
     parser.add_argument("--test-percent", type=float, default=0.1)
@@ -272,7 +294,7 @@ def main():
     parser.add_argument("--dp-normformer", type=bool, default=False)
     parser.add_argument("--dp-cond-drop-prob", type=float, default=0.1)
     parser.add_argument("--dp-loss-type", type=str, default="l2")
-    parser.add_argument("--clip", type=str, default=None)
+    parser.add_argument("--clip-model", type=str, default="ViT-L/14")
     parser.add_argument("--amp", type=bool, default=False)
     # Model checkpointing interval(minutes)
     parser.add_argument("--save-interval", type=int, default=30)
@@ -321,14 +343,16 @@ def main():
     # Training loop
     train(args.image_embed_dim,
           args.image_embed_url,
+          args.meta_url,
           args.text_embed_url,
           args.batch_size,
+          args.num_data_points,
           args.train_percent,
           args.val_percent,
           args.test_percent,
           args.num_epochs,
           args.dp_loss_type,
-          args.clip,
+          args.clip_model,
           args.dp_condition_on_text_encodings,
           args.dp_timesteps,
           args.dp_normformer,
@@ -349,6 +373,7 @@ def main():
           args.weight_decay,
           args.dropout,
           args.amp)
+
 
 if __name__ == "__main__":
   main()
