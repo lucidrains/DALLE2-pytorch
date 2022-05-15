@@ -42,6 +42,7 @@
             "test": 0.1
         },
         "shuffle_train": true,
+        "resample_train": false,
         "shuffle_val_test": false,
         "preprocessing": {
             "RandomResizedCrop": {

@@ -21,6 +21,7 @@ def create_dataloaders(
     num_workers=4,
     batch_size=32,
     shuffle_train=True,
+    resample_train=False,
     shuffle_val_test=False,
     img_preproc = None,
     index_width=4,
@@ -44,10 +45,10 @@ def create_dataloaders(
     test_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
     val_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
     
-    create_dataloader = lambda tar_urls, shuffle, with_text=False, is_low=False: create_image_embedding_dataloader(
+    create_dataloader = lambda tar_urls, shuffle=False, resample=False, with_text=False, is_low=False: create_image_embedding_dataloader(
         tar_url=tar_urls,
         num_workers=num_workers,
-        batch_size=batch_size if not is_low else 32,
+        batch_size=batch_size if not is_low else min(32, batch_size),
         embeddings_url=embeddings_url,
         index_width=index_width,
         shuffle_num = None,
@@ -58,9 +59,9 @@ def create_dataloaders(
         handler=wds.handlers.warn_and_continue
     )
 
-    train_dataloader = create_dataloader(train_urls, shuffle_train)
-    val_dataloader = create_dataloader(val_urls, shuffle_val_test, with_text=True)
-    test_dataloader = create_dataloader(test_urls, shuffle_val_test, with_text=True, is_low=True)
+    train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
+    val_dataloader = create_dataloader(val_urls, shuffle=shuffle_val_test, with_text=True)
+    test_dataloader = create_dataloader(test_urls, shuffle=shuffle_val_test, with_text=True, is_low=True)
     return {
         "train": train_dataloader,
         "val": val_dataloader,
@@ -385,7 +386,7 @@ class TrainDecoderConfig:
         defaults = {
             "unets": [{ "dim": 16, "image_emb_dim": 768, "cond_dim": 64, "channels": 3, "dim_mults": [1, 2, 3, 4], "attn_dim_head": 32, "attn_heads": 16 }],
             "decoder": { "image_sizes": [64,], "image_size": [64,], "channels": 3, "timesteps": 1000, "image_cond_drop_prob": 0.1, "text_cond_drop_prob": 0.5, "condition_on_text_encodings": False, "loss_type": "l2", "beta_schedule": "cosine" },
-            "data": { "webdataset_base_url": None, "embeddings_url": None, "num_workers": 4, "batch_size": 64, "start_shard": 0, "end_shard": 9999999, "shard_width": None, "index_width": None, "splits": { "train": 0.75, "val": 0.15, "test": 0.1 }, "shuffle_train": True, "shuffle_val_test": False, "preprocessing": { "RandomResizedCrop": { "size": [64, 64], "scale": [0.75, 1.0], "ratio": [1.0, 1.0] }, "ToTensor": True } },
+            "data": { "webdataset_base_url": None, "embeddings_url": None, "num_workers": 4, "batch_size": 64, "start_shard": 0, "end_shard": 9999999, "shard_width": None, "index_width": None, "splits": { "train": 0.75, "val": 0.15, "test": 0.1 }, "shuffle_train": True, "resample_train": False, "shuffle_val_test": False, "preprocessing": { "RandomResizedCrop": { "size": [64, 64], "scale": [0.75, 1.0], "ratio": [1.0, 1.0] }, "ToTensor": True } },
             "train": { "epochs": 100, "lr": 2e-5, "wd": 0.0, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
             "wandb": { "entity": "", "project": "" },
             "resume": { "do_resume": False, "from_wandb": True, "wandb_run_path": "", "wandb_file_path": "", "wandb_resume": False, "filepath": "" }
@@ -457,6 +458,4 @@ def main(config_file):
 
 
 if __name__ == "__main__":
-    # Set the tmpdir to the current directory/tmp
-    # os.environ["TMPDIR"] = os.path.join(os.getcwd(), "tmp", "train_decoder")
     main()
