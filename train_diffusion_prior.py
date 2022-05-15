@@ -1,5 +1,3 @@
-#TODO: ensure that the code runs and that arguments passed around match for the eval and test functions
-
 import os
 import math
 import argparse
@@ -25,11 +23,7 @@ REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting du
 def caption_to_tokens(captions):
     return clip.tokenize(captions['caption'].to_list(), truncate=True)
 
-def tokens_to_embedding(tokenized_text, diffusion_prior):
-    return diffusion_prior.clip.embed_text(tokenized_text)[0]
-
-
-def eval_model(model, text_conditioned, dataloader, loss_type, phase="Validation"):
+def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation"):
     model.eval()
 
     with torch.no_grad():
@@ -37,7 +31,7 @@ def eval_model(model, text_conditioned, dataloader, loss_type, phase="Validation
         total_samples = 0.
 
 
-        for image_embeddings, text_data in dataloader:
+        for image_embeddings, text_data in tqdm(dataloader):
 
             batches = image_embeddings.shape[0]
 
@@ -56,12 +50,12 @@ def eval_model(model, text_conditioned, dataloader, loss_type, phase="Validation
         wandb.log({f'{phase} {loss_type}': avg_loss})
         
 
-def report_cosine_sims(diffusion_prior, dataloader, text_conditioned, device):
+def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
     diffusion_prior.eval()
 
     cos = nn.CosineSimilarity(dim=1, eps=1e-6)
 
-    for image_embedding, text_data in dataloader:
+    for test_image_embeddings, text_data in tqdm(dataloader):
 
         # we are text conditioned, we produce an embedding from the tokenized text
         if text_conditioned:
@@ -78,11 +72,17 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned, device):
 
         # roll the text to simulate "unrelated" captions
         rolled_idx = torch.roll(torch.arange(text_embedding.shape[0]), 1)
-        text_encodings_shuffled = text_encodings[rolled_idx]
-        text_mask_shuffled = text_mask[rolled_idx]
         text_embed_shuffled = text_embed_shuffled[rolled_idx]
         text_embed_shuffled = text_embed_shuffled / \
             text_embed_shuffled.norm(dim=1, keepdim=True)
+
+        if text_conditioned:
+            text_encodings_shuffled = text_encodings[rolled_idx]
+            text_mask_shuffled = text_mask[rolled_idx]
+        else:
+            text_encodings_shuffled = None
+            text_mask_shuffled = None
+
         text_cond_shuffled = dict(text_embed=text_embed_shuffled,
                                   text_encodings=text_encodings_shuffled, mask=text_mask_shuffled)
 
@@ -90,7 +90,6 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned, device):
         text_embed = text_embedding / text_embedding.norm(dim=1, keepdim=True)
 
         # prepare image embeddings
-        test_image_embeddings = torch.tensor(image_embedding).to(device)
         test_image_embeddings = test_image_embeddings / \
             test_image_embeddings.norm(dim=1, keepdim=True)
 
@@ -198,7 +197,7 @@ def train(image_embed_dim,
     if dp_condition_on_text_encodings:
         loader_args = dict(**loader_args, meta_url=meta_url)
     else:
-        loader_args = dict(**loader_args, text_url=text_embed_url)
+        loader_args = dict(**loader_args, txt_url=text_embed_url)
 
     train_loader, eval_loader, test_loader = make_splits(**loader_args)
 
@@ -207,12 +206,12 @@ def train(image_embed_dim,
     optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
     epochs = num_epochs
 
-    step = 0
+    step = 1 
     t = time.time()
 
     for _ in range(epochs):
 
-        for image, text in train_loader:
+        for image, text in tqdm(train_loader):
             
             diffusion_prior.train()
             
@@ -249,9 +248,9 @@ def train(image_embed_dim,
             # Use NUM_TEST_EMBEDDINGS samples from the test set each time
             # Get embeddings from the most recently saved model
             if(step % REPORT_METRICS_EVERY) == 0:
-                report_cosine_sims(diffusion_prior, eval_loader, device)
+                report_cosine_sims(diffusion_prior, eval_loader, dp_condition_on_text_encodings)
                 ### Evaluate model(validation run) ###
-                eval_model(diffusion_prior, eval_loader, device, dp_loss_type, phase="Validation")
+                eval_model(diffusion_prior, eval_loader, dp_condition_on_text_encodings, dp_loss_type, phase="Validation")
 
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(diffusion_prior.parameters(), max_grad_norm)
@@ -261,7 +260,7 @@ def train(image_embed_dim,
             optimizer.zero_grad()
 
     ### Test run ###
-    eval_model(diffusion_prior, dp_condition_on_text_encodings, test_loader, dp_loss_type, phase="Test")
+    eval_model(diffusion_prior, test_loader, dp_condition_on_text_encodings, dp_loss_type, phase="Test")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -284,7 +283,7 @@ def main():
     # Image embed dimension
     parser.add_argument("--image-embed-dim", type=int, default=768)
     # Train-test split
-    parser.add_argument("--num-data-pooints", type=float, default=250e6)
+    parser.add_argument("--num-data-points", type=float, default=250e6)
     parser.add_argument("--train-percent", type=float, default=0.7)
     parser.add_argument("--val-percent", type=float, default=0.2)
     parser.add_argument("--test-percent", type=float, default=0.1)
@@ -325,7 +324,7 @@ def main():
         "timesteps": args.dp_timesteps,
         "cond_drop_prob":args.dp_cond_drop_prob,
         "loss_type":args.dp_loss_type,
-        "clip":args.clip}
+        "clip_model":args.clip_model}
         })
 
     RESUME = False
@@ -349,8 +348,8 @@ def main():
     # Training loop
     train(args.image_embed_dim,
           args.image_embed_url,
-          args.meta_url,
           args.text_embed_url,
+          args.meta_url,
           args.batch_size,
           args.num_data_points,
           args.train_percent,

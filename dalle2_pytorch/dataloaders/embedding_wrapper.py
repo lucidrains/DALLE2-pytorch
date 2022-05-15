@@ -89,19 +89,23 @@ def make_splits(
 
     assert img_url is not None, "Must supply some image embeddings"
 
-    # compute split points
-    train_set_size = int(train_split * num_data_points)
-    eval_set_size = int(eval_split * num_data_points)
-    eval_stop = train_set_size + eval_set_size
-
     if text_conditioned:
         assert meta_url is not None, "Must supply metadata url if text-conditioning"
         image_reader = EmbeddingReader(
-            img_url,
+            embeddings_folder=img_url,
             file_format="parquet_npy",
             meta_columns=["caption"],
             metadata_folder=meta_url,
         )
+
+        # compute split points
+        if num_data_points > image_reader.count:
+            print("Specified point count is larger than the number of points available...defaulting to max length of reader.")
+            num_data_points = image_reader.count
+
+        train_set_size = int(train_split * num_data_points)
+        eval_set_size = int(eval_split * num_data_points)
+        eval_stop = int(train_set_size + eval_set_size)
 
         train_loader = PriorEmbeddingLoader(
             text_conditioned=text_conditioned,
@@ -124,7 +128,7 @@ def make_splits(
             image_reader=image_reader,
             batch_size=batch_size,
             start=eval_stop,
-            stop=num_data_points,
+            stop=int(num_data_points),
             device=device,
         )
 
@@ -136,7 +140,16 @@ def make_splits(
         image_reader = EmbeddingReader(img_url, file_format="npy")
         text_reader = EmbeddingReader(txt_url, file_format="npy")
 
-        train_loadeer = PriorEmbeddingLoader(
+        # compute split points
+        if num_data_points > image_reader.count:
+            print("Specified point count is larger than the number of points available...defaulting to max length of reader.")
+            num_data_points = image_reader.count
+
+        train_set_size = int(train_split * num_data_points)
+        eval_set_size = int(eval_split * num_data_points)
+        eval_stop = int(train_set_size + eval_set_size)
+
+        train_loader = PriorEmbeddingLoader(
             text_conditioned=text_conditioned,
             image_reader=image_reader,
             text_reader=text_reader,
