@@ -1,5 +1,5 @@
 from dalle2_pytorch import Unet, Decoder
-from dalle2_pytorch.train import DecoderTrainer
+from dalle2_pytorch.train import DecoderTrainer, print_ribon
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
 import time
 import os
@@ -86,7 +86,7 @@ def create_decoder(device, decoder_config, unets_config):
 
     return decoder
 
-def generate_samples(decoder, dataloader, epoch, device, step, n=5, text_prepend=""):
+def generate_samples(trainer, dataloader, epoch, device, step, n=5, text_prepend=""):
     """
     Generates n samples from the decoder and uploads them to wandb
     Consistently uses the first n image embeddings from the dataloader
@@ -95,7 +95,6 @@ def generate_samples(decoder, dataloader, epoch, device, step, n=5, text_prepend
     test_iter = iter(dataloader)
     images = []
     with torch.no_grad():
-        decoder.eval()
         for data in test_iter:
             if len(data) == 3:
                 img, emb, txt = data
@@ -109,8 +108,8 @@ def generate_samples(decoder, dataloader, epoch, device, step, n=5, text_prepend
                 txt = txt[:n]
             img = img.to(device=device, dtype=torch.float)
             emb = emb.to(device=device, dtype=torch.float)
-            decoder.to(device=device) # Don't ask me why this is neccesary
-            sample = decoder.sample(emb)
+            trainer.to(device=device) # Don't ask me why this is neccesary
+            sample = trainer.sample(emb)
             for original_image, generated_image, text in zip(img, sample, txt):
                 # Make a grid containing the original image and the generated image
                 img_grid = torchvision.utils.make_grid([original_image, generated_image])
@@ -118,16 +117,14 @@ def generate_samples(decoder, dataloader, epoch, device, step, n=5, text_prepend
                 images.append(image)
                 
                 if len(images) >= n:
-                    decoder.to(device)  # Again, don't ask me why but something here moves the model to the cpu
-                    decoder.train()
+                    trainer.to(device)  # Again, don't ask me why but something here moves the model to the cpu
                     return images
-    decoder.train()  # In case we run out of samples before n. Your dataset must be tiny, but whatever. Edge cases.
 
 def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=True, latest=False, best=False, checkpoint=False):
     """
     Saves the state of the trainer and decoder to wandb.
     """
-    print("====================================== Saving trainer ======================================")
+    print(print_ribon("Saving trainer", repeat=40))
     state_dict = {}
     state_dict["trainer"] = trainer.state_dict()
     state_dict["decoder"] = trainer.decoder.state_dict()
@@ -148,7 +145,7 @@ def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=
             wandb.save(save_path, base_path=base_path)
 
 def recall_trainer(trainer, wandb_run_path=None, wandb_file_path=None, local_filepath=None):
-    print(f"====================================== Recall trainer ======================================")
+    print(print_ribon("Recalling trainer", repeat=40))
     if local_filepath is None:
         # Then we are recalling from wandb
         print(f"Recalling trainer from wandb: {wandb_run_path}/{wandb_file_path}")
@@ -226,8 +223,10 @@ def train(
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
     step = start_step
     for epoch in range(start_epoch, epochs):
-        print(f"=========== Starting epoch {epoch} ===========")
-        decoder.train()
+        print(print_ribon(f"Starting epoch {epoch}", repeat=40))
+        trainer.train()
+        decoder.train()  # I don't see anything in the trainer that would set decoder to train mode so I assume we also need this
+
         sample = 0
         last_sample = 0
         last_snapshot = 0
@@ -270,7 +269,9 @@ def train(
                 save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=not using_wandb, latest=save_latest, best=False, checkpoint=save_all)
                 if using_wandb:
                     print(f"Generating sample...")
-                    train_images = generate_samples(decoder, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
+                    trainer.eval()
+                    train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
+                    trainer.train()
                     wandb.log({
                         "Train samples": train_images
                     }, step=step)
@@ -278,9 +279,10 @@ def train(
             if epoch_samples is not None and sample >= epoch_samples:
                 break
 
-        print(f"=========== Starting Validation {epoch} ===========")
+        trainer.eval()
+        decoder.eval()
+        print(print_ribon(f"Starting Validation {epoch}", repeat=40))
         with torch.no_grad():
-            decoder.eval()
             sample = 0
             average_loss = 0
             start_time = time.time()
@@ -288,10 +290,9 @@ def train(
                 sample += img.shape[0]
                 img, emb = send_to_device((img, emb))
                 
-                with autocast(enabled=amp):
-                    for unet in range(1, len(decoder.unets)+1):
-                        loss = decoder.forward(img.float(), image_embed=emb.float(), unet_number=unet)
-                        average_loss += loss.item()
+                for unet in range(1, len(decoder.unets)+1):
+                    loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
+                    average_loss += loss.item()
 
                 if i % 10 == 0:
                     print(f"Epoch {epoch}/{epochs} - {sample / (time.time() - start_time):.2f} samples/sec")
@@ -301,7 +302,7 @@ def train(
                 if validation_samples is not None and sample >= validation_samples:
                     break
             average_loss /= (i+1)
-            print(f"=========== Validation {epoch} Complete ===========")
+            print(print_ribon(f"Validation {epoch} Complete", repeat=40))
             print(f"Average Loss: {average_loss}")
             print("")
             if using_wandb:
@@ -312,15 +313,15 @@ def train(
                 }, step=step)
 
         if using_wandb:
-            print(f"=========== Sampling Set {epoch} ===========")
-            test_images = generate_samples(decoder, dataloaders["test"], epoch, inference_device, step, n=n_sample_images, text_prepend="Test: ")
-            train_images = generate_samples(decoder, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
+            print(print_ribon(f"Sampling Set {epoch}", repeat=40))
+            test_images = generate_samples(trainer, dataloaders["test"], epoch, inference_device, step, n=n_sample_images, text_prepend="Test: ")
+            train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
             wandb.log({
                 "Test samples": test_images,
                 "Train samples": train_images
             }, step=step)
 
-        print(f"=========== Starting Saving {epoch} ===========")
+        print(print_ribon(f"Starting Saving {epoch}", repeat=40))
         is_best = False
         if save_best:
             is_best = len(validation_losses) == 0 or average_loss < min(validation_losses)
