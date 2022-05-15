@@ -1305,7 +1305,7 @@ class Unet(nn.Module):
         self,
         dim,
         *,
-        image_embed_dim,
+        image_embed_dim = None,
         text_embed_dim = None,
         cond_dim = None,
         num_image_tokens = 4,
@@ -1377,7 +1377,7 @@ class Unet(nn.Module):
         self.image_to_cond = nn.Sequential(
             nn.Linear(image_embed_dim, cond_dim * num_image_tokens),
             Rearrange('b (n d) -> b n d', n = num_image_tokens)
-        ) if image_embed_dim != cond_dim else nn.Identity()
+        ) if cond_on_image_embeds and image_embed_dim != cond_dim else nn.Identity()
 
         self.norm_cond = nn.LayerNorm(cond_dim)
         self.norm_mid_cond = nn.LayerNorm(cond_dim)
@@ -1701,7 +1701,7 @@ class Decoder(BaseGaussianDiffusion):
         self.unconditional = unconditional
         assert not (condition_on_text_encodings and unconditional), 'unconditional decoder image generation cannot be set to True if conditioning on text is present'
 
-        assert exists(clip) ^ exists(image_size), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
+        assert self.unconditional or (exists(clip) ^ exists(image_size)), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
 
         self.clip = None
         if exists(clip):
@@ -2036,12 +2036,12 @@ class Decoder(BaseGaussianDiffusion):
 
         times = torch.randint(0, self.num_timesteps, (b,), device = device, dtype = torch.long)
 
-        if not exists(image_embed):
+        if not exists(image_embed) and not self.unconditional:
             assert exists(self.clip), 'if you want to derive CLIP image embeddings automatically, you must supply `clip` to the decoder on init'
             image_embed, _ = self.clip.embed_image(image)
 
         text_encodings = text_mask = None
-        if exists(text) and not exists(text_encodings):
+        if exists(text) and not exists(text_encodings) and not self.unconditional:
             assert exists(self.clip), 'if you are passing in raw text, you need to supply `clip` to the decoder'
             _, text_encodings, text_mask = self.clip.embed_text(text)
 

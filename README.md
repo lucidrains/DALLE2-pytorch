@@ -706,7 +706,7 @@ mock_image_embed = torch.randn(1, 512).cuda()
 images = decoder.sample(mock_image_embed) # (1, 3, 1024, 1024)
 ```
 
-## Training wrapper (wip)
+## Training wrapper
 
 ### Decoder Training
 
@@ -850,6 +850,57 @@ diffusion_prior_trainer.update()  # this will update the optimizer as well as th
 
 image_embeds = diffusion_prior_trainer.sample(text) # (4, 512) - exponential moving averaged image embeddings
 ```
+
+## Bonus
+
+### Unconditional Training
+
+The repository also contains the means to train unconditional DDPM model, or even cascading DDPMs. You simply have to set `unconditional = True` in the `Decoder`
+
+ex.
+
+```python
+import torch
+from dalle2_pytorch import Unet, Decoder
+
+# unet for the cascading ddpm
+
+unet1 = Unet(
+    dim = 128,
+    dim_mults=(1, 2, 4, 8)
+).cuda()
+
+unet2 = Unet(
+    dim = 32,
+    dim_mults = (1, 2, 4, 8, 16)
+).cuda()
+
+# decoder, which contains the unets
+
+decoder = Decoder(
+    unet = (unet1, unet2),
+    image_sizes = (256, 512),  # first unet up to 256px, then second to 512px
+    timesteps = 1000,
+    unconditional = True
+).cuda()
+
+# mock images (get a lot of this)
+
+images = torch.randn(1, 3, 512, 512).cuda()
+
+# feed images into decoder
+
+for i in (1, 2):
+    loss = decoder(images, unet_number = i)
+    loss.backward()
+
+# do the above for many many many many steps
+# then it will learn to generate images
+
+images = decoder.sample(batch_size = 2) # (2, 3, 512, 512)
+```
+
+## Dataloaders
 
 ### Decoder Dataloaders
 
