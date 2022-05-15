@@ -279,7 +279,9 @@ class DiffusionPriorTrainer(nn.Module):
                 loss = loss * chunk_size_frac
 
             total_loss += loss.item()
-            self.scaler.scale(loss).backward()
+
+            if self.training:
+                self.scaler.scale(loss).backward()
 
         return total_loss
 
@@ -406,6 +408,8 @@ class DecoderTrainer(nn.Module):
                 loss = loss * chunk_size_frac
 
             total_loss += loss.item()
-            self.scale(loss, unet_number = unet_number).backward()
+
+            if self.training:
+                self.scale(loss, unet_number = unet_number).backward()
 
         return total_loss
