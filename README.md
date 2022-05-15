@@ -895,14 +895,14 @@ dataset = ImageEmbeddingDataset(
 )
 ```
 
-## Scripts
+### Scripts (wip)
 
-### Using the `train_diffusion_prior.py` script
+#### `train_diffusion_prior.py`
 
 This script allows training the DiffusionPrior on pre-computed text and image embeddings. The working example below elucidates this process.
 Please note that the script internally passes text_embed and image_embed to the DiffusionPrior, unlike the example below.
 
-### Usage 
+#### Usage
 
 ```bash
 $ python train_diffusion_prior.py
@@ -910,58 +910,49 @@ $ python train_diffusion_prior.py
 
 The most significant parameters for the script are as follows:
 
---image-embed-url, default = "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/")
+- `image-embed-url`, default = `"https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/"`
 
---text-embed-url, default = "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/")
+- `text-embed-url`, default = `"https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/"`
 
---image-embed-dim, default=768 - 768 corresponds to the ViT iL/14 embedding size,change it to what your chosen ViT generates
+- `image-embed-dim`, default = `768` - 768 corresponds to the ViT iL/14 embedding size,change it to what your chosen ViT generates
 
---learning-rate, default=1.1e-4
+- `learning-rate`, default = `1.1e-4`
 
---weight-decay,  default=6.02e-2
+- `weight-decay`,  default = `6.02e-2`
 
---max-grad-norm, default=0.5
+- `max-grad-norm`, default = `0.5`
 
---batch-size, default=10 ** 4
+- `batch-size`, default = `10 ** 4`
 
---num-epochs, default=5
+- `num-epochs`, default = `5`
 
---clip, default=None # Signals the prior to use pre-computed embeddings
+- `clip`, default = `None` # Signals the prior to use pre-computed embeddings
 
-### Sample wandb run log
-
-Please find a sample wandb run log at : https://wandb.ai/laion/diffusion-prior/runs/1blxu24j
-
-### Loading and saving the Diffusion Prior model
+#### Loading and Saving the DiffusionPrior model
 
 Two methods are provided, load_diffusion_model and save_diffusion_model, the names being self-explanatory. 
 
-## from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model
+```python
+from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model
+```
+
+##### Loading
 
     load_diffusion_model(dprior_path, device) 
-
         dprior_path : path to saved model(.pth)
-    
         device      : the cuda device you're running on
     
+##### Saving
+
     save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
-    
         save_path : path to save at
-    
         model     : object of Diffusion_Prior
-    
         optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
-    
             e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
-    
         scaler    : a GradScaler object.
-    
             e.g: scaler = GradScaler(enabled=amp)
-    
         config    : config object created in train_diffusion_prior.py - see file for example. 
-    
         image_embed_dim - the dimension of the image_embedding
-    
             e.g: 768
 
 ## CLI (wip)
