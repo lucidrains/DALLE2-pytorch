@@ -59,7 +59,7 @@ def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation
 
             loss = model(**input_args)
 
-            total_loss += loss.item() * batches
+            total_loss += loss * batches
             total_samples += batches
 
         avg_loss = (total_loss / total_samples)
@@ -122,15 +122,15 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
             predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
 
         # calculate similarities
-       original_similarity = cos(
+        original_similarity = cos(
            text_embed, test_image_embeddings).cpu().numpy()
-       predicted_similarity = cos(
+        predicted_similarity = cos(
            text_embed, predicted_image_embeddings).cpu().numpy()
-       unrelated_similarity = cos(
+        unrelated_similarity = cos(
            text_embed, predicted_unrelated_embeddings).cpu().numpy()
-       predicted_img_similarity = cos(
+        predicted_img_similarity = cos(
            test_image_embeddings, predicted_image_embeddings).cpu().numpy()
-       tracker.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
+        tracker.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
             "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
             "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
             "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
@@ -150,21 +150,21 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
 @click.option("--dropout", default=5e-2)
 @click.option("--max-grad-norm", default=0.5)
 @click.option("--num-data-points", default=250e6)
-@click.option("--batch-size", default=10**4)
+@click.option("--batch-size", default=256)
 @click.option("--num-epochs", default=5)
 @click.option("--image-embed-dim", default=768)
 @click.option("--train-percent", default=0.7)
 @click.option("--val-percent", default=0.2)
 @click.option("--test-percent", default=0.1)
-@click.option("--dpn-depth", default=6)
+@click.option("--dpn-depth", default=12)
 @click.option("--dpn-dim-head", default=64)
-@click.option("--dpn-heads", default=8)
-@click.option("--dp-condition-on-text-encodings", default=False)
+@click.option("--dpn-heads", default=12)
+@click.option("--dp-condition-on-text-encodings", default=True)
 @click.option("--dp-timesteps", default=100)
-@click.option("--dp-normformer", default=False)
+@click.option("--dp-normformer", default=True)
 @click.option("--dp-cond-drop-prob", default=0.1)
 @click.option("--dp-loss-type", default="l2")
-@click.option("--clip", default=None)
+@click.option("--clip", default="ViT-L/14")
 @click.option("--amp", default=False)
 @click.option("--save-interval", default=30)
 @click.option("--save-path", default="./diffusion_prior_checkpoints")
@@ -229,7 +229,7 @@ def train(
 
     # Check if DPRIOR_PATH exists(saved model path)
 
-    DPRIOR_PATH = args.pretrained_model_path
+    DPRIOR_PATH = pretrained_model_path
     RESUME = exists(DPRIOR_PATH)
 
     if not RESUME:
@@ -352,7 +352,7 @@ def train(
                     image_embed_dim)
 
             # Log to wandb
-            tracker.log({"Training loss": loss.item(),
+            tracker.log({"Training loss": loss,
                         "Steps": step,
                         "Samples per second": samples_per_sec})
             # Log cosineSim(text_embed,predicted_image_embed) - cosineSim(text_embed,image_embed)
