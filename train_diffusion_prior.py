@@ -1,5 +1,6 @@
 import os
 import math
+import time
 import argparse
 import numpy as np
 
@@ -7,21 +8,22 @@ import torch
 import clip
 from torch import nn
 from dalle2_pytorch.dataloaders import make_splits
-from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter
-from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model, print_ribbon
-from dalle2_pytorch.optimizer import get_optimizer
-from torch.cuda.amp import autocast, GradScaler
+from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork
+from dalle2_pytorch.train import DiffusionPriorTrainer, load_diffusion_model, save_diffusion_model, print_ribbon
+from dalle2_pytorch.trackers import ConsoleTracker, WandbTracker
 
-import time
+from embedding_reader import EmbeddingReader
+
 from tqdm import tqdm
 
-import wandb
-os.environ["WANDB_SILENT"] = "true"
+# constants
+
 NUM_TEST_EMBEDDINGS = 100 # for cosine similarity reporting during training
 REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting during training
 
-def caption_to_tokens(captions):
-    return clip.tokenize(captions['caption'].to_list(), truncate=True)
+tracker = WandbTracker()
+
+# functions
 
 def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation"):
     model.eval()
@@ -47,8 +49,8 @@ def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation
             total_samples += batches
 
         avg_loss = (total_loss / total_samples)
-        wandb.log({f'{phase} {loss_type}': avg_loss})
-        
+
+        tracker.log({f'{phase} {loss_type}': avg_loss})
 
 def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
     diffusion_prior.eval()
@@ -106,20 +108,19 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
             predicted_unrelated_embeddings.norm(dim=1, keepdim=True)
 
         # calculate similarities
-        original_similarity = cos(
-            text_embed, test_image_embeddings).cpu().numpy()
-        predicted_similarity = cos(
-            text_embed, predicted_image_embeddings).cpu().numpy()
-        unrelated_similarity = cos(
-            text_embed, predicted_unrelated_embeddings).cpu().numpy()
-        predicted_img_similarity = cos(
-            test_image_embeddings, predicted_image_embeddings).cpu().numpy()
-
-        wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
-                   "CosineSimilarity(text_embed,predicted_image_embed)": np.mean(predicted_similarity),
-                   "CosineSimilarity(orig_image_embed,predicted_image_embed)": np.mean(predicted_img_similarity),
-                   "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
-                   "Cosine similarity difference": np.mean(predicted_similarity - original_similarity)})
+       original_similarity = cos(
+           text_embed, test_image_embeddings).cpu().numpy()
+       predicted_similarity = cos(
+           text_embed, predicted_image_embeddings).cpu().numpy()
+       unrelated_similarity = cos(
+           text_embed, predicted_unrelated_embeddings).cpu().numpy()
+       predicted_img_similarity = cos(
+           test_image_embeddings, predicted_image_embeddings).cpu().numpy()
+       tracker.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
+            "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
+            "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
+            "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
+            "Cosine similarity difference":np.mean(predicted_similarity - original_similarity)})
 
 def train(image_embed_dim,
           image_embed_url,
@@ -154,38 +155,57 @@ def train(image_embed_dim,
           dropout=0.05,
           amp=False):
 
-    # DiffusionPriorNetwork 
+    # diffusion prior network
+
     prior_network = DiffusionPriorNetwork( 
-            dim = image_embed_dim, 
-            depth = dpn_depth, 
-            dim_head = dpn_dim_head, 
-            heads = dpn_heads,
-            attn_dropout = dropout,
-            ff_dropout = dropout,
-            normformer = dp_normformer).to(device)
+        dim = image_embed_dim,
+        depth = dpn_depth,
+        dim_head = dpn_dim_head,
+        heads = dpn_heads,
+        attn_dropout = dropout,
+        ff_dropout = dropout,
+        normformer = dp_normformer
+    )
     
     # Load clip model if text-conditioning
     if dp_condition_on_text_encodings:
         clip_adapter = OpenAIClipAdapter(clip_model)
     else:
         clip_adapter = None
-    
-    # DiffusionPrior with text embeddings and image embeddings pre-computed
+        
+    # diffusion prior with text embeddings and image embeddings pre-computed
+
     diffusion_prior = DiffusionPrior( 
-            net = prior_network, 
-            clip = clip_adapter, 
-            image_embed_dim = image_embed_dim, 
-            timesteps = dp_timesteps,
-            cond_drop_prob = dp_cond_drop_prob, 
-            loss_type = dp_loss_type, 
-            condition_on_text_encodings = dp_condition_on_text_encodings).to(device)
+        net = prior_network,
+        clip = clip_adapter,
+        image_embed_dim = image_embed_dim,
+        timesteps = dp_timesteps,
+        cond_drop_prob = dp_cond_drop_prob,
+        loss_type = dp_loss_type,
+        condition_on_text_encodings = dp_condition_on_text_encodings
+    )
 
     # Load pre-trained model from DPRIOR_PATH
+
     if RESUME:
-        diffusion_prior=load_diffusion_model(DPRIOR_PATH,device)   
-        wandb.init( entity=wandb_entity, project=wandb_project, config=config) 
+        diffusion_prior = load_diffusion_model(DPRIOR_PATH, device)
+
+        # TODO, optimizer and scaler needs to be loaded as well
+
+        tracker.init(entity = wandb_entity, project = wandb_project, config = config)
+
+    # diffusion prior trainer
+
+    trainer = DiffusionPriorTrainer(
+        diffusion_prior = diffusion_prior,
+        lr = learning_rate,
+        wd = weight_decay,
+        max_grad_norm = max_grad_norm,
+        amp = amp,
+    ).to(device)
 
     # Create save_path if it doesn't exist
+
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
@@ -202,11 +222,9 @@ def train(image_embed_dim,
     train_loader, eval_loader, test_loader = make_splits(**loader_args)
 
     ### Training code ###
-    scaler = GradScaler(enabled=amp)
-    optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
-    epochs = num_epochs
 
     step = 1 
+    epochs = num_epochs
     t = time.time()
 
     for _ in range(epochs):
@@ -221,13 +239,13 @@ def train(image_embed_dim,
             else:
                 input_args = dict(**input_args, text_embed=text)
 
-            with autocast(enabled=amp):
-                loss = diffusion_prior(**input_args)
-                scaler.scale(loss).backward()
+
+            loss = trainer(**input_args)
 
             # Samples per second
-            step+=1
+
             samples_per_sec = batch_size*step/(time.time()-t)
+
             # Save checkpoint every save_interval minutes
             if(int(time.time()-t) >= 60*save_interval):
                 t = time.time()
@@ -235,13 +253,13 @@ def train(image_embed_dim,
                 save_diffusion_model(
                     save_path,
                     diffusion_prior,
-                    optimizer,
-                    scaler,
+                    trainer.optimizer,
+                    trainer.scaler,
                     config,
                     image_embed_dim)
 
             # Log to wandb
-            wandb.log({"Training loss": loss.item(),
+            tracker.log({"Training loss": loss.item(),
                         "Steps": step,
                         "Samples per second": samples_per_sec})
             # Log cosineSim(text_embed,predicted_image_embed) - cosineSim(text_embed,image_embed)
@@ -252,12 +270,7 @@ def train(image_embed_dim,
                 ### Evaluate model(validation run) ###
                 eval_model(diffusion_prior, eval_loader, dp_condition_on_text_encodings, dp_loss_type, phase="Validation")
 
-            scaler.unscale_(optimizer)
-            nn.utils.clip_grad_norm_(diffusion_prior.parameters(), max_grad_norm)
-
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
+            trainer.update()
 
     ### Test run ###
     eval_model(diffusion_prior, test_loader, dp_condition_on_text_encodings, dp_loss_type, phase="Test")
@@ -328,12 +341,15 @@ def main():
         })
 
     RESUME = False
+
     # Check if DPRIOR_PATH exists(saved model path)
+
     DPRIOR_PATH = args.pretrained_model_path
+
     if(DPRIOR_PATH is not None):
         RESUME = True
     else:
-        wandb.init(
+        tracker.init(
           entity=args.wandb_entity,
           project=args.wandb_project,
           config=config)
@@ -381,4 +397,4 @@ def main():
 
 
 if __name__ == "__main__":
-  main()
+    main()

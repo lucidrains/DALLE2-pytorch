@@ -732,8 +732,8 @@ clip = CLIP(
 
 # mock data
 
-text = torch.randint(0, 49408, (4, 256)).cuda()
-images = torch.randn(4, 3, 256, 256).cuda()
+text = torch.randint(0, 49408, (32, 256)).cuda()
+images = torch.randn(32, 3, 256, 256).cuda()
 
 # decoder (with unet)
 
@@ -774,8 +774,12 @@ decoder_trainer = DecoderTrainer(
 )
 
 for unet_number in (1, 2):
-    loss = decoder_trainer(images, text = text, unet_number = unet_number)  # use the decoder_trainer forward
-    loss.backward()
+    loss = decoder_trainer(
+        images,
+        text = text,
+        unet_number = unet_number, # which unet to train on
+        max_batch_size = 4         # gradient accumulation - this sets the maximum batch size in which to do forward and backwards pass - for this example 32 / 4 == 8 times
+    )
 
     decoder_trainer.update(unet_number) # update the specific unet as well as its exponential moving average
 
@@ -839,7 +843,6 @@ diffusion_prior_trainer = DiffusionPriorTrainer(
 )
 
 loss = diffusion_prior_trainer(text, images)
-loss.backward()
 diffusion_prior_trainer.update()  # this will update the optimizer as well as the exponential moving averaged diffusion prior
 
 # after much of the above three lines in a loop
@@ -1004,6 +1007,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images
 - [x] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14
 - [x] cross embed layers for downsampling, as an option
+- [x] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] train on a toy task, offer in colab
@@ -1011,12 +1015,12 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
 - [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove
-- [ ] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 - [ ] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
 - [ ] bring in skip-layer excitatons (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
 - [ ] decoder needs one day worth of refactor for tech debt
+- [ ] allow for unet to be able to condition non-cross attention style as well
 
 ## Citations
 
