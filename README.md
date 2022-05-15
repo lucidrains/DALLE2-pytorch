@@ -1153,4 +1153,13 @@ Once built, images will be saved to the same directory the command is invoked
 }
 ```
 
+```bibtex
+@article{ho2021cascaded,
+    title   = {Cascaded Diffusion Models for High Fidelity Image Generation},
+    author  = {Ho, Jonathan and Saharia, Chitwan and Chan, William and Fleet, David J and Norouzi, Mohammad and Salimans, Tim},
+    journal = {arXiv preprint arXiv:2106.15282},
+    year    = {2021}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
