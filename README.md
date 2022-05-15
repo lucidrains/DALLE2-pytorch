@@ -814,8 +814,8 @@ clip = CLIP(
 
 # mock data
 
-text = torch.randint(0, 49408, (4, 256)).cuda()
-images = torch.randn(4, 3, 256, 256).cuda()
+text = torch.randint(0, 49408, (32, 256)).cuda()
+images = torch.randn(32, 3, 256, 256).cuda()
 
 # prior networks (with transformer)
 
@@ -842,7 +842,7 @@ diffusion_prior_trainer = DiffusionPriorTrainer(
     ema_update_every = 10,
 )
 
-loss = diffusion_prior_trainer(text, images)
+loss = diffusion_prior_trainer(text, images, max_batch_size = 4)
 diffusion_prior_trainer.update()  # this will update the optimizer as well as the exponential moving averaged diffusion prior
 
 # after much of the above three lines in a loop
