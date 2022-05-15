@@ -1988,8 +1988,7 @@ class Decoder(BaseGaussianDiffusion):
                 image_size = vae.get_encoded_fmap_size(image_size)
                 shape = (batch_size, vae.encoded_dim, image_size, image_size)
 
-                if exists(lowres_cond_img):
-                    lowres_cond_img = vae.encode(lowres_cond_img)
+                lowres_cond_img = maybe(vae.encode)(lowres_cond_img)
 
                 img = self.p_sample_loop(
                     unet,
@@ -2063,9 +2062,7 @@ class Decoder(BaseGaussianDiffusion):
         vae.eval()
         with torch.no_grad():
             image = vae.encode(image)
-
-            if exists(lowres_cond_img):
-                lowres_cond_img = vae.encode(lowres_cond_img)
+            lowres_cond_img = maybe(vae.encode)(lowres_cond_img)
 
         return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start, learned_variance = learned_variance)
 
