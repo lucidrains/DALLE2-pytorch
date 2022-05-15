@@ -264,10 +264,10 @@ class DiffusionPriorTrainer(nn.Module):
         for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(x, *args, split_size = max_batch_size, **kwargs):
             with autocast(enabled = self.amp):
                 loss = self.diffusion_prior(*chunked_args, **chunked_kwargs)
-                loss = loss * chunk_size_frac
 
-                total_loss += loss.item()
-                self.scaler.scale(loss).backward()
+            loss = loss * chunk_size_frac
+            total_loss += loss.item()
+            self.scaler.scale(loss).backward()
 
         return total_loss
 
@@ -388,9 +388,9 @@ class DecoderTrainer(nn.Module):
         for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(x, split_size = max_batch_size, **kwargs):
             with autocast(enabled = self.amp):
                 loss = self.decoder(*chunked_args, unet_number = unet_number, **chunked_kwargs)
-                loss = loss * chunk_size_frac
 
-                total_loss += loss.item()
-                self.scale(loss, unet_number = unet_number).backward()
+            loss = loss * chunk_size_frac
+            total_loss += loss.item()
+            self.scale(loss, unet_number = unet_number).backward()
 
         return total_loss
