@@ -122,7 +122,7 @@ def generate_samples(decoder, dataloader, epoch, device, step, n=5, text_prepend
                     return images
     decoder.train()  # In case we run out of samples before n. Your dataset must be tiny, but whatever. Edge cases.
 
-def save_trainer(trainer, epoch, step, local_only=True):
+def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=True, latest=False, best=False, checkpoint=False):
     """
     Saves the state of the trainer and decoder to wandb.
     """
@@ -132,29 +132,34 @@ def save_trainer(trainer, epoch, step, local_only=True):
     state_dict["decoder"] = trainer.decoder.state_dict()
     state_dict['epoch'] = epoch
     state_dict['step'] = step
-    filename = f"trainer_epoch_{epoch}_step_{step}.pth"
-    filepath = os.path.join("models", filename)
-    torch.save(state_dict, filepath)
-    if not local_only:
-        print("Uploading trainer to wandb")
-        wandb.save(filepath)
+    state_dict['validation_losses'] = validation_losses
+    save_paths = []
+    if latest:
+        save_paths.append(os.path.join(base_path, "latest.pth"))
+    if best:
+        save_paths.append(os.path.join(base_path, "best.pth"))
+    if checkpoint:
+        save_paths.append(os.path.join(base_path, "checkpoints", f"epoch_{epoch}_step_{step}.pth"))
+    for save_path in save_paths:
+        print(f"Saving to {save_path}")
+        torch.save(state_dict, save_path)
+        if not local_only:
+            wandb.save(save_path, base_path=base_path)
 
-def recall_trainer(trainer, run_path=None, epoch=None, step=None, filepath=None):
+def recall_trainer(trainer, wandb_run_path=None, wandb_file_path=None, local_filepath=None):
     print(f"====================================== Recall trainer ======================================")
-    if filepath is None:
+    if local_filepath is None:
         # Then we are recalling from wandb
-        filename = f"trainer_epoch_{epoch}_step_{step}.pth"
-        filepath = os.path.join("models", filename)
-        print(f"Recalling trainer from wandb: {run_path}/{filepath}")
-        trainer_state_dict_file = wandb.restore(filepath, run_path=run_path)
+        print(f"Recalling trainer from wandb: {wandb_run_path}/{wandb_file_path}")
+        trainer_state_dict_file = wandb.restore(wandb_file_path, run_path=wandb_run_path)
         state_dict = torch.load(trainer_state_dict_file.name)
     else:
         # Then we are recalling from a file
-        print(f"Recalling trainer from file: {filepath}")
-        state_dict = torch.load(filepath)
+        print(f"Recalling trainer from file: {local_filepath}")
+        state_dict = torch.load(local_filepath)
     trainer.load_state_dict(state_dict["trainer"])
     trainer.decoder.load_state_dict(state_dict["decoder"])
-    return trainer, state_dict["epoch"], state_dict["step"]
+    return trainer, state_dict["epoch"], state_dict["step"], state_dict["validation_losses"] if "validation_losses" in state_dict else []
 
 def train(
     dataloaders,
@@ -173,8 +178,22 @@ def train(
     wd=0,
     use_ema=True,
     max_grad_norm=None,
+    base_path=None,
+    save_all=False,
+    save_latest=True,
+    save_best=True,
     **kwargs
 ):
+    """
+    Trains a decoder on a dataset.
+    """
+    # Create the base path if it doesn't exist
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
+    # If we are saving all, we also need to make a checkpoints folder inside there
+    if save_all:
+        if not os.path.exists(os.path.join(base_path, "checkpoints")):
+            os.makedirs(os.path.join(base_path, "checkpoints"))
     trainer = DecoderTrainer(
         decoder,
         lr = lr,
@@ -185,19 +204,19 @@ def train(
     )
     # Set up starting model and parameters based on a recalled state dict
     start_step = 0
-    start_epoch = 0 
+    start_epoch = 0
+    validation_losses = []
     if resume_from is not None:
         if resume_from == "wandb":
-            trainer, start_epoch, start_step = recall_trainer(
+            trainer, start_epoch, start_step, validation_losses = recall_trainer(
                 trainer,
-                run_path=resume_config["wandb_run_path"],
-                epoch=resume_config["wandb_epoch"],
-                step=resume_config["wandb_step"]
+                wandb_run_path=resume_config["wandb_run_path"],
+                wandb_file_path=resume_config["wandb_file_path"],
             )
         elif resume_from == "file":
-            trainer, start_epoch, start_step = recall_trainer(
+            trainer, start_epoch, start_step, validation_losses = recall_trainer(
                 trainer,
-                filepath=resume_config["filepath"]
+                local_filepath=resume_config["filepath"]
             )
         else:
             raise ValueError("resume_from must be either wandb or file")
@@ -219,7 +238,7 @@ def train(
             img, emb = send_to_device((img, emb))
             
             for unet in range(1, trainer.num_unets+1):
-                loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
+                loss = trainer.forward(img, image_embed=emb, unet_number=unet)
                 loss.backward()
                 trainer.update(unet_number=unet)
                 losses.append(loss.item())
@@ -247,7 +266,7 @@ def train(
             if last_snapshot + save_every_n_samples < sample:
                 last_snapshot = sample
                 print(f"Saving model...")
-                save_trainer(trainer, epoch, step, local_only=not using_wandb)
+                save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=not using_wandb, latest=save_latest, best=False, checkpoint=save_all)
                 if using_wandb:
                     print(f"Generating sample...")
                     train_images = generate_samples(decoder, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
@@ -301,7 +320,11 @@ def train(
             }, step=step)
 
         print(f"=========== Starting Saving {epoch} ===========")
-        save_trainer(trainer, epoch, step, local_only=not using_wandb)
+        is_best = False
+        if save_best:
+            is_best = len(validation_losses) == 0 or average_loss < min(validation_losses)
+        validation_losses.append(average_loss)
+        save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=not using_wandb, latest=True, best=is_best, checkpoint=False)
 
     
 def initialize_training(config):
@@ -311,9 +334,9 @@ def initialize_training(config):
     resuming_from_source = None if not resuming else ("wandb" if config["resume"]["from_wandb"] else "file")
 
     # Create the save path
-    save_path = "./models"
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    base_path = "./models"
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
     if "cuda" in config["train"]["device"]:
         assert torch.cuda.is_available(), "CUDA is not available"
     device = torch.device(config["train"]["device"])
@@ -363,9 +386,9 @@ class TrainDecoderConfig:
             "unets": [{ "dim": 16, "image_emb_dim": 768, "cond_dim": 64, "channels": 3, "dim_mults": [1, 2, 3, 4], "attn_dim_head": 32, "attn_heads": 16 }],
             "decoder": { "image_sizes": [64,], "image_size": [64,], "channels": 3, "timesteps": 1000, "image_cond_drop_prob": 0.1, "text_cond_drop_prob": 0.5, "condition_on_text_encodings": False, "loss_type": "l2", "beta_schedule": "cosine" },
             "data": { "webdataset_base_url": None, "embeddings_url": None, "num_workers": 4, "batch_size": 64, "start_shard": 0, "end_shard": 9999999, "shard_width": None, "index_width": None, "splits": { "train": 0.75, "val": 0.15, "test": 0.1 }, "shuffle_train": True, "shuffle_val_test": False, "preprocessing": { "RandomResizedCrop": { "size": [64, 64], "scale": [0.75, 1.0], "ratio": [1.0, 1.0] }, "ToTensor": True } },
-            "train": { "epochs": 100, "lr": 1.2e-4, "wd": 0.0, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False },
+            "train": { "epochs": 100, "lr": 2e-5, "wd": 0.0, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
             "wandb": { "entity": "", "project": "" },
-            "resume": { "do_resume": False, "from_wandb": True, "wandb_run_path": "", "wandb_epoch": -1, "wandb_step": -1, "wandb_resume": False, "filepath": "" }
+            "resume": { "do_resume": False, "from_wandb": True, "wandb_run_path": "", "wandb_file_path": "", "wandb_resume": False, "filepath": "" }
         }
         self.config = self.map_config(config, defaults)
 
@@ -435,5 +458,5 @@ def main(config_file):
 
 if __name__ == "__main__":
     # Set the tmpdir to the current directory/tmp
-    os.environ["TMPDIR"] = os.path.join(os.getcwd(), "tmp", "train_decoder")
+    # os.environ["TMPDIR"] = os.path.join(os.getcwd(), "tmp", "train_decoder")
     main()

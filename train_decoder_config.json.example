@@ -1,11 +1,11 @@
 {
     "unets": [
         {
-            "dim": 16,
+            "dim": 128,
             "image_embed_dim": 768,
             "cond_dim": 64,
             "channels": 3,
-            "dim_mults": [1, 2, 3, 4],
+            "dim_mults": [1, 2, 4, 8],
             "attn_dim_head": 32,
             "attn_heads": 16
         },
@@ -14,14 +14,13 @@
             "image_embed_dim": 768,
             "cond_dim": 64,
             "channels": 3,
-            "dim_mults": [1, 2, 4, 8],
+            "dim_mults": [1, 2, 4, 8, 16],
             "attn_dim_head": 32,
             "attn_heads": 16
         }
     ],
     "decoder": {
         "image_sizes": [64, 128],
-        "image_size": [64, 128],
         "channels": 3,
         "timesteps": 1000,
         "loss_type": "l2",
@@ -30,9 +29,9 @@
     },
     "data": {
         "webdataset_base_url": "pipe:s3cmd get s3://bucket/path/{}.tar -",
-        "embeddings_url": "s3://bucket/path/",
+        "embeddings_url": "s3://bucket/embeddings/path/",
         "num_workers": 4,
-        "batch_size": 32,
+        "batch_size": 256,
         "start_shard": 0,
         "end_shard": 9999999,
         "shard_width": 6,
@@ -56,15 +55,19 @@
     "train": {
         "epochs": 100,
         "lr": 2e-5,
-        "wd": 0.0,
-        "max_grad_norm": null,
-        "save_every_n_samples": 100000,
-        "n_sample_images": 16,
-        "device": "cuda:6",
+        "wd": 0.1,
+        "max_grad_norm": 0.5,
+        "save_every_n_samples": 250000,
+        "n_sample_images": 6,
+        "device": "cuda:7",
         "epoch_samples": null,
         "validation_samples": null,
         "use_ema": true,
-        "amp": false
+        "amp": false,
+        "save_all": false,
+        "save_latest": true,
+        "save_best": true,
+        "base_path": "/absolute/path/to/model/folder"
     },
     "wandb": {
         "entity": "",
@@ -72,10 +75,10 @@
     },
     "resume": {
         "do_resume": false,
-        "from_wandb": false,
-        "wandb_run_path": "",
-        "wandb_epoch": -1,
-        "wandb_step": -1,
+
+        "from_wandb": true,
+        "wandb_run_path": "wandb/run/path",
+        "wandb_file_path": "latest.pth",
         "wandb_resume": false,
         
         "filepath": ""
