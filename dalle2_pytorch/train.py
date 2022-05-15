@@ -266,8 +266,8 @@ class DiffusionPriorTrainer(nn.Module):
                 loss = self.diffusion_prior(*chunked_args, **chunked_kwargs)
                 loss = loss * chunk_size_frac
 
-                total_loss += loss.item()
-                self.scaler.scale(loss).backward()
+            total_loss += loss.item()
+            self.scaler.scale(loss).backward()
 
         return total_loss
 
@@ -390,7 +390,7 @@ class DecoderTrainer(nn.Module):
                 loss = self.decoder(*chunked_args, unet_number = unet_number, **chunked_kwargs)
                 loss = loss * chunk_size_frac
 
-                total_loss += loss.item()
-                self.scale(loss, unet_number = unet_number).backward()
+            total_loss += loss.item()
+            self.scale(loss, unet_number = unet_number).backward()
 
         return total_loss
