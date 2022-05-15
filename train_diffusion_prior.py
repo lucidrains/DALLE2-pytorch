@@ -150,7 +150,7 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
 @click.option("--dropout", default=5e-2)
 @click.option("--max-grad-norm", default=0.5)
 @click.option("--num-data-points", default=250e6)
-@click.option("--batch-size", default=256)
+@click.option("--batch-size", default=320)
 @click.option("--num-epochs", default=5)
 @click.option("--image-embed-dim", default=768)
 @click.option("--train-percent", default=0.7)
@@ -160,13 +160,13 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
 @click.option("--dpn-dim-head", default=64)
 @click.option("--dpn-heads", default=12)
 @click.option("--dp-condition-on-text-encodings", default=True)
-@click.option("--dp-timesteps", default=100)
+@click.option("--dp-timesteps", default=1000)
 @click.option("--dp-normformer", default=True)
 @click.option("--dp-cond-drop-prob", default=0.1)
 @click.option("--dp-loss-type", default="l2")
 @click.option("--clip", default="ViT-L/14")
 @click.option("--amp", default=False)
-@click.option("--save-interval", default=30)
+@click.option("--save-interval", default=120)
 @click.option("--save-path", default="./diffusion_prior_checkpoints")
 @click.option("--pretrained-model-path", default=None)
 @click.option("--gpu-device", default=0)
@@ -363,6 +363,7 @@ def train(
                 ### Evaluate model(validation run) ###
                 eval_model(diffusion_prior, eval_loader, dp_condition_on_text_encodings, dp_loss_type, phase="Validation")
 
+            step += 1
             trainer.update()
 
     ### Test run ###

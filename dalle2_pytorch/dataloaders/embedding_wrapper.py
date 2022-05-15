@@ -20,7 +20,7 @@ class PriorEmbeddingLoader(IterableDataset):
         self.text_conditioned = text_conditioned
 
         if not self.text_conditioned:
-            self.text_reader = image_reader
+            self.text_reader = text_reader
 
         self.image_reader = image_reader
         self.batch_size = batch_size
