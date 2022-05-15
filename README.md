@@ -1013,6 +1013,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] decoder needs one day worth of refactor for tech debt
 - [ ] allow for unet to be able to condition non-cross attention style as well
 - [ ] for all model classes with hyperparameters that changes the network architecture, make it requirement that they must expose a config property, and write a simple function that asserts that it restores the object correctly
+- [ ] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)
 
 ## Citations
 
