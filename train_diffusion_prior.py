@@ -1,24 +1,26 @@
 import os
 import math
+import time
 import argparse
 import numpy as np
 
 import torch
 from torch import nn
-from embedding_reader import EmbeddingReader
+from torch.cuda.amp import autocast, GradScaler
+
 from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork
 from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model, print_ribbon
 from dalle2_pytorch.optimizer import get_optimizer
-from torch.cuda.amp import autocast,GradScaler
+from dalle2_pytorch.trackers import ConsoleTracker, WandbTracker
 
-import time
+from embedding_reader import EmbeddingReader
+
 from tqdm import tqdm
 
-import wandb
-os.environ["WANDB_SILENT"] = "true"
 NUM_TEST_EMBEDDINGS = 100 # for cosine similarity reporting during training
 REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting during training
 
+tracker = WandbTracker()
 
 def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_type,phase="Validation"):
     model.eval()
@@ -40,7 +42,7 @@ def eval_model(model,device,image_reader,text_reader,start,end,batch_size,loss_t
             total_samples += batches
 
         avg_loss = (total_loss / total_samples)
-        wandb.log({f'{phase} {loss_type}': avg_loss})
+        tracker.log({f'{phase} {loss_type}': avg_loss})
 
 def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,NUM_TEST_EMBEDDINGS,device):
     diffusion_prior.eval()
@@ -87,7 +89,7 @@ def report_cosine_sims(diffusion_prior,image_reader,text_reader,train_set_size,N
            text_embed, predicted_unrelated_embeddings).cpu().numpy()
        predicted_img_similarity = cos(
            test_image_embeddings, predicted_image_embeddings).cpu().numpy()
-       wandb.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
+       tracker.log({"CosineSimilarity(text_embed,image_embed)": np.mean(original_similarity),
             "CosineSimilarity(text_embed,predicted_image_embed)":np.mean(predicted_similarity),
             "CosineSimilarity(orig_image_embed,predicted_image_embed)":np.mean(predicted_img_similarity),
             "CosineSimilarity(text_embed,predicted_unrelated_embed)": np.mean(unrelated_similarity),
@@ -201,7 +203,7 @@ def train(image_embed_dim,
                     image_embed_dim)
 
             # Log to wandb
-            wandb.log({"Training loss": loss.item(),
+            tracker.log({"Training loss": loss.item(),
                         "Steps": step,
                         "Samples per second": samples_per_sec})
             # Log cosineSim(text_embed,predicted_image_embed) - cosineSim(text_embed,image_embed)
@@ -306,7 +308,7 @@ def main():
     if(DPRIOR_PATH is not None):
         RESUME = True
     else:
-        wandb.init(
+        tracker.init(
           entity=args.wandb_entity,
           project=args.wandb_project,
           config=config)
@@ -351,4 +353,4 @@ def main():
           args.amp)
 
 if __name__ == "__main__":
-  main()
+    main()

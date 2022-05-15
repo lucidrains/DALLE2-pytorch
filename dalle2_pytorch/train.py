@@ -228,6 +228,8 @@ class DiffusionPriorTrainer(nn.Module):
 
         self.max_grad_norm = max_grad_norm
 
+        self.register_buffer('step', torch.tensor([0.]))
+
     def update(self):
         if exists(self.max_grad_norm):
             self.scaler.unscale_(self.optimizer)
@@ -239,6 +241,8 @@ class DiffusionPriorTrainer(nn.Module):
 
         if self.use_ema:
             self.ema_diffusion_prior.update()
+
+        self.step += 1
 
     @torch.inference_mode()
     def p_sample_loop(self, *args, **kwargs):
@@ -328,6 +332,8 @@ class DecoderTrainer(nn.Module):
 
         self.max_grad_norm = max_grad_norm
 
+        self.register_buffer('step', torch.tensor([0.]))
+
     @property
     def unets(self):
         return nn.ModuleList([ema.ema_model for ema in self.ema_unets])
@@ -357,6 +363,8 @@ class DecoderTrainer(nn.Module):
         if self.use_ema:
             ema_unet = self.ema_unets[index]
             ema_unet.update()
+
+        self.step += 1
 
     @torch.no_grad()
     def sample(self, *args, **kwargs):
