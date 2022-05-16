@@ -1,5 +1,5 @@
 from dalle2_pytorch import Unet, Decoder
-from dalle2_pytorch.train import DecoderTrainer, print_ribon
+from dalle2_pytorch.train import DecoderTrainer, print_ribbon
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
 import time
 import os
@@ -76,7 +76,6 @@ def create_decoder(device, decoder_config, unets_config):
         unets.append(Unet(
             **unets_config[i]
         ))
-        unets[i].to(device=device)
     
     decoder = Decoder(
         unet=tuple(unets),  # Must be tuple because of cast_tuple
@@ -140,6 +139,7 @@ def get_trainer_state_dict(trainer):
         state_dict["ema_model"].append(EMA_unet.state_dict())
 
     state_dict["decoder"] = trainer.decoder.state_dict()
+    return state_dict
 
 def apply_trainer_state_dict(trainer, state_dict):
     """
@@ -160,7 +160,7 @@ def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=
     """
     Saves the state of the trainer and decoder to wandb.
     """
-    print(print_ribon("Saving trainer", repeat=40))
+    print(print_ribbon("Saving trainer", repeat=40))
     state_dict = get_trainer_state_dict(trainer)
     state_dict['epoch'] = epoch
     state_dict['step'] = step
@@ -179,7 +179,7 @@ def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=
             wandb.save(save_path, base_path=base_path)
 
 def recall_trainer(trainer, wandb_run_path=None, wandb_file_path=None, local_filepath=None):
-    print(print_ribon("Recalling trainer", repeat=40))
+    print(print_ribbon("Recalling trainer", repeat=40))
     if local_filepath is None:
         # Then we are recalling from wandb
         print(f"Recalling trainer from wandb: {wandb_run_path}/{wandb_file_path}")
@@ -213,6 +213,7 @@ def train(
     save_all=False,
     save_latest=True,
     save_best=True,
+    ema_beta=0.999,
     **kwargs
 ):
     """
@@ -231,7 +232,8 @@ def train(
         wd = wd,
         amp = amp,
         use_ema = use_ema,
-        max_grad_norm = max_grad_norm
+        max_grad_norm = max_grad_norm,
+        ema_beta = ema_beta,
     )
     # Set up starting model and parameters based on a recalled state dict
     start_step = 0
@@ -256,9 +258,8 @@ def train(
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
     step = start_step
     for epoch in range(start_epoch, epochs):
-        print(print_ribon(f"Starting epoch {epoch}", repeat=40))
+        print(print_ribbon(f"Starting epoch {epoch}", repeat=40))
         trainer.train()
-        decoder.train()  # I don't see anything in the trainer that would set decoder to train mode so I assume we also need this
 
         sample = 0
         last_sample = 0
@@ -272,9 +273,8 @@ def train(
             
             for unet in range(1, trainer.num_unets+1):
                 loss = trainer.forward(img, image_embed=emb, unet_number=unet)
-                loss.backward()
                 trainer.update(unet_number=unet)
-                losses.append(loss.item())
+                losses.append(loss)
 
             samples_per_sec = (sample - last_sample) / (time.time() - last_time)
             last_time = time.time()
@@ -313,8 +313,7 @@ def train(
                 break
 
         trainer.eval()
-        decoder.eval()
-        print(print_ribon(f"Starting Validation {epoch}", repeat=40))
+        print(print_ribbon(f"Starting Validation {epoch}", repeat=40))
         with torch.no_grad():
             sample = 0
             average_loss = 0
@@ -325,7 +324,7 @@ def train(
                 
                 for unet in range(1, len(decoder.unets)+1):
                     loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
-                    average_loss += loss.item()
+                    average_loss += loss
 
                 if i % 10 == 0:
                     print(f"Epoch {epoch}/{epochs} - {sample / (time.time() - start_time):.2f} samples/sec")
@@ -335,7 +334,7 @@ def train(
                 if validation_samples is not None and sample >= validation_samples:
                     break
             average_loss /= (i+1)
-            print(print_ribon(f"Validation {epoch} Complete", repeat=40))
+            print(print_ribbon(f"Validation {epoch} Complete", repeat=40))
             print(f"Average Loss: {average_loss}")
             print("")
             if using_wandb:
@@ -346,7 +345,7 @@ def train(
                 }, step=step)
 
         if using_wandb:
-            print(print_ribon(f"Sampling Set {epoch}", repeat=40))
+            print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
             test_images = generate_samples(trainer, dataloaders["test"], epoch, inference_device, step, n=n_sample_images, text_prepend="Test: ")
             train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
             wandb.log({
@@ -354,7 +353,7 @@ def train(
                 "Train samples": train_images
             }, step=step)
 
-        print(print_ribon(f"Starting Saving {epoch}", repeat=40))
+        print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
         is_best = False
         if save_best:
             is_best = len(validation_losses) == 0 or average_loss < min(validation_losses)
@@ -421,7 +420,7 @@ class TrainDecoderConfig:
             "unets": [{ "dim": 16, "image_emb_dim": 768, "cond_dim": 64, "channels": 3, "dim_mults": [1, 2, 3, 4], "attn_dim_head": 32, "attn_heads": 16 }],
             "decoder": { "image_sizes": [64,], "image_size": [64,], "channels": 3, "timesteps": 1000, "image_cond_drop_prob": 0.1, "text_cond_drop_prob": 0.5, "condition_on_text_encodings": False, "loss_type": "l2", "beta_schedule": "cosine" },
             "data": { "webdataset_base_url": None, "embeddings_url": None, "num_workers": 4, "batch_size": 64, "start_shard": 0, "end_shard": 9999999, "shard_width": None, "index_width": None, "splits": { "train": 0.75, "val": 0.15, "test": 0.1 }, "shuffle_train": True, "resample_train": False, "shuffle_val_test": False, "preprocessing": { "RandomResizedCrop": { "size": [64, 64], "scale": [0.75, 1.0], "ratio": [1.0, 1.0] }, "ToTensor": True } },
-            "train": { "epochs": 100, "lr": 2e-5, "wd": 0.0, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
+            "train": { "epochs": 100, "lr": 2e-5, "wd": 0.0, "ema_beta": 0.999, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
             "wandb": { "entity": "", "project": "" },
             "resume": { "do_resume": False, "from_wandb": True, "wandb_run_path": "", "wandb_file_path": "", "wandb_resume": False, "filepath": "" }
         }
