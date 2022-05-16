@@ -1870,13 +1870,14 @@ class Decoder(BaseGaussianDiffusion):
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.no_grad()
-    def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, learned_variance = False, clip_denoised = True, lowres_cond_img = None, text_encodings = None, text_mask = None, cond_scale = 1):
+    def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, learned_variance = False, clip_denoised = True, lowres_cond_img = None, text_encodings = None, text_mask = None, cond_scale = 1, is_latent_diffusion = False):
         device = self.betas.device
 
         b = shape[0]
         img = torch.randn(shape, device = device)
 
-        lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
+        if not is_latent_diffusion:
+            lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
             img = self.p_sample(
@@ -1896,13 +1897,14 @@ class Decoder(BaseGaussianDiffusion):
         unnormalize_img = unnormalize_zero_to_one(img)
         return unnormalize_img
 
-    def p_losses(self, unet, x_start, times, *, image_embed, lowres_cond_img = None, text_encodings = None, text_mask = None, predict_x_start = False, noise = None, learned_variance = False, clip_denoised = False):
+    def p_losses(self, unet, x_start, times, *, image_embed, lowres_cond_img = None, text_encodings = None, text_mask = None, predict_x_start = False, noise = None, learned_variance = False, clip_denoised = False, is_latent_diffusion = False):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         # normalize to [-1, 1]
 
-        x_start = normalize_neg_one_to_one(x_start)
-        lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
+        if not is_latent_diffusion:
+            x_start = normalize_neg_one_to_one(x_start)
+            lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
 
         # get x_t
 
@@ -2016,7 +2018,8 @@ class Decoder(BaseGaussianDiffusion):
                     predict_x_start = predict_x_start,
                     learned_variance = learned_variance,
                     clip_denoised = not is_latent_diffusion,
-                    lowres_cond_img = lowres_cond_img
+                    lowres_cond_img = lowres_cond_img,
+                    is_latent_diffusion = is_latent_diffusion
                 )
 
                 img = vae.decode(img)
@@ -2075,12 +2078,14 @@ class Decoder(BaseGaussianDiffusion):
             image = aug(image)
             lowres_cond_img = aug(lowres_cond_img, params = aug._params)
 
+        is_latent_diffusion = not isinstance(vae, NullVQGanVAE)
+
         vae.eval()
         with torch.no_grad():
             image = vae.encode(image)
             lowres_cond_img = maybe(vae.encode)(lowres_cond_img)
 
-        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start, learned_variance = learned_variance)
+        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start, learned_variance = learned_variance, is_latent_diffusion = is_latent_diffusion)
 
 # main class
 
