@@ -235,6 +235,16 @@ class EMA(nn.Module):
 
 # diffusion prior trainer
 
+def prior_sample_in_chunks(fn):
+    @wraps(fn)
+    def inner(self, *args, max_batch_size = None, **kwargs):
+        if not exists(max_batch_size):
+            return fn(self, *args, **kwargs)
+
+        outputs = [fn(self, *chunked_args, **chunked_kwargs) for _, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs)]
+        return torch.cat(outputs, dim = 0)
+    return inner
+
 class DiffusionPriorTrainer(nn.Module):
     def __init__(
         self,
@@ -295,11 +305,13 @@ class DiffusionPriorTrainer(nn.Module):
 
     @torch.no_grad()
     @cast_torch_tensor
+    @prior_sample_in_chunks
     def p_sample_loop(self, *args, **kwargs):
         return self.ema_diffusion_prior.ema_model.p_sample_loop(*args, **kwargs)
 
     @torch.no_grad()
     @cast_torch_tensor
+    @prior_sample_in_chunks
     def sample(self, *args, **kwargs):
         return self.ema_diffusion_prior.ema_model.sample(*args, **kwargs)
 

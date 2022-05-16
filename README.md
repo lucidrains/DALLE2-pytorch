@@ -820,8 +820,8 @@ clip = CLIP(
 
 # mock data
 
-text = torch.randint(0, 49408, (32, 256)).cuda()
-images = torch.randn(32, 3, 256, 256).cuda()
+text = torch.randint(0, 49408, (512, 256)).cuda()
+images = torch.randn(512, 3, 256, 256).cuda()
 
 # prior networks (with transformer)
 
@@ -854,7 +854,7 @@ diffusion_prior_trainer.update()  # this will update the optimizer as well as th
 # after much of the above three lines in a loop
 # you can sample from the exponential moving average of the diffusion prior identically to how you do so for DiffusionPrior
 
-image_embeds = diffusion_prior_trainer.sample(text) # (4, 512) - exponential moving averaged image embeddings
+image_embeds = diffusion_prior_trainer.sample(text, max_batch_size = 4) # (512, 512) - exponential moving averaged image embeddings
 ```
 
 ## Bonus
