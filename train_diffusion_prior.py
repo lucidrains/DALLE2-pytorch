@@ -18,8 +18,7 @@ from tqdm import tqdm
 
 # constants
 
-NUM_TEST_EMBEDDINGS = 100 # for cosine similarity reporting during training
-REPORT_METRICS_EVERY = 100 # for cosine similarity and other metric reporting during training
+REPORT_METRICS_EVERY = 250 # for cosine similarity and other metric reporting during training
 
 tracker = WandbTracker()
 
@@ -37,6 +36,7 @@ class Timer:
 
     def elapsed(self):
         return time.time() - self.last_time
+
 # functions
 
 def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation"):
@@ -45,7 +45,6 @@ def eval_model(model, dataloader, text_conditioned, loss_type, phase="Validation
     with torch.no_grad():
         total_loss = 0.
         total_samples = 0.
-
 
         for image_embeddings, text_data in tqdm(dataloader):
 
@@ -153,9 +152,9 @@ def report_cosine_sims(diffusion_prior, dataloader, text_conditioned):
 @click.option("--batch-size", default=320)
 @click.option("--num-epochs", default=5)
 @click.option("--image-embed-dim", default=768)
-@click.option("--train-percent", default=0.7)
-@click.option("--val-percent", default=0.2)
-@click.option("--test-percent", default=0.1)
+@click.option("--train-percent", default=0.9)
+@click.option("--val-percent", default=1e-7)
+@click.option("--test-percent", default=0.0999999)
 @click.option("--dpn-depth", default=12)
 @click.option("--dpn-dim-head", default=64)
 @click.option("--dpn-heads", default=12)
