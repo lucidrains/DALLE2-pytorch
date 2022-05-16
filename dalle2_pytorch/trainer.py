@@ -195,7 +195,11 @@ class EMA(nn.Module):
     def update(self):
         self.step += 1
 
-        if self.step <= self.update_after_step or (self.step % self.update_every) != 0:
+        if (self.step % self.update_every) != 0:
+            return
+
+        if self.step <= self.update_after_step:
+            self.copy_params_from_model_to_ema()
             return
 
         if not self.initted:
