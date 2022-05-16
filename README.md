@@ -20,6 +20,10 @@ There was enough interest for a <a href="https://github.com/lucidrains/dalle2-ja
 
 - Decoder is now verified working for unconditional generation on my experimental setup for Oxford flowers. <a href="https://github.com/egeozsoy">Another researcher</a> has also confirmed Decoder is working for him.
 
+<img src="./samples/oxford.png" width="400px" />
+
+*ongoing at 12k steps*
+
 ## Install
 
 ```bash
