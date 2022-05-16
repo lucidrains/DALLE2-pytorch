@@ -794,7 +794,7 @@ class DiffusionPriorNetwork(nn.Module):
         text_embed,
         text_encodings = None,
         mask = None,
-        cond_drop_prob = 0.2
+        cond_drop_prob = 0.
     ):
         batch, dim, device, dtype = *image_embed.shape, image_embed.device, image_embed.dtype
 
