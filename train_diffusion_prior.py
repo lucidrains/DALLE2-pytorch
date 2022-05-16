@@ -7,9 +7,11 @@ import numpy as np
 import torch
 import clip
 from torch import nn
+
 from dalle2_pytorch.dataloaders import make_splits
 from dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter
-from dalle2_pytorch.train import DiffusionPriorTrainer, load_diffusion_model, save_diffusion_model, print_ribbon
+from dalle2_pytorch.trainer import DiffusionPriorTrainer, load_diffusion_model, save_diffusion_model, print_ribbon
+
 from dalle2_pytorch.trackers import ConsoleTracker, WandbTracker
 
 from embedding_reader import EmbeddingReader

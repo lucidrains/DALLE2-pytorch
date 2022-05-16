@@ -377,8 +377,11 @@ class DecoderTrainer(nn.Module):
         scaler = getattr(self, f'scaler{index}')
         return scaler.scale(loss)
 
-    def update(self, unet_number):
-        assert 1 <= unet_number <= self.num_unets
+    def update(self, unet_number = None):
+        if self.num_unets == 1:
+            unet_number = default(unet_number, 1)
+
+        assert exists(unet_number) and 1 <= unet_number <= self.num_unets
         index = unet_number - 1
         unet = self.decoder.unets[index]
 
@@ -421,10 +424,13 @@ class DecoderTrainer(nn.Module):
     def forward(
         self,
         *args,
-        unet_number,
+        unet_number = None,
         max_batch_size = None,
         **kwargs
     ):
+        if self.num_unets == 1:
+            unet_number = default(unet_number, 1)
+
         total_loss = 0.
 
         for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs):
