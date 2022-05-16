@@ -173,7 +173,7 @@ def make_splits(
             text_reader=text_reader,
             batch_size=batch_size,
             start=eval_stop,
-            stop=num_data_points,
+            stop=int(num_data_points),
             device=device,
         )
 
