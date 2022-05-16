@@ -10,7 +10,7 @@ setup(
       'dream = dalle2_pytorch.cli:dream'
     ],
   },
-  version = '0.2.36',
+  version = '0.2.37',
   license='MIT',
   description = 'DALL-E 2',
   author = 'Phil Wang',

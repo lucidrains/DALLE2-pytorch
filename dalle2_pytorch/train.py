@@ -335,11 +335,6 @@ class DecoderTrainer(nn.Module):
         self.num_unets = len(self.decoder.unets)
 
         self.use_ema = use_ema
-
-        if use_ema:
-            has_lazy_linear = any([type(module) == nn.LazyLinear for module in decoder.modules()])
-            assert not has_lazy_linear, 'you must set the text_embed_dim on your u-nets if you plan on doing automatic exponential moving average'
-
         self.ema_unets = nn.ModuleList([])
 
         self.amp = amp
