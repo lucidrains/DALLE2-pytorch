@@ -18,11 +18,11 @@ There was enough interest for a <a href="https://github.com/lucidrains/dalle2-ja
 
 - A research group has used the code in this repository to train a functional diffusion prior for their CLIP generations. Will share their work once they release their preprint. This, and <a href="https://github.com/crowsonkb">Katherine's</a> own experiments, validate OpenAI's finding that the extra prior increases variety of generations.
 
-- Decoder is now verified working for unconditional generation on my experimental setup for Oxford flowers. <a href="https://github.com/egeozsoy">Another researcher</a> has also confirmed Decoder is working for him.
+- Decoder is now verified working for unconditional generation on my experimental setup for Oxford flowers. 2 researchers have also confirmed Decoder is working for them.
 
-<img src="./samples/oxford.png" width="400px" />
+<img src="./samples/oxford.png" width="600px" />
 
-*ongoing at 12k steps*
+*ongoing at 21k steps*
 
 ## Install
 

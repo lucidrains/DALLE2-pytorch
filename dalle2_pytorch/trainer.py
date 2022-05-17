@@ -366,7 +366,7 @@ class DecoderTrainer(nn.Module):
         lr = 1e-4,
         wd = 1e-2,
         eps = 1e-8,
-        max_grad_norm = None,
+        max_grad_norm = 0.5,
         amp = False,
         **kwargs
     ):
