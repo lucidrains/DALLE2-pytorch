@@ -14,6 +14,16 @@ Please join <a href="https://discord.gg/xBPBXfcFHd"><img alt="Join us on Discord
 
 There was enough interest for a <a href="https://github.com/lucidrains/dalle2-jax">Jax version</a>. I will also eventually extend this to <a href="https://github.com/lucidrains/dalle2-video">text to video</a>, once the repository is in a good place.
 
+## Status
+
+- A research group has used the code in this repository to train a functional diffusion prior for their CLIP generations. Will share their work once they release their preprint. This, and <a href="https://github.com/crowsonkb">Katherine's</a> own experiments, validate OpenAI's finding that the extra prior increases variety of generations.
+
+- Decoder is now verified working for unconditional generation on my experimental setup for Oxford flowers. 2 researchers have also confirmed Decoder is working for them.
+
+<img src="./samples/oxford.png" width="600px" />
+
+*ongoing at 21k steps*
+
 ## Install
 
 ```bash
@@ -747,7 +757,7 @@ mock_image_embed = torch.randn(1, 512).cuda()
 images = decoder.sample(mock_image_embed) # (1, 3, 1024, 1024)
 ```
 
-## Training wrapper (wip)
+## Training wrapper
 
 ### Decoder Training
 
@@ -855,8 +865,8 @@ clip = CLIP(
 
 # mock data
 
-text = torch.randint(0, 49408, (32, 256)).cuda()
-images = torch.randn(32, 3, 256, 256).cuda()
+text = torch.randint(0, 49408, (512, 256)).cuda()
+images = torch.randn(512, 3, 256, 256).cuda()
 
 # prior networks (with transformer)
 
@@ -889,8 +899,63 @@ diffusion_prior_trainer.update()  # this will update the optimizer as well as th
 # after much of the above three lines in a loop
 # you can sample from the exponential moving average of the diffusion prior identically to how you do so for DiffusionPrior
 
-image_embeds = diffusion_prior_trainer.sample(text) # (4, 512) - exponential moving averaged image embeddings
+image_embeds = diffusion_prior_trainer.sample(text, max_batch_size = 4) # (512, 512) - exponential moving averaged image embeddings
 ```
+
+## Bonus
+
+### Unconditional Training
+
+The repository also contains the means to train unconditional DDPM model, or even cascading DDPMs. You simply have to set `unconditional = True` in the `Decoder`
+
+ex.
+
+```python
+import torch
+from dalle2_pytorch import Unet, Decoder, DecoderTrainer
+
+# unet for the cascading ddpm
+
+unet1 = Unet(
+    dim = 128,
+    dim_mults=(1, 2, 4, 8)
+).cuda()
+
+unet2 = Unet(
+    dim = 32,
+    dim_mults = (1, 2, 4, 8, 16)
+).cuda()
+
+# decoder, which contains the unets
+
+decoder = Decoder(
+    unet = (unet1, unet2),
+    image_sizes = (256, 512),  # first unet up to 256px, then second to 512px
+    timesteps = 1000,
+    unconditional = True
+).cuda()
+
+# decoder trainer
+
+decoder_trainer = DecoderTrainer(decoder)
+
+# images (get a lot of this)
+
+images = torch.randn(1, 3, 512, 512).cuda()
+
+# feed images into decoder
+
+for i in (1, 2):
+    loss = decoder_trainer(images, unet_number = i)
+    decoder_trainer.update(unet_number = i)
+
+# do the above for many many many many images
+# then it will learn to generate images
+
+images = decoder_trainer.sample(batch_size = 36, max_batch_size = 4) # (36, 3, 512, 512)
+```
+
+## Dataloaders
 
 ### Decoder Dataloaders
 
@@ -1055,6 +1120,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] allow for unet to be able to condition non-cross attention style as well
 - [ ] for all model classes with hyperparameters that changes the network architecture, make it requirement that they must expose a config property, and write a simple function that asserts that it restores the object correctly
 - [ ] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)
+- [ ] read the paper, figure it out, and build it https://github.com/lucidrains/DALLE2-pytorch/issues/89
 
 ## Citations
 
@@ -1140,6 +1206,15 @@ Once built, images will be saved to the same directory the command is invoked
     eprint  = {2108.00154},
     archivePrefix = {arXiv},
     primaryClass = {cs.CV}
+}
+```
+
+```bibtex
+@article{ho2021cascaded,
+    title   = {Cascaded Diffusion Models for High Fidelity Image Generation},
+    author  = {Ho, Jonathan and Saharia, Chitwan and Chan, William and Fleet, David J and Norouzi, Mohammad and Salimans, Tim},
+    journal = {arXiv preprint arXiv:2106.15282},
+    year    = {2021}
 }
 ```
 

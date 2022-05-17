@@ -1,7 +1,7 @@
 import time
 import copy
 from math import ceil
-from functools import partial
+from functools import partial, wraps
 from collections.abc import Iterable
 
 import torch
@@ -10,6 +10,8 @@ from torch.cuda.amp import autocast, GradScaler
 
 from dalle2_pytorch.dalle2_pytorch import Decoder, DiffusionPrior
 from dalle2_pytorch.optimizer import get_optimizer
+
+import numpy as np
 
 # helper functions
 
@@ -44,6 +46,37 @@ def groupby_prefix_and_trim(prefix, d):
     kwargs_with_prefix, kwargs = group_dict_by_key(partial(string_begins_with, prefix), d)
     kwargs_without_prefix = dict(map(lambda x: (x[0][len(prefix):], x[1]), tuple(kwargs_with_prefix.items())))
     return kwargs_without_prefix, kwargs
+
+def num_to_groups(num, divisor):
+    groups = num // divisor
+    remainder = num % divisor
+    arr = [divisor] * groups
+    if remainder > 0:
+        arr.append(remainder)
+    return arr
+
+# decorators
+
+def cast_torch_tensor(fn):
+    @wraps(fn)
+    def inner(model, *args, **kwargs):
+        device = kwargs.pop('_device', next(model.parameters()).device)
+        cast_device = kwargs.pop('_cast_device', True)
+
+        kwargs_keys = kwargs.keys()
+        all_args = (*args, *kwargs.values())
+        split_kwargs_index = len(all_args) - len(kwargs_keys)
+        all_args = tuple(map(lambda t: torch.from_numpy(t) if exists(t) and isinstance(t, np.ndarray) else t, all_args))
+
+        if cast_device:
+            all_args = tuple(map(lambda t: t.to(device) if exists(t) and isinstance(t, torch.Tensor) else t, all_args))
+
+        args, kwargs_values = all_args[:split_kwargs_index], all_args[split_kwargs_index:]
+        kwargs = dict(tuple(zip(kwargs_keys, kwargs_values)))
+
+        out = fn(model, *args, **kwargs)
+        return out
+    return inner
 
 # gradient accumulation functions
 
@@ -154,8 +187,8 @@ class EMA(nn.Module):
         self.online_model = model
         self.ema_model = copy.deepcopy(model)
 
-        self.update_after_step = update_after_step # only start EMA after this step number, starting at 0
         self.update_every = update_every
+        self.update_after_step = update_after_step  // update_every # only start EMA after this step number, starting at 0
 
         self.register_buffer('initted', torch.Tensor([False]))
         self.register_buffer('step', torch.tensor([0.]))
@@ -164,14 +197,21 @@ class EMA(nn.Module):
         device = self.initted.device
         self.ema_model.to(device)
 
+    def copy_params_from_model_to_ema(self):
+        self.ema_model.state_dict(self.online_model.state_dict())
+
     def update(self):
         self.step += 1
 
-        if self.step <= self.update_after_step or (self.step % self.update_every) != 0:
+        if (self.step % self.update_every) != 0:
+            return
+
+        if self.step <= self.update_after_step:
+            self.copy_params_from_model_to_ema()
             return
 
         if not self.initted:
-            self.ema_model.state_dict(self.online_model.state_dict())
+            self.copy_params_from_model_to_ema()
             self.initted.data.copy_(torch.Tensor([True]))
 
         self.update_moving_average(self.ema_model, self.online_model)
@@ -194,6 +234,16 @@ class EMA(nn.Module):
         return self.ema_model(*args, **kwargs)
 
 # diffusion prior trainer
+
+def prior_sample_in_chunks(fn):
+    @wraps(fn)
+    def inner(self, *args, max_batch_size = None, **kwargs):
+        if not exists(max_batch_size):
+            return fn(self, *args, **kwargs)
+
+        outputs = [fn(self, *chunked_args, **chunked_kwargs) for _, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs)]
+        return torch.cat(outputs, dim = 0)
+    return inner
 
 class DiffusionPriorTrainer(nn.Module):
     def __init__(
@@ -253,18 +303,23 @@ class DiffusionPriorTrainer(nn.Module):
 
         self.step += 1
 
-    @torch.inference_mode()
+    @torch.no_grad()
+    @cast_torch_tensor
+    @prior_sample_in_chunks
     def p_sample_loop(self, *args, **kwargs):
         return self.ema_diffusion_prior.ema_model.p_sample_loop(*args, **kwargs)
 
-    @torch.inference_mode()
+    @torch.no_grad()
+    @cast_torch_tensor
+    @prior_sample_in_chunks
     def sample(self, *args, **kwargs):
         return self.ema_diffusion_prior.ema_model.sample(*args, **kwargs)
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def sample_batch_size(self, *args, **kwargs):
         return self.ema_diffusion_prior.ema_model.sample_batch_size(*args, **kwargs)
 
+    @cast_torch_tensor
     def forward(
         self,
         *args,
@@ -287,15 +342,31 @@ class DiffusionPriorTrainer(nn.Module):
 
 # decoder trainer
 
+def decoder_sample_in_chunks(fn):
+    @wraps(fn)
+    def inner(self, *args, max_batch_size = None, **kwargs):
+        if not exists(max_batch_size):
+            return fn(self, *args, **kwargs)
+
+        if self.decoder.unconditional:
+            batch_size = kwargs.get('batch_size')
+            batch_sizes = num_to_groups(batch_size, max_batch_size)
+            outputs = [fn(self, *args, **{**kwargs, 'batch_size': sub_batch_size}) for sub_batch_size in batch_sizes]
+        else:
+            outputs = [fn(self, *chunked_args, **chunked_kwargs) for _, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs)]
+
+        return torch.cat(outputs, dim = 0)
+    return inner
+
 class DecoderTrainer(nn.Module):
     def __init__(
         self,
         decoder,
         use_ema = True,
-        lr = 2e-5,
+        lr = 1e-4,
         wd = 1e-2,
         eps = 1e-8,
-        max_grad_norm = None,
+        max_grad_norm = 0.5,
         amp = False,
         **kwargs
     ):
@@ -307,11 +378,6 @@ class DecoderTrainer(nn.Module):
         self.num_unets = len(self.decoder.unets)
 
         self.use_ema = use_ema
-
-        if use_ema:
-            has_lazy_linear = any([type(module) == nn.LazyLinear for module in decoder.modules()])
-            assert not has_lazy_linear, 'you must set the text_embed_dim on your u-nets if you plan on doing automatic exponential moving average'
-
         self.ema_unets = nn.ModuleList([])
 
         self.amp = amp
@@ -354,8 +420,11 @@ class DecoderTrainer(nn.Module):
         scaler = getattr(self, f'scaler{index}')
         return scaler.scale(loss)
 
-    def update(self, unet_number):
-        assert 1 <= unet_number <= self.num_unets
+    def update(self, unet_number = None):
+        if self.num_unets == 1:
+            unet_number = default(unet_number, 1)
+
+        assert exists(unet_number) and 1 <= unet_number <= self.num_unets
         index = unet_number - 1
         unet = self.decoder.unets[index]
 
@@ -377,15 +446,18 @@ class DecoderTrainer(nn.Module):
         self.step += 1
 
     @torch.no_grad()
+    @cast_torch_tensor
+    @decoder_sample_in_chunks
     def sample(self, *args, **kwargs):
-        if self.use_ema:
-            trainable_unets = self.decoder.unets
-            self.decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling
+        if kwargs.pop('use_non_ema', False) or not self.use_ema:
+            return self.decoder.sample(*args, **kwargs)
+
+        trainable_unets = self.decoder.unets
+        self.decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling
 
         output = self.decoder.sample(*args, **kwargs)
 
-        if self.use_ema:
-            self.decoder.unets = trainable_unets             # restore original training unets
+        self.decoder.unets = trainable_unets             # restore original training unets
 
         # cast the ema_model unets back to original device
         for ema in self.ema_unets:
@@ -393,13 +465,17 @@ class DecoderTrainer(nn.Module):
 
         return output
 
+    @cast_torch_tensor
     def forward(
         self,
         *args,
-        unet_number,
+        unet_number = None,
         max_batch_size = None,
         **kwargs
     ):
+        if self.num_unets == 1:
+            unet_number = default(unet_number, 1)
+
         total_loss = 0.
 
         for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs):

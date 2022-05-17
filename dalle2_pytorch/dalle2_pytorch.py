@@ -61,6 +61,9 @@ def default(val, d):
 def cast_tuple(val, length = 1):
     return val if isinstance(val, tuple) else ((val,) * length)
 
+def module_device(module):
+    return next(module.parameters()).device
+
 @contextmanager
 def null_context(*args, **kwargs):
     yield
@@ -794,7 +797,7 @@ class DiffusionPriorNetwork(nn.Module):
         text_embed,
         text_encodings = None,
         mask = None,
-        cond_drop_prob = 0.2
+        cond_drop_prob = 0.
     ):
         batch, dim, device, dtype = *image_embed.shape, image_embed.device, image_embed.dtype
 
@@ -901,6 +904,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.channels = default(image_channels, lambda: clip.image_channels)
 
         self.cond_drop_prob = cond_drop_prob
+        self.can_classifier_guidance = cond_drop_prob > 0.
         self.condition_on_text_encodings = condition_on_text_encodings
 
         # in paper, they do not predict the noise, but predict x0 directly for image embedding, claiming empirically better results. I'll just offer both.
@@ -914,8 +918,10 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.training_clamp_l2norm = training_clamp_l2norm
         self.init_image_embed_l2norm = init_image_embed_l2norm
 
-    def p_mean_variance(self, x, t, text_cond, clip_denoised: bool):
-        pred = self.net(x, t, **text_cond)
+    def p_mean_variance(self, x, t, text_cond, clip_denoised = False, cond_scale = 1.):
+        assert not (cond_scale != 1. and not self.can_classifier_guidance), 'the model was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'
+
+        pred = self.net.forward_with_cond_scale(x, t, cond_scale = cond_scale, **text_cond)
 
         if self.predict_x_start:
             x_recon = pred
@@ -933,17 +939,17 @@ class DiffusionPrior(BaseGaussianDiffusion):
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
-    @torch.inference_mode()
-    def p_sample(self, x, t, text_cond = None, clip_denoised = True, repeat_noise = False):
+    @torch.no_grad()
+    def p_sample(self, x, t, text_cond = None, clip_denoised = True, repeat_noise = False, cond_scale = 1.):
         b, *_, device = *x.shape, x.device
-        model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, text_cond = text_cond, clip_denoised = clip_denoised)
+        model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, text_cond = text_cond, clip_denoised = clip_denoised, cond_scale = cond_scale)
         noise = noise_like(x.shape, device, repeat_noise)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
-    @torch.inference_mode()
-    def p_sample_loop(self, shape, text_cond):
+    @torch.no_grad()
+    def p_sample_loop(self, shape, text_cond, cond_scale = 1.):
         device = self.betas.device
 
         b = shape[0]
@@ -954,7 +960,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
             times = torch.full((b,), i, device = device, dtype = torch.long)
-            image_embed = self.p_sample(image_embed, times, text_cond = text_cond)
+            image_embed = self.p_sample(image_embed, times, text_cond = text_cond, cond_scale = cond_scale)
 
         return image_embed
 
@@ -978,21 +984,21 @@ class DiffusionPrior(BaseGaussianDiffusion):
         loss = self.loss_fn(pred, target)
         return loss
 
-    @torch.inference_mode()
+    @torch.no_grad()
     @eval_decorator
-    def sample_batch_size(self, batch_size, text_cond):
+    def sample_batch_size(self, batch_size, text_cond, cond_scale = 1.):
         device = self.betas.device
         shape = (batch_size, self.image_embed_dim)
 
         img = torch.randn(shape, device = device)
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
-            img = self.p_sample(img, torch.full((batch_size,), i, device = device, dtype = torch.long), text_cond = text_cond)
+            img = self.p_sample(img, torch.full((batch_size,), i, device = device, dtype = torch.long), text_cond = text_cond, cond_scale = cond_scale)
         return img
 
-    @torch.inference_mode()
+    @torch.no_grad()
     @eval_decorator
-    def sample(self, text, num_samples_per_batch = 2):
+    def sample(self, text, num_samples_per_batch = 2, cond_scale = 1.):
         # in the paper, what they did was
         # sample 2 image embeddings, choose the top 1 similarity, as judged by CLIP
         text = repeat(text, 'b ... -> (b r) ...', r = num_samples_per_batch)
@@ -1007,7 +1013,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
         if self.condition_on_text_encodings:
             text_cond = {**text_cond, 'text_encodings': text_encodings, 'mask': text_mask}
 
-        image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond)
+        image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond, cond_scale = cond_scale)
 
         # retrieve original unscaled image embed
 
@@ -1305,7 +1311,7 @@ class Unet(nn.Module):
         self,
         dim,
         *,
-        image_embed_dim,
+        image_embed_dim = None,
         text_embed_dim = None,
         cond_dim = None,
         num_image_tokens = 4,
@@ -1377,7 +1383,7 @@ class Unet(nn.Module):
         self.image_to_cond = nn.Sequential(
             nn.Linear(image_embed_dim, cond_dim * num_image_tokens),
             Rearrange('b (n d) -> b n d', n = num_image_tokens)
-        ) if image_embed_dim != cond_dim else nn.Identity()
+        ) if cond_on_image_embeds and image_embed_dim != cond_dim else nn.Identity()
 
         self.norm_cond = nn.LayerNorm(cond_dim)
         self.norm_mid_cond = nn.LayerNorm(cond_dim)
@@ -1387,7 +1393,8 @@ class Unet(nn.Module):
         self.text_to_cond = None
 
         if cond_on_text_encodings:
-            self.text_to_cond = nn.LazyLinear(cond_dim) if not exists(text_embed_dim) else nn.Linear(text_embed_dim, cond_dim)
+            assert exists(text_embed_dim), 'text_embed_dim must be given to the unet if cond_on_text_encodings is True'
+            self.text_to_cond = nn.Linear(text_embed_dim, cond_dim)
 
         # finer control over whether to condition on image embeddings and text encodings
         # so one can have the latter unets in the cascading DDPMs only focus on super-resoluting
@@ -1701,7 +1708,7 @@ class Decoder(BaseGaussianDiffusion):
         self.unconditional = unconditional
         assert not (condition_on_text_encodings and unconditional), 'unconditional decoder image generation cannot be set to True if conditioning on text is present'
 
-        assert exists(clip) ^ exists(image_size), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
+        assert self.unconditional or (exists(clip) ^ exists(image_size)), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
 
         self.clip = None
         if exists(clip):
@@ -1792,6 +1799,7 @@ class Decoder(BaseGaussianDiffusion):
 
         self.image_cond_drop_prob = image_cond_drop_prob
         self.text_cond_drop_prob = text_cond_drop_prob
+        self.can_classifier_guidance = image_cond_drop_prob > 0. or text_cond_drop_prob > 0.
 
         # whether to clip when sampling
 
@@ -1811,13 +1819,19 @@ class Decoder(BaseGaussianDiffusion):
             unet = self.get_unet(unet_number)
 
         self.cuda()
-        self.unets.cpu()
 
+        devices = [module_device(unet) for unet in self.unets]
+        self.unets.cpu()
         unet.cuda()
+
         yield
-        unet.cpu()
+
+        for unet, device in zip(self.unets, devices):
+            unet.to(device)
 
     def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, lowres_cond_img = None, clip_denoised = True, predict_x_start = False, learned_variance = False, cond_scale = 1., model_output = None):
+        assert not (cond_scale != 1. and not self.can_classifier_guidance), 'the decoder was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'
+
         pred = default(model_output, lambda: unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img))
 
         if learned_variance:
@@ -1846,7 +1860,7 @@ class Decoder(BaseGaussianDiffusion):
 
         return model_mean, posterior_variance, posterior_log_variance
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def p_sample(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, cond_scale = 1., lowres_cond_img = None, predict_x_start = False, learned_variance = False, clip_denoised = True, repeat_noise = False):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, clip_denoised = clip_denoised, predict_x_start = predict_x_start, learned_variance = learned_variance)
@@ -1855,14 +1869,15 @@ class Decoder(BaseGaussianDiffusion):
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
-    @torch.inference_mode()
-    def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, learned_variance = False, clip_denoised = True, lowres_cond_img = None, text_encodings = None, text_mask = None, cond_scale = 1):
+    @torch.no_grad()
+    def p_sample_loop(self, unet, shape, image_embed, predict_x_start = False, learned_variance = False, clip_denoised = True, lowres_cond_img = None, text_encodings = None, text_mask = None, cond_scale = 1, is_latent_diffusion = False):
         device = self.betas.device
 
         b = shape[0]
         img = torch.randn(shape, device = device)
 
-        lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
+        if not is_latent_diffusion:
+            lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
             img = self.p_sample(
@@ -1882,13 +1897,14 @@ class Decoder(BaseGaussianDiffusion):
         unnormalize_img = unnormalize_zero_to_one(img)
         return unnormalize_img
 
-    def p_losses(self, unet, x_start, times, *, image_embed, lowres_cond_img = None, text_encodings = None, text_mask = None, predict_x_start = False, noise = None, learned_variance = False, clip_denoised = False):
+    def p_losses(self, unet, x_start, times, *, image_embed, lowres_cond_img = None, text_encodings = None, text_mask = None, predict_x_start = False, noise = None, learned_variance = False, clip_denoised = False, is_latent_diffusion = False):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         # normalize to [-1, 1]
 
-        x_start = normalize_neg_one_to_one(x_start)
-        lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
+        if not is_latent_diffusion:
+            x_start = normalize_neg_one_to_one(x_start)
+            lowres_cond_img = maybe(normalize_neg_one_to_one)(lowres_cond_img)
 
         # get x_t
 
@@ -1948,12 +1964,14 @@ class Decoder(BaseGaussianDiffusion):
 
         return loss + vb_loss
 
-    @torch.inference_mode()
+    @torch.no_grad()
     @eval_decorator
     def sample(
         self,
         image_embed = None,
         text = None,
+        text_mask = None,
+        text_encodings = None,
         batch_size = 1,
         cond_scale = 1.,
         stop_at_unet_number = None
@@ -1963,8 +1981,8 @@ class Decoder(BaseGaussianDiffusion):
         if not self.unconditional:
             batch_size = image_embed.shape[0]
 
-        text_encodings = text_mask = None
-        if exists(text):
+        if exists(text) and not exists(text_encodings) and not self.unconditional:
+            assert exists(self.clip)
             _, text_encodings, text_mask = self.clip.embed_text(text)
 
         assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
@@ -2000,7 +2018,8 @@ class Decoder(BaseGaussianDiffusion):
                     predict_x_start = predict_x_start,
                     learned_variance = learned_variance,
                     clip_denoised = not is_latent_diffusion,
-                    lowres_cond_img = lowres_cond_img
+                    lowres_cond_img = lowres_cond_img,
+                    is_latent_diffusion = is_latent_diffusion
                 )
 
                 img = vae.decode(img)
@@ -2016,6 +2035,7 @@ class Decoder(BaseGaussianDiffusion):
         text = None,
         image_embed = None,
         text_encodings = None,
+        text_mask = None,
         unet_number = None
     ):
         assert not (len(self.unets) > 1 and not exists(unet_number)), f'you must specify which unet you want trained, from a range of 1 to {len(self.unets)}, if you are training cascading DDPM (multiple unets)'
@@ -2036,12 +2056,11 @@ class Decoder(BaseGaussianDiffusion):
 
         times = torch.randint(0, self.num_timesteps, (b,), device = device, dtype = torch.long)
 
-        if not exists(image_embed):
+        if not exists(image_embed) and not self.unconditional:
             assert exists(self.clip), 'if you want to derive CLIP image embeddings automatically, you must supply `clip` to the decoder on init'
             image_embed, _ = self.clip.embed_image(image)
 
-        text_encodings = text_mask = None
-        if exists(text) and not exists(text_encodings):
+        if exists(text) and not exists(text_encodings) and not self.unconditional:
             assert exists(self.clip), 'if you are passing in raw text, you need to supply `clip` to the decoder'
             _, text_encodings, text_mask = self.clip.embed_text(text)
 
@@ -2059,12 +2078,14 @@ class Decoder(BaseGaussianDiffusion):
             image = aug(image)
             lowres_cond_img = aug(lowres_cond_img, params = aug._params)
 
+        is_latent_diffusion = not isinstance(vae, NullVQGanVAE)
+
         vae.eval()
         with torch.no_grad():
             image = vae.encode(image)
             lowres_cond_img = maybe(vae.encode)(lowres_cond_img)
 
-        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start, learned_variance = learned_variance)
+        return self.p_losses(unet, image, times, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, lowres_cond_img = lowres_cond_img, predict_x_start = predict_x_start, learned_variance = learned_variance, is_latent_diffusion = is_latent_diffusion)
 
 # main class
 
@@ -2087,22 +2108,23 @@ class DALLE2(nn.Module):
 
         self.to_pil = T.ToPILImage()
 
-    @torch.inference_mode()
+    @torch.no_grad()
     @eval_decorator
     def forward(
         self,
         text,
         cond_scale = 1.,
+        prior_cond_scale = 1.,
         return_pil_images = False
     ):
-        device = next(self.parameters()).device
+        device = module_device(self)
         one_text = isinstance(text, str) or (not is_list_str(text) and text.shape[0] == 1)
 
         if isinstance(text, str) or is_list_str(text):
             text = [text] if not isinstance(text, (list, tuple)) else text
             text = tokenizer.tokenize(text).to(device)
 
-        image_embed = self.prior.sample(text, num_samples_per_batch = self.prior_num_samples)
+        image_embed = self.prior.sample(text, num_samples_per_batch = self.prior_num_samples, cond_scale = prior_cond_scale)
 
         text_cond = text if self.decoder_need_text_cond else None
         images = self.decoder.sample(image_embed, text = text_cond, cond_scale = cond_scale)
