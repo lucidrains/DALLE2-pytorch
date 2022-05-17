@@ -55,7 +55,7 @@
     },
     "train": {
         "epochs": 100,
-        "lr": 2e-5,
+        "lr": 1e-4,
         "wd": 0.1,
         "max_grad_norm": 0.5,
         "save_every_n_samples": 250000,
@@ -64,6 +64,7 @@
         "epoch_samples": null,
         "validation_samples": null,
         "use_ema": true,
+        "ema_beta": 0.99,
         "amp": false,
         "save_all": false,
         "save_latest": true,

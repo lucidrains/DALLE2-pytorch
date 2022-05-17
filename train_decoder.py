@@ -1,6 +1,7 @@
 from dalle2_pytorch import Unet, Decoder
-from dalle2_pytorch.train import DecoderTrainer, print_ribbon
+from dalle2_pytorch.trainer import DecoderTrainer, print_ribbon
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
+from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker, RecallSource
 import time
 import os
 import json
@@ -9,7 +10,6 @@ from torchvision import transforms as T
 import torch
 from torch.cuda.amp import autocast
 import webdataset as wds
-import wandb
 import click
 
 
@@ -93,6 +93,7 @@ def generate_samples(trainer, dataloader, epoch, device, step, n=5, text_prepend
     """
     test_iter = iter(dataloader)
     images = []
+    captions = []
     with torch.no_grad():
         for data in test_iter:
             if len(data) == 3:
@@ -107,17 +108,15 @@ def generate_samples(trainer, dataloader, epoch, device, step, n=5, text_prepend
                 txt = txt[:n]
             img = img.to(device=device, dtype=torch.float)
             emb = emb.to(device=device, dtype=torch.float)
-            trainer.to(device=device) # Don't ask me why this is neccesary
             sample = trainer.sample(emb)
             for original_image, generated_image, text in zip(img, sample, txt):
                 # Make a grid containing the original image and the generated image
                 img_grid = torchvision.utils.make_grid([original_image, generated_image])
-                image = wandb.Image(img_grid, caption=text_prepend+text)
-                images.append(image)
+                images.append(img_grid)
+                captions.append(text_prepend + text)
                 
                 if len(images) >= n:
-                    trainer.to(device)  # Again, don't ask me why but something here moves the model to the cpu
-                    return images
+                    return images, captions
 
 def get_trainer_state_dict(trainer):
     """
@@ -138,7 +137,7 @@ def get_trainer_state_dict(trainer):
     for EMA_unet in trainer.unets:
         state_dict["ema_model"].append(EMA_unet.state_dict())
 
-    state_dict["decoder"] = trainer.decoder.state_dict()
+    state_dict["trainer"] = trainer.state_dict()
     return state_dict
 
 def apply_trainer_state_dict(trainer, state_dict):
@@ -154,51 +153,48 @@ def apply_trainer_state_dict(trainer, state_dict):
     for EMA_unet in trainer.unets:
         EMA_unet.load_state_dict(state_dict["ema_model"][unet_index])
     
-    trainer.decoder.load_state_dict(state_dict["decoder"])
+    trainer.load_state_dict(state_dict["trainer"])
 
-def save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=True, latest=False, best=False, checkpoint=False):
+# Once the tracker API stabilizes, these functions should for the most part be redundant
+def log_step(tracker, data, step=None):
     """
-    Saves the state of the trainer and decoder to wandb.
+    Logs a step of data with an appropriate method depending on the tracker
     """
-    print(print_ribbon("Saving trainer", repeat=40))
-    state_dict = get_trainer_state_dict(trainer)
-    state_dict['epoch'] = epoch
-    state_dict['step'] = step
-    state_dict['validation_losses'] = validation_losses
-    save_paths = []
-    if latest:
-        save_paths.append(os.path.join(base_path, "latest.pth"))
-    if best:
-        save_paths.append(os.path.join(base_path, "best.pth"))
-    if checkpoint:
-        save_paths.append(os.path.join(base_path, "checkpoints", f"epoch_{epoch}_step_{step}.pth"))
-    for save_path in save_paths:
-        print(f"Saving to {save_path}")
-        torch.save(state_dict, save_path)
-        if not local_only:
-            wandb.save(save_path, base_path=base_path)
+    tracker.log(data, step=step)  # Redundant with new tracker system
 
-def recall_trainer(trainer, wandb_run_path=None, wandb_file_path=None, local_filepath=None):
-    print(print_ribbon("Recalling trainer", repeat=40))
-    if local_filepath is None:
-        # Then we are recalling from wandb
-        print(f"Recalling trainer from wandb: {wandb_run_path}/{wandb_file_path}")
-        trainer_state_dict_file = wandb.restore(wandb_file_path, run_path=wandb_run_path)
-        state_dict = torch.load(trainer_state_dict_file.name)
-    else:
-        # Then we are recalling from a file
-        print(f"Recalling trainer from file: {local_filepath}")
-        state_dict = torch.load(local_filepath)
-    apply_trainer_state_dict(trainer, state_dict)
-    return trainer, state_dict["epoch"], state_dict["step"], state_dict["validation_losses"] if "validation_losses" in state_dict else []
+def log_images(tracker, images, captions, image_section, step=None):
+    """
+    Logs images with an appropriate method depending on the tracker
+    """
+    tracker.log_images(images, caption=captions, image_section=image_section, step=step)  # Redundant with new tracker system
+
+def save_trainer(tracker, trainer, epoch, step, validation_losses, relative_paths):
+    """
+    Logs the model with an appropriate method depending on the tracker
+    """
+    if isinstance(relative_paths, str):
+        relative_paths = [relative_paths]
+    trainer_state_dict = get_trainer_state_dict(trainer)
+    trainer_state_dict['epoch'] = epoch
+    trainer_state_dict['step'] = step
+    trainer_state_dict['validation_losses'] = validation_losses
+    for relative_path in relative_paths:
+        tracker.save_state_dict(trainer_state_dict, relative_path)
+    
+def recall_trainer(tracker, trainer, source, **load_config):
+    """
+    Loads the model with an appropriate method depending on the tracker
+    """
+    state_dict = tracker.recall_state_dict(source, **load_config)
+    apply_trainer_state_dict(trainer, state_dict["trainer"])
+    return state_dict["epoch"], state_dict["step"], state_dict["validation_losses"]
 
 def train(
     dataloaders,
     decoder,
     inference_device,
-    using_wandb=False,
-    resume_from=None,
-    resume_config=None,
+    tracker,
+    load_config=None,
     epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch
     validation_samples = None,
     epochs = 20,
@@ -209,24 +205,16 @@ def train(
     wd=0,
     use_ema=True,
     max_grad_norm=None,
-    base_path=None,
+    ema_beta=0.999,
     save_all=False,
     save_latest=True,
     save_best=True,
-    ema_beta=0.999,
     **kwargs
 ):
     """
     Trains a decoder on a dataset.
     """
-    # Create the base path if it doesn't exist
-    if not os.path.exists(base_path):
-        os.makedirs(base_path)
-    # If we are saving all, we also need to make a checkpoints folder inside there
-    if save_all:
-        if not os.path.exists(os.path.join(base_path, "checkpoints")):
-            os.makedirs(os.path.join(base_path, "checkpoints"))
-    trainer = DecoderTrainer(
+    trainer = DecoderTrainer(  # TODO: Change the get_optimizer function so that it can take arbitrary named args so we can just put **kwargs as an argument here
         decoder,
         lr = lr,
         wd = wd,
@@ -239,21 +227,10 @@ def train(
     start_step = 0
     start_epoch = 0
     validation_losses = []
-    if resume_from is not None:
-        if resume_from == "wandb":
-            trainer, start_epoch, start_step, validation_losses = recall_trainer(
-                trainer,
-                wandb_run_path=resume_config["wandb_run_path"],
-                wandb_file_path=resume_config["wandb_file_path"],
-            )
-        elif resume_from == "file":
-            trainer, start_epoch, start_step, validation_losses = recall_trainer(
-                trainer,
-                local_filepath=resume_config["filepath"]
-            )
-        else:
-            raise ValueError("resume_from must be either wandb or file")
-    trainer = trainer.to(device=inference_device)
+
+    if load_config is not None and load_config["source"] is not None:
+        start_epoch, start_step, validation_losses = recall_trainer(trainer, load_config["source"], **load_config)
+    trainer.to(device=inference_device)
     
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
     step = start_step
@@ -282,32 +259,30 @@ def train(
 
             if i % 10 == 0:
                 average_loss = sum(losses) / len(losses)
-                print(f"Epoch {epoch}/{epochs} Sample {sample} Step {i} - {samples_per_sec:.2f} samples/sec")
-                print(f"Losses: {losses}")
-                print(f"Loss: {average_loss}")
-                print("")
-                if using_wandb:
-                    wandb.log({
-                        "Training loss": average_loss,
-                        "Epoch": epoch,
-                        "Sample": sample,
-                        "Step": i,
-                        "Samples per second": samples_per_sec
-                    }, step=step)
+                log_data = {
+                    "Training loss": average_loss,
+                    "Epoch": epoch,
+                    "Sample": sample,
+                    "Step": i,
+                    "Samples per second": samples_per_sec
+                }
+                log_step(tracker, log_data, step=step)
                 losses = []
 
-            if last_snapshot + save_every_n_samples < sample:
+            if last_snapshot + save_every_n_samples < sample:  # This will miss by some amount every time, but it's not a big deal... I hope
                 last_snapshot = sample
-                print(f"Saving model...")
-                save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=not using_wandb, latest=save_latest, best=False, checkpoint=save_all)
-                if using_wandb:
-                    print(f"Generating sample...")
+                # We need to know where the model should be saved
+                save_paths = []
+                if save_latest:
+                    save_paths.append("latest.pth")
+                if save_all:
+                    save_paths.append(f"checkpoints/epoch_{epoch}_step_{step}.pth")
+                save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
+                if n_sample_images is not None and n_sample_images > 0:
                     trainer.eval()
-                    train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
+                    train_images, train_captions = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
                     trainer.train()
-                    wandb.log({
-                        "Train samples": train_images
-                    }, step=step)
+                    log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
             if epoch_samples is not None and sample >= epoch_samples:
                 break
@@ -333,44 +308,62 @@ def train(
 
                 if validation_samples is not None and sample >= validation_samples:
                     break
-            average_loss /= (i+1)
+            average_loss /= i+1
             print(print_ribbon(f"Validation {epoch} Complete", repeat=40))
             print(f"Average Loss: {average_loss}")
             print("")
-            if using_wandb:
-                wandb.log({
-                    "Validation loss": average_loss,
-                    "Epoch": epoch,
-                    "Sample": sample
-                }, step=step)
+            log_data = {
+                "Validation loss": average_loss,
+                "Epoch": epoch,
+                "Sample": sample
+            }
+            log_step(tracker, log_data, step=step)
 
-        if using_wandb:
-            print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-            test_images = generate_samples(trainer, dataloaders["test"], epoch, inference_device, step, n=n_sample_images, text_prepend="Test: ")
-            train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
-            wandb.log({
-                "Test samples": test_images,
-                "Train samples": train_images
-            }, step=step)
+        print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
+        test_images = generate_samples(trainer, dataloaders["test"], epoch, inference_device, step, n=n_sample_images, text_prepend="Test: ")
+        train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
+        log_data = {
+            "Test Samples": test_images,
+            "Train Samples": train_images
+        }
+        log_step(tracker, log_data, step=step)
 
         print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
-        is_best = False
-        if save_best:
-            is_best = len(validation_losses) == 0 or average_loss < min(validation_losses)
+        # Get the same paths
+        save_paths = []
+        if save_latest:
+            save_paths.append("latest.pth")
+        if is_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
+            save_paths.append("best.pth")
         validation_losses.append(average_loss)
-        save_trainer(base_path, trainer, epoch, step, validation_losses, local_only=not using_wandb, latest=True, best=is_best, checkpoint=False)
+        save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
 
+def create_tracker(config, tracker_type=None, data_path=None, **kwargs):
+    """
+    Creates a tracker of the specified type and initializes special features based on the full config
+    """
+    tracker_config = config["tracker"]
+    init_config = {}
+    init_config["config"] = config.config
+    if tracker_type == "console":
+        tracker = ConsoleTracker(**init_config)
+    elif tracker_type == "wandb":
+        # We need to initialize the resume state here
+        load_config = config["load"]
+        if load_config["source"] == "wandb" and load_config["resume"]:
+            # Then we are resuming the run load_config["run_path"]
+            run_id = config["resume"]["wandb_run_path"].split("/")[-1]
+            init_config["id"] = run_id
+            init_config["resume"] = "must"
+        init_config["entity"] = tracker_config["wandb_entity"]
+        init_config["project"] = tracker_config["wandb_project"]
+        tracker = WandbTracker(**init_config)
+    else:
+        raise ValueError(f"Tracker type {tracker_type} not supported by decoder trainer")
+    return tracker
     
 def initialize_training(config):
-    using_wandb = len(config["wandb"]["entity"]) > 0 and len(config["wandb"]["project"]) > 0
-    resuming = config["resume"]["do_resume"]
-    wandb_resume = config["resume"]["wandb_resume"]  # Whether to take over an old wandb run
-    resuming_from_source = None if not resuming else ("wandb" if config["resume"]["from_wandb"] else "file")
-
     # Create the save path
-    base_path = "./models"
-    if not os.path.exists(base_path):
-        os.makedirs(base_path)
     if "cuda" in config["train"]["device"]:
         assert torch.cuda.is_available(), "CUDA is not available"
     device = torch.device(config["train"]["device"])
@@ -388,28 +381,11 @@ def initialize_training(config):
 
     decoder = create_decoder(device, config["decoder"], config["unets"])
 
-    if using_wandb:
-        if wandb_resume:
-            run_id = config["resume"]["wandb_run_path"].split("/")[-1]
-            wandb.init(
-                project=config["wandb"]["project"],
-                entity=config["wandb"]["entity"],
-                id=run_id,
-                resume="must",
-                config=config.config,  # :P
-            )
-        else:
-            wandb.init(
-                project=config["wandb"]["project"],
-                entity=config["wandb"]["entity"],
-                config=config.config,
-            )
+    tracker = create_tracker(config, **config["tracker"])
 
-    train(dataloaders, decoder,
+    train(dataloaders, decoder, tracker,
         inference_device=device,
-        resume_from=resuming_from_source,
         resume_config=config["resume"],
-        using_wandb=using_wandb,
         **config["train"],
     )
 
@@ -420,7 +396,7 @@ class TrainDecoderConfig:
             "unets": [{ "dim": 16, "image_emb_dim": 768, "cond_dim": 64, "channels": 3, "dim_mults": [1, 2, 3, 4], "attn_dim_head": 32, "attn_heads": 16 }],
             "decoder": { "image_sizes": [64,], "image_size": [64,], "channels": 3, "timesteps": 1000, "image_cond_drop_prob": 0.1, "text_cond_drop_prob": 0.5, "condition_on_text_encodings": False, "loss_type": "l2", "beta_schedule": "cosine" },
             "data": { "webdataset_base_url": None, "embeddings_url": None, "num_workers": 4, "batch_size": 64, "start_shard": 0, "end_shard": 9999999, "shard_width": None, "index_width": None, "splits": { "train": 0.75, "val": 0.15, "test": 0.1 }, "shuffle_train": True, "resample_train": False, "shuffle_val_test": False, "preprocessing": { "RandomResizedCrop": { "size": [64, 64], "scale": [0.75, 1.0], "ratio": [1.0, 1.0] }, "ToTensor": True } },
-            "train": { "epochs": 100, "lr": 2e-5, "wd": 0.0, "ema_beta": 0.999, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
+            "train": { "epochs": 100, "lr": 1e-4, "wd": 0.0, "ema_beta": 0.999, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
             "wandb": { "entity": "", "project": "" },
             "resume": { "do_resume": False, "from_wandb": True, "wandb_run_path": "", "wandb_file_path": "", "wandb_resume": False, "filepath": "" }
         }
