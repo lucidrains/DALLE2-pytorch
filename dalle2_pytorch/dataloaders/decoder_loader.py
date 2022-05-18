@@ -56,7 +56,6 @@ def embedding_inserter(samples, embeddings_url, index_width, handler=wds.handler
             # We need to check if this sample is nonzero. If it is, this embedding is not valid and we should continue to the next loop
             if torch.count_nonzero(embedding) == 0:
                 raise RuntimeError(f"Webdataset had a sample, but no embedding was found. ImgShard: {key[:-index_width]} - Index: {key[-index_width:]}")
-                continue
             sample["npy"] = embedding
             yield sample
         except Exception as exn:  # From wds implementation

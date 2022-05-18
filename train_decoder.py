@@ -2,13 +2,13 @@ from dalle2_pytorch import Unet, Decoder
 from dalle2_pytorch.trainer import DecoderTrainer, print_ribbon
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
 from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker
+from configs.decoder_defaults import default_config, ConfigField
 import time
 import os
 import json
 import torchvision
 from torchvision import transforms as T
 import torch
-from torch.cuda.amp import autocast
 import webdataset as wds
 import click
 
@@ -20,9 +20,9 @@ def create_dataloaders(
     shard_width=6,
     num_workers=4,
     batch_size=32,
+    n_sample_images=6,
     shuffle_train=True,
     resample_train=False,
-    shuffle_val_test=False,
     img_preproc = None,
     index_width=4,
     train_prop = 0.75,
@@ -45,27 +45,31 @@ def create_dataloaders(
     test_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
     val_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
     
-    create_dataloader = lambda tar_urls, shuffle=False, resample=False, with_text=False, is_low=False: create_image_embedding_dataloader(
+    create_dataloader = lambda tar_urls, shuffle=False, resample=False, with_text=False, for_sampling=False: create_image_embedding_dataloader(
         tar_url=tar_urls,
         num_workers=num_workers,
-        batch_size=batch_size if not is_low else min(32, batch_size),
+        batch_size=batch_size if not for_sampling else n_sample_images,
         embeddings_url=embeddings_url,
         index_width=index_width,
         shuffle_num = None,
         extra_keys= ["txt"] if with_text else [],
         shuffle_shards = shuffle,
-        resample_shards = False, 
+        resample_shards = resample, 
         img_preproc=img_preproc,
         handler=wds.handlers.warn_and_continue
     )
 
     train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
-    val_dataloader = create_dataloader(val_urls, shuffle=shuffle_val_test, with_text=True)
-    test_dataloader = create_dataloader(test_urls, shuffle=shuffle_val_test, with_text=True, is_low=True)
+    train_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)
+    val_dataloader = create_dataloader(val_urls, shuffle=False, with_text=True)
+    test_dataloader = create_dataloader(test_urls, shuffle=False, with_text=True)
+    test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)
     return {
         "train": train_dataloader,
+        "train_sampling": train_sampling_dataloader,
         "val": val_dataloader,
-        "test": test_dataloader
+        "test": test_dataloader,
+        "test_sampling": test_sampling_dataloader
     }
 
 
@@ -112,11 +116,6 @@ def generate_samples(trainer, dataloader, device, n=5, text_prepend=""):
             else:
                 img, emb = data
                 txt = [""] * emb.shape[0]
-            # If the number of images is larger than n, we can remove all embeddings after the first n to speed up inference
-            if img.shape[0] > n:
-                img = img[:n]
-                emb = emb[:n]
-                txt = txt[:n]
             img = img.to(device=device, dtype=torch.float)
             emb = emb.to(device=device, dtype=torch.float)
             sample = trainer.sample(emb)
@@ -217,6 +216,7 @@ def train(
     save_all=False,
     save_latest=True,
     save_best=True,
+    unet_training_mask=None,
     **kwargs
 ):
     """
@@ -234,6 +234,11 @@ def train(
     if load_config is not None and load_config["source"] is not None:
         start_epoch, start_step, validation_losses = recall_trainer(tracker, trainer, recall_source=load_config["source"], **load_config)
     trainer.to(device=inference_device)
+
+    if unet_training_mask is None:
+        # Then the unet mask should be true for all unets in the decoder
+        unet_training_mask = [True] * trainer.num_unets
+    assert len(unet_training_mask) == trainer.num_unets, f"The unet training mask should be the same length as the number of unets in the decoder. Got {len(unet_training_mask)} and {trainer.num_unets}"
     
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
     step = start_step
@@ -252,9 +257,11 @@ def train(
             img, emb = send_to_device((img, emb))
             
             for unet in range(1, trainer.num_unets+1):
-                loss = trainer.forward(img, image_embed=emb, unet_number=unet)
-                trainer.update(unet_number=unet)
-                losses.append(loss)
+                # Check if this is a unet we are training
+                if unet_training_mask[unet-1]: # Unet index is the unet number - 1
+                    loss = trainer.forward(img, image_embed=emb, unet_number=unet)
+                    trainer.update(unet_number=unet)
+                    losses.append(loss)
 
             samples_per_sec = (sample - last_sample) / (time.time() - last_time)
             last_time = time.time()
@@ -283,7 +290,7 @@ def train(
                 save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
                 if n_sample_images is not None and n_sample_images > 0:
                     trainer.eval()
-                    train_images, train_captions = generate_samples(trainer, dataloaders["train"], inference_device, n=n_sample_images, text_prepend="Train: ")
+                    train_images, train_captions = generate_samples(trainer, dataloaders["train_sampling"], inference_device, n=n_sample_images, text_prepend="Train: ")
                     trainer.train()
                     log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
@@ -323,8 +330,8 @@ def train(
             log_step(tracker, log_data, step=step)
 
         print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-        test_images, test_captions = generate_samples(trainer, dataloaders["test"], inference_device, n=n_sample_images, text_prepend="Test: ")
-        train_images, train_captions = generate_samples(trainer, dataloaders["train"], inference_device, n=n_sample_images, text_prepend="Train: ")
+        test_images, test_captions = generate_samples(trainer, dataloaders["test_sampling"], inference_device, n=n_sample_images, text_prepend="Test: ")
+        train_images, train_captions = generate_samples(trainer, dataloaders["train_sampling"], inference_device, n=n_sample_images, text_prepend="Train: ")
         log_images(tracker, test_images, test_captions, "Test Samples", step=step)
         log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
@@ -377,6 +384,7 @@ def initialize_training(config):
         train_prop = config["data"]["splits"]["train"],
         val_prop = config["data"]["splits"]["val"],
         test_prop = config["data"]["splits"]["test"],
+        n_sample_images=config["train"]["n_sample_images"],
         **config["data"]
     )
 
@@ -387,7 +395,6 @@ def initialize_training(config):
     train(dataloaders, decoder, 
         tracker=tracker,
         inference_device=device,
-        resume_config=config["resume"],
         load_config=config["load"],
         **config["train"],
     )
@@ -395,44 +402,39 @@ def initialize_training(config):
 
 class TrainDecoderConfig:
     def __init__(self, config):
-        defaults = {
-            "unets": [{ "dim": 16, "image_emb_dim": 768, "cond_dim": 64, "channels": 3, "dim_mults": [1, 2, 3, 4], "attn_dim_head": 32, "attn_heads": 16 }],
-            "decoder": { "image_sizes": [64,], "image_size": [64,], "channels": 3, "timesteps": 1000, "image_cond_drop_prob": 0.1, "text_cond_drop_prob": 0.5, "condition_on_text_encodings": False, "loss_type": "l2", "beta_schedule": "cosine" },
-            "data": { "webdataset_base_url": None, "embeddings_url": None, "num_workers": 4, "batch_size": 64, "start_shard": 0, "end_shard": 9999999, "shard_width": None, "index_width": None, "splits": { "train": 0.75, "val": 0.15, "test": 0.1 }, "shuffle_train": True, "resample_train": False, "shuffle_val_test": False, "preprocessing": { "RandomResizedCrop": { "size": [64, 64], "scale": [0.75, 1.0], "ratio": [1.0, 1.0] }, "ToTensor": True } },
-            "train": { "epochs": 100, "lr": 1e-4, "wd": 0.0, "ema_beta": 0.999, "max_grad_norm": 0.5, "save_every_n_samples": 100000, "n_sample_images": 16, "device": "cpu", "epoch_samples": None, "validation_samples": None, "use_ema": True, "amp": False, "base_path": None, "save_all": False, "save_latest": True, "save_best": True },
-            "wandb": { "entity": "", "project": "" },
-            "resume": { "do_resume": False, "from_wandb": True, "wandb_run_path": "", "wandb_file_path": "", "wandb_resume": False, "filepath": "" }
-        }
-        self.config = self.map_config(config, defaults)
+        self.config = self.map_config(config, default_config)
 
     def map_config(self, config, defaults):
         """
         Returns a dictionary containing all config options in the union of config and defaults.
         If the config value is an array, apply the default value to each element.
-        If the default values dict has a value of None for a key, it is required and a runtime error should be thrown if a value is not supplied from config
+        If the default values dict has a value of ConfigField.REQUIRED for a key, it is required and a runtime error should be thrown if a value is not supplied from config
         """
         def _check_option(option, option_config, option_defaults):
             for key, value in option_defaults.items():
                 if key not in option_config:
-                    if value is None:
+                    if value == ConfigField.REQUIRED:
                         raise RuntimeError("Required config value '{}' of option '{}' not supplied".format(key, option))
                     option_config[key] = value
         
         for key, value in defaults.items():
             if key not in config:
-                # Then they did not pass in one of the main configs. This will probably result in an error, but we can pass it through since some options have no required values
-                if isinstance(value, dict):
+                # Then they did not pass in one of the main configs. If the default is an array or object, then we can fill it in. If is a required object, we must error
+                if value == ConfigField.REQUIRED:
+                    raise RuntimeError("Required config value '{}' not supplied".format(key))
+                elif isinstance(value, dict):
                     config[key] = {}
                 elif isinstance(value, list):
                     config[key] = [{}]
-            # Config[key] is now either a dict or list of dicts. 
+            # Config[key] is now either a dict, list of dicts, or an object that cannot be checked. 
             # If it is a list, then we need to check each element
             if isinstance(value, list):
                 assert isinstance(config[key], list)
                 for element in config[key]:
                     _check_option(key, element, value[0])
-            else:
+            elif isinstance(value, dict):
                 _check_option(key, config[key], value)
+            # This object does not support checking
         return config
 
     def get_preprocessing(self):
