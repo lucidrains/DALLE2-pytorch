@@ -9,16 +9,16 @@ from torch import nn
 def exists(val):
     return val is not None
 
-def load_wandb_state_dict(run_path, file_path):
+def load_wandb_state_dict(run_path, file_path, **kwargs):
     try:
         import wandb
     except ImportError as e:
         print('`pip install wandb` to use the wandb recall function')
         raise e
-    file_reference = wandb.restore(wandb_file_path, run_path=wandb_run_path)
+    file_reference = wandb.restore(file_path, run_path=run_path)
     return torch.load(file_reference.name)
 
-def load_local_state_dict(file_path):
+def load_local_state_dict(file_path, **kwargs):
     return torch.load(file_path)
 
 # base class
@@ -42,19 +42,19 @@ class BaseTracker(nn.Module):
     def save_state_dict(self, state_dict, relative_path, **kwargs):
         raise NotImplementedError
 
-    def recall_state_dict(self, source, *args, **kwargs):
+    def recall_state_dict(self, recall_source, *args, **kwargs):
         """
         Loads a state dict from any source.
         Since a user may wish to load a model from a different source than their own tracker (i.e. tracking using wandb but recalling from disk),
             this should not be linked to any individual tracker.
         """
         # TODO: Pull this into a dict or something similar so that we can add more sources without having a massive switch statement
-        if source == 'wandb':
+        if recall_source == 'wandb':
             return load_wandb_state_dict(*args, **kwargs)
-        elif source == 'local':
+        elif recall_source == 'local':
             return load_local_state_dict(*args, **kwargs)
         else:
-            raise ValueError('`source` must be one of `wandb` or `local`')
+            raise ValueError('`recall_source` must be one of `wandb` or `local`')
 
 
 # basic stdout class
@@ -101,7 +101,7 @@ class WandbTracker(BaseTracker):
         """
         Takes a tensor of images and a list of captions and logs them to wandb.
         """
-        wandb_images = [wandb.Image(image, caption=caption) for image, caption in zip_longest(images, captions)]
+        wandb_images = [self.wandb.Image(image, caption=caption) for image, caption in zip_longest(images, captions)]
         self.log({ image_section: wandb_images }, **kwargs)
     
     def save_state_dict(self, state_dict, relative_path, **kwargs):

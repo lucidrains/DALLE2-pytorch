@@ -1,7 +1,7 @@
 from dalle2_pytorch import Unet, Decoder
 from dalle2_pytorch.trainer import DecoderTrainer, print_ribbon
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
-from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker, RecallSource
+from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker
 import time
 import os
 import json
@@ -85,7 +85,16 @@ def create_decoder(device, decoder_config, unets_config):
 
     return decoder
 
-def generate_samples(trainer, dataloader, epoch, device, step, n=5, text_prepend=""):
+def get_dataset_keys(dataloader):
+    """
+    It is sometimes neccesary to get the keys the dataloader is returning. Since the dataset is burried in the dataloader, we need to do a process to recover it.
+    """
+    # If the dataloader is actually a WebLoader, we need to extract the real dataloader
+    if isinstance(dataloader, wds.WebLoader):
+        dataloader = dataloader.pipeline[0]
+    return dataloader.dataset.key_map
+
+def generate_samples(trainer, dataloader, device, n=5, text_prepend=""):
     """
     Generates n samples from the decoder and uploads them to wandb
     Consistently uses the first n image embeddings from the dataloader
@@ -94,9 +103,11 @@ def generate_samples(trainer, dataloader, epoch, device, step, n=5, text_prepend
     test_iter = iter(dataloader)
     images = []
     captions = []
+    dataset_keys = get_dataset_keys(dataloader)
+    has_caption = "txt" in dataset_keys
     with torch.no_grad():
         for data in test_iter:
-            if len(data) == 3:
+            if has_caption:
                 img, emb, txt = data
             else:
                 img, emb = data
@@ -144,29 +155,31 @@ def apply_trainer_state_dict(trainer, state_dict):
     """
     Loads the state dict back into the trainer
     """
-    for unet_index in range(trainer.num_unets):
-        optimizer = getattr(trainer, f'optim{unet_index}')
-        optimizer.load_state_dict(state_dict["optimizers"][unet_index])
-        scaler = getattr(trainer, f'scaler{unet_index}')
-        scaler.load_state_dict(state_dict["scalers"][unet_index])
+    #  # Loading the optimizers currently does not work as intended. Loading the model works well, but continuing training will not work as expected.
+    # for unet_index in range(trainer.num_unets):
+    #     optimizer = getattr(trainer, f'optim{unet_index}')
+    #     optimizer.load_state_dict(state_dict["optimizers"][unet_index])
+    #     scaler = getattr(trainer, f'scaler{unet_index}')
+    #     scaler.load_state_dict(state_dict["scalers"][unet_index])
     
-    for EMA_unet in trainer.unets:
-        EMA_unet.load_state_dict(state_dict["ema_model"][unet_index])
+    # for EMA_unet in trainer.unets:
+    #     EMA_unet.load_state_dict(state_dict["ema_model"][unet_index])
     
+    # trainer.load_state_dict(state_dict["trainer"])
     trainer.load_state_dict(state_dict["trainer"])
 
 # Once the tracker API stabilizes, these functions should for the most part be redundant
-def log_step(tracker, data, step=None):
+def log_step(tracker, data, step=None, **kwargs):
     """
     Logs a step of data with an appropriate method depending on the tracker
     """
-    tracker.log(data, step=step)  # Redundant with new tracker system
+    tracker.log(data, step=step, **kwargs)  # Redundant with new tracker system
 
 def log_images(tracker, images, captions, image_section, step=None):
     """
     Logs images with an appropriate method depending on the tracker
     """
-    tracker.log_images(images, caption=captions, image_section=image_section, step=step)  # Redundant with new tracker system
+    tracker.log_images(images, captions=captions, image_section=image_section, step=step)  # Redundant with new tracker system
 
 def save_trainer(tracker, trainer, epoch, step, validation_losses, relative_paths):
     """
@@ -181,31 +194,26 @@ def save_trainer(tracker, trainer, epoch, step, validation_losses, relative_path
     for relative_path in relative_paths:
         tracker.save_state_dict(trainer_state_dict, relative_path)
     
-def recall_trainer(tracker, trainer, source, **load_config):
+def recall_trainer(tracker, trainer, recall_source=None, **load_config):
     """
     Loads the model with an appropriate method depending on the tracker
     """
-    state_dict = tracker.recall_state_dict(source, **load_config)
-    apply_trainer_state_dict(trainer, state_dict["trainer"])
+    print(print_ribbon(f"Loading model from {recall_source}"))
+    state_dict = tracker.recall_state_dict(recall_source, **load_config)
+    apply_trainer_state_dict(trainer, state_dict)
     return state_dict["epoch"], state_dict["step"], state_dict["validation_losses"]
 
 def train(
     dataloaders,
     decoder,
-    inference_device,
     tracker,
+    inference_device,
     load_config=None,
     epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch
     validation_samples = None,
     epochs = 20,
     n_sample_images = 5,
     save_every_n_samples = 100000,
-    amp=False,
-    lr=1e-4,
-    wd=0,
-    use_ema=True,
-    max_grad_norm=None,
-    ema_beta=0.999,
     save_all=False,
     save_latest=True,
     save_best=True,
@@ -216,12 +224,7 @@ def train(
     """
     trainer = DecoderTrainer(  # TODO: Change the get_optimizer function so that it can take arbitrary named args so we can just put **kwargs as an argument here
         decoder,
-        lr = lr,
-        wd = wd,
-        amp = amp,
-        use_ema = use_ema,
-        max_grad_norm = max_grad_norm,
-        ema_beta = ema_beta,
+        **kwargs
     )
     # Set up starting model and parameters based on a recalled state dict
     start_step = 0
@@ -229,7 +232,7 @@ def train(
     validation_losses = []
 
     if load_config is not None and load_config["source"] is not None:
-        start_epoch, start_step, validation_losses = recall_trainer(trainer, load_config["source"], **load_config)
+        start_epoch, start_step, validation_losses = recall_trainer(tracker, trainer, recall_source=load_config["source"], **load_config)
     trainer.to(device=inference_device)
     
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
@@ -266,7 +269,7 @@ def train(
                     "Step": i,
                     "Samples per second": samples_per_sec
                 }
-                log_step(tracker, log_data, step=step)
+                log_step(tracker, log_data, step=step, verbose=True)
                 losses = []
 
             if last_snapshot + save_every_n_samples < sample:  # This will miss by some amount every time, but it's not a big deal... I hope
@@ -280,7 +283,7 @@ def train(
                 save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
                 if n_sample_images is not None and n_sample_images > 0:
                     trainer.eval()
-                    train_images, train_captions = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
+                    train_images, train_captions = generate_samples(trainer, dataloaders["train"], inference_device, n=n_sample_images, text_prepend="Train: ")
                     trainer.train()
                     log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
@@ -320,20 +323,17 @@ def train(
             log_step(tracker, log_data, step=step)
 
         print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-        test_images = generate_samples(trainer, dataloaders["test"], epoch, inference_device, step, n=n_sample_images, text_prepend="Test: ")
-        train_images = generate_samples(trainer, dataloaders["train"], epoch, inference_device, step, n=n_sample_images, text_prepend="Train: ")
-        log_data = {
-            "Test Samples": test_images,
-            "Train Samples": train_images
-        }
-        log_step(tracker, log_data, step=step)
+        test_images, test_captions = generate_samples(trainer, dataloaders["test"], inference_device, n=n_sample_images, text_prepend="Test: ")
+        train_images, train_captions = generate_samples(trainer, dataloaders["train"], inference_device, n=n_sample_images, text_prepend="Train: ")
+        log_images(tracker, test_images, test_captions, "Test Samples", step=step)
+        log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
         print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
         # Get the same paths
         save_paths = []
         if save_latest:
             save_paths.append("latest.pth")
-        if is_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
+        if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
             save_paths.append("best.pth")
         validation_losses.append(average_loss)
         save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
@@ -357,7 +357,8 @@ def create_tracker(config, tracker_type=None, data_path=None, **kwargs):
             init_config["resume"] = "must"
         init_config["entity"] = tracker_config["wandb_entity"]
         init_config["project"] = tracker_config["wandb_project"]
-        tracker = WandbTracker(**init_config)
+        tracker = WandbTracker(data_path)
+        tracker.init(**init_config)
     else:
         raise ValueError(f"Tracker type {tracker_type} not supported by decoder trainer")
     return tracker
@@ -383,9 +384,11 @@ def initialize_training(config):
 
     tracker = create_tracker(config, **config["tracker"])
 
-    train(dataloaders, decoder, tracker,
+    train(dataloaders, decoder, 
+        tracker=tracker,
         inference_device=device,
         resume_config=config["resume"],
+        load_config=config["load"],
         **config["train"],
     )
 

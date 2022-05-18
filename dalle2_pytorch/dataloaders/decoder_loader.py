@@ -3,7 +3,7 @@ import webdataset as wds
 import torch
 import numpy as np
 import fsspec
-import importlib.util
+import shutil
 
 def get_shard(filename):
     """
@@ -137,18 +137,21 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
 
         """
         super().__init__()
+        keys = ["jpg", "npy"] + extra_keys
+        self.key_map = {key: i for i, key in enumerate(keys)}
         self.resampling = resample
         self.img_preproc = img_preproc
         # If s3, check if s3fs is installed and s3cmd is installed and check if the data is piped instead of straight up
         if (isinstance(urls, str) and "s3:" in urls) or (isinstance(urls, list) and any(["s3:" in url for url in urls])):
             # Then this has an s3 link for the webdataset and we need extra packages
-            print("Dataloder is loading webdataset from s3. s3cmd is required and dataset should be piped with 'pipe:s3cmd get s3://your/data/path/{000..999}.tar -'")
+            if shutil.which("s3cmd") is None:
+                raise RuntimeError("s3cmd is required for s3 webdataset")
         if "s3:" in embedding_folder_url:
             # Then the embeddings are being loaded from s3 and fsspec requires s3fs
-            print("Embedding loading from s3. s3fs is required to load these.")
-            spec = importlib.util.find_spec('s3fs')
-            if spec is None:
-                handler(ImportError("s3fs is required for reading embeddings from s3"))
+            try:
+                import s3fs
+            except ImportError:
+                raise RuntimeError("s3fs is required to load embeddings from s3")
         # Add the shardList and randomize or resample if requested
         if resample:
             assert not shuffle_shards, "Cannot both resample and shuffle"
@@ -174,7 +177,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
         self.append(verify_keys)
         # Apply preprocessing
         self.append(wds.map(self.preproc))
-        self.append(wds.to_tuple("jpg", "npy", *extra_keys))
+        self.append(wds.to_tuple(*keys))
 
     def preproc(self, sample):
         """Applies the preprocessing for images"""
