@@ -9,6 +9,10 @@ import json
 import torchvision
 from torchvision import transforms as T
 import torch
+from torchmetrics.image.fid import FrechetInceptionDistance
+from torchmetrics.image.inception import InceptionScore
+from torchmetrics.image.kid import KernelInceptionDistance
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 import webdataset as wds
 import click
 
@@ -105,7 +109,8 @@ def generate_samples(trainer, dataloader, device, n=5, text_prepend=""):
     If the dataloader returns an extra text key, that is used as the caption
     """
     test_iter = iter(dataloader)
-    images = []
+    real_images = []
+    generated_images = []
     captions = []
     dataset_keys = get_dataset_keys(dataloader)
     has_caption = "txt" in dataset_keys
@@ -119,14 +124,60 @@ def generate_samples(trainer, dataloader, device, n=5, text_prepend=""):
             img = img.to(device=device, dtype=torch.float)
             emb = emb.to(device=device, dtype=torch.float)
             sample = trainer.sample(emb)
-            for original_image, generated_image, text in zip(img, sample, txt):
-                # Make a grid containing the original image and the generated image
-                img_grid = torchvision.utils.make_grid([original_image, generated_image])
-                images.append(img_grid)
-                captions.append(text_prepend + text)
-                
-                if len(images) >= n:
-                    return images, captions
+            real_images.extend(list(img))
+            generated_images.extend(list(sample))
+            captions.extend([text_prepend + t for t in txt])
+            if len(real_images) >= n:
+                break
+    return real_images[:n], generated_images[:n], captions[:n]
+
+def generate_grid_samples(trainer, dataloader, device, n=5, text_prepend=""):
+    real_images, generated_images, captions = generate_samples(trainer, dataloader, device, n, text_prepend)
+    grid_images = [torchvision.utils.make_grid([original_image, generated_image]) for original_image, generated_image in zip(real_images, generated_images)]
+    return grid_images, captions
+                    
+def evaluate_trainer(trainer, dataloader, device, n_evalation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
+    """
+    Computes evaluation metrics for the decoder
+    """
+    metrics = {}
+    # Prepare the data
+    real_images, generated_images, captions = generate_samples(trainer, dataloader, device, n_evalation_samples)
+    real_images = torch.stack(real_images).to(device=device, dtype=torch.float)
+    generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)
+    # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
+    int_real_images = real_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)
+    int_generated_images = generated_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)
+    if FID is not None:
+        fid = FrechetInceptionDistance(**FID)
+        fid.to(device=device)
+        fid.update(int_real_images, real=True)
+        fid.update(int_generated_images, real=False)
+        metrics["FID"] = fid.compute().item()
+    if IS is not None:
+        inception = InceptionScore(**IS)
+        inception.to(device=device)
+        inception.update(int_real_images)
+        is_mean, is_std = inception.compute()
+        metrics["IS_mean"] = is_mean.item()
+        metrics["IS_std"] = is_std.item()
+    if KID is not None:
+        kernel_inception = KernelInceptionDistance(**KID)
+        kernel_inception.to(device=device)
+        kernel_inception.update(int_real_images, real=True)
+        kernel_inception.update(int_generated_images, real=False)
+        kid_mean, kid_std = kernel_inception.compute()
+        metrics["KID_mean"] = kid_mean.item()
+        metrics["KID_std"] = kid_std.item()
+    if LPIPS is not None:
+        # Convert from [0, 1] to [-1, 1]
+        renorm_real_images = real_images.mul(2).sub(1)
+        renorm_generated_images = generated_images.mul(2).sub(1)
+        lpips = LearnedPerceptualImagePatchSimilarity(**LPIPS)
+        lpips.to(device=device)
+        lpips.update(renorm_real_images, renorm_generated_images)
+        metrics["LPIPS"] = lpips.compute().item()
+    return metrics
 
 def get_trainer_state_dict(trainer):
     """
@@ -208,6 +259,7 @@ def train(
     tracker,
     inference_device,
     load_config=None,
+    evaluate_config=None,
     epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch
     validation_samples = None,
     epochs = 20,
@@ -290,7 +342,7 @@ def train(
                 save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
                 if n_sample_images is not None and n_sample_images > 0:
                     trainer.eval()
-                    train_images, train_captions = generate_samples(trainer, dataloaders["train_sampling"], inference_device, n=n_sample_images, text_prepend="Train: ")
+                    train_images, train_captions = generate_grid_samples(trainer, dataloaders["train_sampling"], inference_device, n=n_sample_images, text_prepend="Train: ")
                     trainer.train()
                     log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
@@ -319,19 +371,24 @@ def train(
                 if validation_samples is not None and sample >= validation_samples:
                     break
             average_loss /= i+1
-            print(print_ribbon(f"Validation {epoch} Complete", repeat=40))
-            print(f"Average Loss: {average_loss}")
-            print("")
             log_data = {
                 "Validation loss": average_loss,
                 "Epoch": epoch,
                 "Sample": sample
             }
-            log_step(tracker, log_data, step=step)
+            log_step(tracker, log_data, step=step, verbose=True)
 
+        # Compute evaluation metrics
+        trainer.eval()
+        if evaluate_config is not None:
+            print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
+            evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config)
+            log_step(tracker, evaluation, step=step, verbose=True)
+
+        # Generate sample images
         print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-        test_images, test_captions = generate_samples(trainer, dataloaders["test_sampling"], inference_device, n=n_sample_images, text_prepend="Test: ")
-        train_images, train_captions = generate_samples(trainer, dataloaders["train_sampling"], inference_device, n=n_sample_images, text_prepend="Train: ")
+        test_images, test_captions = generate_grid_samples(trainer, dataloaders["test_sampling"], inference_device, n=n_sample_images, text_prepend="Test: ")
+        train_images, train_captions = generate_grid_samples(trainer, dataloaders["train_sampling"], inference_device, n=n_sample_images, text_prepend="Train: ")
         log_images(tracker, test_images, test_captions, "Test Samples", step=step)
         log_images(tracker, train_images, train_captions, "Train Samples", step=step)
 
@@ -389,6 +446,9 @@ def initialize_training(config):
     )
 
     decoder = create_decoder(device, config["decoder"], config["unets"])
+    num_parameters = sum(p.numel() for p in decoder.parameters())
+    print(print_ribbon("Loaded Config", repeat=40))
+    print(f"Number of parameters: {num_parameters}")
 
     tracker = create_tracker(config, **config["tracker"])
 
@@ -396,6 +456,7 @@ def initialize_training(config):
         tracker=tracker,
         inference_device=device,
         load_config=config["load"],
+        evaluate_config=config["evaluate"],
         **config["train"],
     )
 

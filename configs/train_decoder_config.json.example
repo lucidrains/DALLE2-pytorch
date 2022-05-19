@@ -62,6 +62,24 @@
         "save_best": true,
         "unet_training_mask": [true]
     },
+    "evaluate": {
+        "n_evalation_samples": 1000,
+        "FID": {
+            "feature": 64
+        },
+        "IS": {
+            "feature": 64,
+            "splits": 10
+        },
+        "KID": {
+            "feature": 64,
+            "subset_size": 10
+        },
+        "LPIPS": {
+            "net_type": "vgg",
+            "reduction": "mean"
+        }
+    },
     "tracker": {
         "tracker_type": "console",
         "data_path": "./models",

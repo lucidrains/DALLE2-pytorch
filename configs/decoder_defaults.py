@@ -55,6 +55,13 @@ default_config = {
         "save_best": True,  # Whether to save the best checkpoint
         "unet_training_mask": None  # If None, use all unets
     },
+    "evaluate": {
+        "n_evalation_samples": 1000,
+        "FID": None,
+        "IS": None,
+        "KID": None,
+        "LPIPS": None
+    },
     "tracker": {
         "tracker_type": "console",  # Decoder currently supports console and wandb
         "data_path": "./models",  # The path where files will be saved locally
