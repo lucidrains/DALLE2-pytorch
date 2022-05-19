@@ -41,7 +41,8 @@ setup(
     'x-clip>=0.4.4',
     'youtokentome',
     'webdataset>=0.2.5',
-    'fsspec>=2022.1.0'
+    'fsspec>=2022.1.0',
+    'torchmetrics[image]>=0.8.0'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
