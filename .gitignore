@@ -1,6 +1,12 @@
 # default experiment tracker data
 .tracker-data/
 
+# Configuration Files
+configs/*
+!configs/*.example
+!configs/*_defaults.py
+!configs/README.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

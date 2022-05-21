@@ -1,0 +1,100 @@
+{
+    "unets": [
+        {
+            "dim": 128,
+            "image_embed_dim": 768,
+            "cond_dim": 64,
+            "channels": 3,
+            "dim_mults": [1, 2, 4, 8],
+            "attn_dim_head": 32,
+            "attn_heads": 16
+        }
+    ],
+    "decoder": {
+        "image_sizes": [64],
+        "image_size": [64],
+        "channels": 3,
+        "timesteps": 1000,
+        "loss_type": "l2",
+        "beta_schedule": "cosine",
+        "learned_variance": true
+    },
+    "data": {
+        "webdataset_base_url": "pipe:s3cmd get s3://bucket/path/{}.tar -",
+        "embeddings_url": "s3://bucket/embeddings/path/",
+        "num_workers": 4,
+        "batch_size": 64,
+        "start_shard": 0,
+        "end_shard": 9999999,
+        "shard_width": 6,
+        "index_width": 4,
+        "splits": {
+            "train": 0.75,
+            "val": 0.15,
+            "test": 0.1
+        },
+        "shuffle_train": true,
+        "resample_train": false,
+        "preprocessing": {
+            "RandomResizedCrop": {
+                "size": [128, 128],
+                "scale": [0.75, 1.0],
+                "ratio": [1.0, 1.0]
+            },
+            "ToTensor": true
+        }
+    },
+    "train": {
+        "epochs": 20,
+        "lr": 1e-4,
+        "wd": 0.01,
+        "max_grad_norm": 0.5,
+        "save_every_n_samples": 100000,
+        "n_sample_images": 6,
+        "device": "cuda:0",
+        "epoch_samples": null,
+        "validation_samples": null,
+        "use_ema": true,
+        "ema_beta": 0.99,
+        "amp": false,
+        "save_all": false,
+        "save_latest": true,
+        "save_best": true,
+        "unet_training_mask": [true]
+    },
+    "evaluate": {
+        "n_evalation_samples": 1000,
+        "FID": {
+            "feature": 64
+        },
+        "IS": {
+            "feature": 64,
+            "splits": 10
+        },
+        "KID": {
+            "feature": 64,
+            "subset_size": 10
+        },
+        "LPIPS": {
+            "net_type": "vgg",
+            "reduction": "mean"
+        }
+    },
+    "tracker": {
+        "tracker_type": "console",
+        "data_path": "./models",
+
+        "wandb_entity": "",
+        "wandb_project": "",
+
+        "verbose": false
+    },
+    "load": {
+        "source": null,
+
+        "run_path": "",
+        "file_path": "",
+
+        "resume": false
+    }
+}
