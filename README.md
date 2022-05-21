@@ -1034,6 +1034,18 @@ Once built, images will be saved to the same directory the command is invoked
 
 <a href="https://github.com/lucidrains/stylegan2-pytorch">template</a>
 
+## Appreciation
+
+This library would not have gotten to this working state without the help of
+
+- <a href="https://github.com/nousr">Zion</a> and <a href="https://github.com/krish240574">Kumar</a> for the diffusion training script
+- <a href="https://github.com/Veldrovive">Aidan</a> for the decoder training script and dataloaders
+- <a href="https://github.com/rom1504">Romain</a> for the pull request reviews and project management
+- <a href="https://github.com/Ciaohe">He Cao</a> and <a href="https://github.com/xiankgx">xiankgx</a> for the Q&A and for identifying of critical bugs
+- <a href="https://github.com/crowsonkb">Katherine</a> for her advice
+
+... and many others. Thank you! 🙏
+
 ## Todo
 
 - [x] finish off gaussian diffusion class for latent embedding - allow for prediction of epsilon
