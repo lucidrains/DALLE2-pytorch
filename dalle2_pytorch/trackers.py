@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from enum import Enum
 import importlib
 from itertools import zip_longest
 
@@ -105,7 +104,7 @@ class WandbTracker(BaseTracker):
         Takes a tensor of images and a list of captions and logs them to wandb.
         """
         wandb_images = [self.wandb.Image(image, caption=caption) for image, caption in zip_longest(images, captions)]
-        self.wandb.log({ image_section: wandb_images }, **kwargs)
+        self.log({ image_section: wandb_images }, **kwargs)
     
     def save_state_dict(self, state_dict, relative_path, **kwargs):
         """
