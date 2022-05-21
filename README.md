@@ -1092,7 +1092,7 @@ This library would not have gotten to this working state without the help of
 - [ ] for all model classes with hyperparameters that changes the network architecture, make it requirement that they must expose a config property, and write a simple function that asserts that it restores the object correctly
 - [ ] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)
 - [ ] read the paper, figure it out, and build it https://github.com/lucidrains/DALLE2-pytorch/issues/89
-- [ ] use json schemas to manage config fields, start with decoder and move into diffusion prior
+- [ ] use json schemas to manage config fields, start with decoder and move into diffusion prior - think about whether json schema can allow for both config-driven as well as CLI driven training (by constructing the click decorators from the schema)
 
 ## Citations
 
