@@ -29,6 +29,7 @@ setup(
     'einops>=0.4',
     'einops-exts>=0.0.3',
     'embedding-reader',
+    'jsonschema>=4.5.1',
     'kornia>=0.5.4',
     'numpy',
     'pillow',
