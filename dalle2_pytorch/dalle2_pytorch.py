@@ -59,6 +59,9 @@ def default(val, d):
     return d() if isfunction(d) else d
 
 def cast_tuple(val, length = 1):
+    if isinstance(val, list):
+        val = tuple(val)
+
     return val if isinstance(val, tuple) else ((val,) * length)
 
 def module_device(module):

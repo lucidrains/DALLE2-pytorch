@@ -86,7 +86,7 @@ def create_decoder(device, decoder_config, unets_config):
         ))
     
     decoder = Decoder(
-        unet=tuple(unets),  # Must be tuple because of cast_tuple
+        unet=unets,
         **decoder_config
     )
     decoder.to(device=device)
