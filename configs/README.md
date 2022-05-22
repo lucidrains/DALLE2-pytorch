@@ -4,7 +4,7 @@ For more complex configuration, we provide the option of using a configuration f
 
 ### Decoder Trainer
 
-The decoder trainer has 7 main configuration options. A full example of their use can be found in the [example decoder configuration](train_decoder_config.json.example).
+The decoder trainer has 7 main configuration options. A full example of their use can be found in the [example decoder configuration](train_decoder_config.example.json).
 
 **<ins>Unets</ins>:**
 

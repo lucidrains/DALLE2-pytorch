@@ -1076,6 +1076,7 @@ This library would not have gotten to this working state without the help of
 - [x] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14
 - [x] cross embed layers for downsampling, as an option
 - [x] use an experimental tracker agnostic setup, as done <a href="https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning">here</a>
+- [x] use pydantic for config drive training
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] train on a toy task, offer in colab
@@ -1092,7 +1093,6 @@ This library would not have gotten to this working state without the help of
 - [ ] for all model classes with hyperparameters that changes the network architecture, make it requirement that they must expose a config property, and write a simple function that asserts that it restores the object correctly
 - [ ] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)
 - [ ] read the paper, figure it out, and build it https://github.com/lucidrains/DALLE2-pytorch/issues/89
-- [ ] use json schemas to manage config fields, start with decoder and move into diffusion prior - think about whether json schema can allow for both config-driven as well as CLI driven training (by constructing the click decorators from the schema)
 
 ## Citations
 
