@@ -1,9 +1,9 @@
 from dalle2_pytorch import Unet, Decoder
-from dalle2_pytorch.trainer import DecoderTrainer, print_ribbon
+from dalle2_pytorch.trainer import DecoderTrainer
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
 from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker
 from dalle2_pytorch.train_configs import TrainDecoderConfig
-from dalle2_pytorch.utils import Timer
+from dalle2_pytorch.utils import Timer, print_ribbon
 
 import torchvision
 import torch

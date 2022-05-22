@@ -1,5 +1,7 @@
 import time
 
+# time helpers
+
 class Timer:
     def __init__(self):
         self.reset()
@@ -9,3 +11,9 @@ class Timer:
 
     def elapsed(self):
         return time.time() - self.last_time
+
+# print helpers
+
+def print_ribbon(s, symbol = '=', repeat = 40):
+    flank = symbol * repeat
+    return f'{flank} {s} {flank}'

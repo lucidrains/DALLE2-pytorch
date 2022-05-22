@@ -133,12 +133,6 @@ def split_args_and_kwargs(*args, split_size = None, **kwargs):
         chunk_size_frac = chunk_size / batch_size
         yield chunk_size_frac, (chunked_args, chunked_kwargs)
 
-# print helpers
-
-def print_ribbon(s, symbol = '=', repeat = 40):
-    flank = symbol * repeat
-    return f'{flank} {s} {flank}'
-
 # saving and loading functions
 
 # for diffusion prior
