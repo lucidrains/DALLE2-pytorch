@@ -422,9 +422,9 @@ def initialize_training(config):
     dataloaders = create_dataloaders (
         available_shards=all_shards,
         img_preproc = config.img_preproc,
-        train_prop = config.data["splits"]["train"],
-        val_prop = config.data["splits"]["val"],
-        test_prop = config.data["splits"]["test"],
+        train_prop = config.data.splits.train,
+        val_prop = config.data.splits.val,
+        test_prop = config.data.splits.test,
         n_sample_images=config.train.n_sample_images,
         **config.data.dict()
     )

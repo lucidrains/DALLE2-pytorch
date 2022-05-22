@@ -1,5 +1,5 @@
 from torchvision import transforms as T
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, root_validator
 from typing import List, Iterable, Optional, Union, Tuple, Dict, Any
 
 def exists(val):
@@ -38,6 +38,17 @@ class DecoderConfig(BaseModel):
     class Config:
         extra = "allow"
 
+class TrainSplitConfig(BaseModel):
+    train: float = 0.75
+    val: float = 0.15
+    test: float = 0.1
+
+    @root_validator
+    def validate_all(cls, fields):
+        if sum([*fields.values()]) != 1.:
+            raise ValueError(f'{fields.keys()} must sum to 1.0')
+        return fields
+
 class DecoderDataConfig(BaseModel):
     webdataset_base_url: str     # path to a webdataset with jpg images
     embeddings_url: str          # path to .npy files with embeddings
@@ -47,11 +58,7 @@ class DecoderDataConfig(BaseModel):
     end_shard: int = 9999999
     shard_width: int = 6
     index_width: int = 4
-    splits: Dict[str, float] = {
-        'train': 0.75,
-        'val': 0.15,
-        'test': 0.1
-    }
+    splits: TrainSplitConfig
     shuffle_train: bool = True
     resample_train: bool = False
     preprocessing: Dict[str, Any] = {'ToTensor': True}
