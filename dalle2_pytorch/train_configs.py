@@ -1,3 +1,4 @@
+import json
 from torchvision import transforms as T
 from pydantic import BaseModel, validator, root_validator
 from typing import List, Iterable, Optional, Union, Tuple, Dict, Any
@@ -110,6 +111,12 @@ class TrainDecoderConfig(BaseModel):
     evaluate: DecoderEvaluateConfig
     tracker: TrackerConfig
     load: DecoderLoadConfig
+
+    @classmethod
+    def from_json_path(cls, json_path):
+        with open(json_path) as f:
+            config = json.load(f)
+        return cls(**config)
 
     @property
     def img_preproc(self):
