@@ -1,5 +1,6 @@
 import time
 import copy
+from pathlib import Path
 from math import ceil
 from functools import partial, wraps
 from collections.abc import Iterable
@@ -54,6 +55,10 @@ def num_to_groups(num, divisor):
     if remainder > 0:
         arr.append(remainder)
     return arr
+
+def get_pkg_version():
+    from pkg_resources import get_distribution
+    return get_distribution('dalle2_pytorch').version
 
 # decorators
 
@@ -289,6 +294,44 @@ class DiffusionPriorTrainer(nn.Module):
 
         self.register_buffer('step', torch.tensor([0.]))
 
+    def save(self, path, overwrite = True):
+        path = Path(path)
+        assert not (path.exists() and not overwrite)
+        path.parent.mkdir(parents = True, exist_ok = True)
+
+        save_obj = dict(
+            scaler = self.scaler.state_dict(),
+            optimizer = self.optimizer.state_dict(),
+            model = self.diffusion_prior.state_dict(),
+            version = get_pkg_version()
+        )
+
+        if self.use_ema:
+            save_obj = {**save_obj, 'ema': self.ema_diffusion_prior.state_dict()}
+
+        torch.save(save_obj, str(path))
+
+    def load(self, path, only_model = False, strict = True):
+        path = Path(path)
+        assert path.exists()
+
+        loaded_obj = torch.load(str(path))
+
+        if get_pkg_version() != loaded_obj['version']:
+            print(f'loading saved diffusion prior at version {loaded_obj["version"]} but current package version is at {get_pkg_version()}')
+
+        self.diffusion_prior.load_state_dict(loaded_obj['model'], strict = strict)
+
+        if only_model:
+            return
+
+        self.scaler.load_state_dict(loaded_obj['scaler'])
+        self.optimizer.load_state_dict(loaded_obj['optimizer'])
+
+        if self.use_ema:
+            assert 'ema' in loaded_obj
+            self.ema_diffusion_prior.load_state_dict(loaded_obj['ema'], strict = strict)
+
     def update(self):
         if exists(self.max_grad_norm):
             self.scaler.unscale_(self.optimizer)
@@ -409,6 +452,44 @@ class DecoderTrainer(nn.Module):
         self.max_grad_norm = max_grad_norm
 
         self.register_buffer('step', torch.tensor([0.]))
+
+    def save(self, path, overwrite = True):
+        path = Path(path)
+        assert not (path.exists() and not overwrite)
+        path.parent.mkdir(parents = True, exist_ok = True)
+
+        save_obj = dict(
+            scaler = self.scaler.state_dict(),
+            optimizer = self.optimizer.state_dict(),
+            model = self.decoder.state_dict(),
+            version = get_pkg_version()
+        )
+
+        if self.use_ema:
+            save_obj = {**save_obj, 'ema': self.ema_unets.state_dict()}
+
+        torch.save(save_obj, str(path))
+
+    def load(self, path, only_model = False, strict = True):
+        path = Path(path)
+        assert path.exists()
+
+        loaded_obj = torch.load(str(path))
+
+        if get_pkg_version() != loaded_obj['version']:
+            print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {get_pkg_version()}')
+
+        self.decoder.load_state_dict(loaded_obj['model'], strict = strict)
+
+        if only_model:
+            return
+
+        self.scaler.load_state_dict(loaded_obj['scaler'])
+        self.optimizer.load_state_dict(loaded_obj['optimizer'])
+
+        if self.use_ema:
+            assert 'ema' in loaded_obj
+            self.ema_unets.load_state_dict(loaded_obj['ema'], strict = strict)
 
     @property
     def unets(self):
