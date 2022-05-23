@@ -1084,6 +1084,7 @@ This library would not have gotten to this working state without the help of
 - [x] use pydantic for config drive training
 - [x] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)
 - [x] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
+- [x] allow for creation of diffusion prior model off pydantic config classes - consider the same for tracker configs
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
 - [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
 - [ ] train on a toy task, offer in colab
@@ -1097,7 +1098,6 @@ This library would not have gotten to this working state without the help of
 - [ ] decoder needs one day worth of refactor for tech debt
 - [ ] allow for unet to be able to condition non-cross attention style as well
 - [ ] read the paper, figure it out, and build it https://github.com/lucidrains/DALLE2-pytorch/issues/89
-- [ ] allow for creation of diffusion prior model off pydantic config classes - consider the same for tracker configs
 
 ## Citations
 
