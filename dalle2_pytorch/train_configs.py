@@ -64,6 +64,22 @@ class DecoderDataConfig(BaseModel):
     resample_train: bool = False
     preprocessing: Dict[str, Any] = {'ToTensor': True}
 
+    @property
+    def img_preproc(self):
+        def _get_transformation(transformation_name, **kwargs):
+            if transformation_name == "RandomResizedCrop":
+                return T.RandomResizedCrop(**kwargs)
+            elif transformation_name == "RandomHorizontalFlip":
+                return T.RandomHorizontalFlip()
+            elif transformation_name == "ToTensor":
+                return T.ToTensor()
+
+        transforms = []
+        for transform_name, transform_kwargs_or_bool in self.preprocessing.items():
+            transform_kwargs = {} if not isinstance(transform_kwargs_or_bool, dict) else transform_kwargs_or_bool
+            transforms.append(_get_transformation(transform_name, **transform_kwargs))
+        return T.Compose(transforms)
+
 class DecoderTrainConfig(BaseModel):
     epochs: int = 20
     lr: float = 1e-4
@@ -117,19 +133,3 @@ class TrainDecoderConfig(BaseModel):
         with open(json_path) as f:
             config = json.load(f)
         return cls(**config)
-
-    @property
-    def img_preproc(self):
-        def _get_transformation(transformation_name, **kwargs):
-            if transformation_name == "RandomResizedCrop":
-                return T.RandomResizedCrop(**kwargs)
-            elif transformation_name == "RandomHorizontalFlip":
-                return T.RandomHorizontalFlip()
-            elif transformation_name == "ToTensor":
-                return T.ToTensor()
-        
-        transforms = []
-        for transform_name, transform_kwargs_or_bool in self.data.preprocessing.items():
-            transform_kwargs = {} if not isinstance(transform_kwargs_or_bool, dict) else transform_kwargs_or_bool
-            transforms.append(_get_transformation(transform_name, **transform_kwargs))
-        return T.Compose(transforms)

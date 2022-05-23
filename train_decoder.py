@@ -420,7 +420,7 @@ def initialize_training(config):
 
     dataloaders = create_dataloaders (
         available_shards=all_shards,
-        img_preproc = config.img_preproc,
+        img_preproc = config.data.img_preproc,
         train_prop = config.data.splits.train,
         val_prop = config.data.splits.val,
         test_prop = config.data.splits.test,
