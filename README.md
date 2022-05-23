@@ -1097,6 +1097,7 @@ This library would not have gotten to this working state without the help of
 - [ ] decoder needs one day worth of refactor for tech debt
 - [ ] allow for unet to be able to condition non-cross attention style as well
 - [ ] read the paper, figure it out, and build it https://github.com/lucidrains/DALLE2-pytorch/issues/89
+- [ ] allow for creation of diffusion prior model off pydantic config classes - consider the same for tracker configs
 
 ## Citations
 
