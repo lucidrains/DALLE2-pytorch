@@ -26,7 +26,7 @@ There was enough interest for a <a href="https://github.com/lucidrains/dalle2-ja
 
 ## Pre-Trained Models
 - LAION is training prior models. Checkpoints are available on <a href="https://huggingface.co/zenglishuci/conditioned-prior">🤗huggingface</a> and the training statistics are available on <a href="https://wandb.ai/nousr_laion/conditioned-prior/reports/LAION-DALLE2-PyTorch-Prior--VmlldzoyMDI2OTIx">🐝WANDB</a>.
-- Decoder 🚧
+- Decoder - <a href="https://wandb.ai/veldrovive/dalle2_train_decoder/runs/jkrtg0so?workspace=user-veldrovive">In-progress test run</a> 🚧
 - DALL-E 2 🚧
 
 ## Install
