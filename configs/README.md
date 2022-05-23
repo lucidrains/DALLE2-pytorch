@@ -6,9 +6,10 @@ For more complex configuration, we provide the option of using a configuration f
 
 The decoder trainer has 7 main configuration options. A full example of their use can be found in the [example decoder configuration](train_decoder_config.example.json).
 
-**<ins>Unets</ins>:**
+**<ins>Unet</ins>:**
 
-Each member of this array defines a single unet that will be added to the decoder.
+This is a single unet config, which belongs as an array nested under the decoder config as a list of `unets`
+
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
 | `dim`  | Yes      | N/A     | The starting channels of the unet. |
@@ -22,6 +23,7 @@ Any parameter from the `Unet` constructor can also be given here.
 Defines the configuration options for the decoder model. The unets defined above will automatically be inserted.
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
+| `unets` | Yes | N/A | A list of unets, using the configuration above |
 | `image_sizes` | Yes | N/A | The resolution of the image after each upsampling step. The length of this array should be the number of unets defined. |
 | `image_size` | Yes | N/A | Not used. Can be any number. |
 | `timesteps` | No | `1000` | The number of diffusion timesteps used for generation. |

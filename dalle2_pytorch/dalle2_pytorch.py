@@ -1712,7 +1712,7 @@ class Decoder(BaseGaussianDiffusion):
         self.unconditional = unconditional
         assert not (condition_on_text_encodings and unconditional), 'unconditional decoder image generation cannot be set to True if conditioning on text is present'
 
-        assert self.unconditional or (exists(clip) ^ exists(image_size)), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
+        assert self.unconditional or (exists(clip) ^ (exists(image_size) or exists(image_sizes))), 'either CLIP is supplied, or you must give the image_size and channels (usually 3 for RGB)'
 
         self.clip = None
         if exists(clip):
@@ -1728,7 +1728,7 @@ class Decoder(BaseGaussianDiffusion):
             self.clip_image_size = clip.image_size
             self.channels = clip.image_channels
         else:
-            self.clip_image_size = image_size
+            self.clip_image_size = default(image_size, lambda: image_sizes[-1])
             self.channels = channels
 
         self.condition_on_text_encodings = condition_on_text_encodings
