@@ -1,0 +1,70 @@
+{
+    "prior": {
+        "clip": {
+            "make": "x-clip",
+            "model": "ViT-L/14",
+            "base_model_kwargs": {
+                "dim_text": 768,
+                "dim_image": 768,
+                "dim_latent": 768
+            }
+        },
+        "net": {
+            "dim": 768,
+            "depth": 12,
+            "num_timesteps": 1000,
+            "num_time_embeds": 1,
+            "num_image_embeds": 1,
+            "num_text_embeds": 1,
+            "dim_head": 64,
+            "heads": 12,
+            "ff_mult": 4,
+            "norm_out": true,
+            "attn_dropout": 0.0,
+            "ff_dropout": 0.0,
+            "final_proj": true,
+            "normformer": true,
+            "rotary_emb": true
+        },
+        "image_embed_dim": 768,
+        "image_size": 224,
+        "image_channels": 3,
+        "timesteps": 1000,
+        "cond_drop_prob": 0.1,
+        "loss_type": "l2",
+        "predict_x_start": true,
+        "beta_schedule": "cosine",
+        "condition_on_text_encodings": true
+    },
+    "data": {
+        "image_url": "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/",
+        "text_url": "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/",
+        "meta_url": "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/laion2B-en-metadata/",
+        "batch_size": 256,
+        "splits": {
+            "train": 0.9,
+            "val": 1e-7,
+            "test": 0.0999999
+        }
+    },
+    "train": {
+        "epochs": 1,
+        "lr": 1.1e-4,
+        "wd": 6.02e-2,
+        "max_grad_norm": 0.5,
+        "use_ema": true,
+        "amp": false,
+        "save_every": 10000
+    },
+    "load": {
+        "source": null,
+        "resume": false
+    },
+    "tracker": {
+        "tracker_type": "wandb",
+        "data_path": "./prior_checkpoints",
+        "wandb_entity": "laion",
+        "wandb_project": "diffusion-prior",
+        "verbose": true
+    }
+}
