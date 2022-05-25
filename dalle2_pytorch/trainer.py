@@ -254,6 +254,7 @@ class DiffusionPriorTrainer(nn.Module):
         eps = 1e-6,
         max_grad_norm = None,
         amp = False,
+        group_wd_params = True,
         **kwargs
     ):
         super().__init__()
@@ -279,6 +280,7 @@ class DiffusionPriorTrainer(nn.Module):
             lr = lr,
             wd = wd,
             eps = eps,
+            group_wd_params = group_wd_params,
             **kwargs
         )
 
@@ -410,6 +412,7 @@ class DecoderTrainer(nn.Module):
         eps = 1e-8,
         max_grad_norm = 0.5,
         amp = False,
+        group_wd_params = True,
         **kwargs
     ):
         super().__init__()
@@ -435,6 +438,7 @@ class DecoderTrainer(nn.Module):
                 lr = unet_lr,
                 wd = unet_wd,
                 eps = unet_eps,
+                group_wd_params = group_wd_params,
                 **kwargs
             )
 
