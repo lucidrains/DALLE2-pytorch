@@ -21,8 +21,6 @@ def get_optimizer(
     if wd == 0:
         return Adam(params, lr = lr, betas = betas, eps = eps)
 
-    params = set(params)
-
     if group_wd_params:
         wd_params, no_wd_params = separate_weight_decayable_params(params)
 
