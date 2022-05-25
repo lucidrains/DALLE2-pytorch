@@ -1195,4 +1195,12 @@ This library would not have gotten to this working state without the help of
 }
 ```
 
+```bibtex
+@misc{Saharia2022,
+    title   = {Imagen: unprecedented photorealism × deep level of language understanding},
+    author  = {Chitwan Saharia*, William Chan*, Saurabh Saxena†, Lala Li†, Jay Whang†, Emily Denton, Seyed Kamyar Seyed Ghasemipour, Burcu Karagol Ayan, S. Sara Mahdavi, Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho†, David Fleet†, Mohammad Norouzi*},
+    year    = {2022}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
