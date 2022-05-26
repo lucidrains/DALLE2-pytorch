@@ -347,7 +347,7 @@ def train(
         # Compute evaluation metrics
         if exists(evaluate_config):
             print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-            evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config)
+            evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
             tracker.log(evaluation, step=step, verbose=True)
 
         # Generate sample images
