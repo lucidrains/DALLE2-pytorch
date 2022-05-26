@@ -1050,6 +1050,7 @@ This library would not have gotten to this working state without the help of
 - <a href="https://github.com/rom1504">Romain</a> for the pull request reviews and project management
 - <a href="https://github.com/Ciaohe">He Cao</a> and <a href="https://github.com/xiankgx">xiankgx</a> for the Q&A and for identifying of critical bugs
 - <a href="https://github.com/crowsonkb">Katherine</a> for her advice
+- <a href="https://stability.ai/">Stability AI</a> for the generous sponsorship
 
 ... and many others. Thank you! 🙏
 
@@ -1198,7 +1199,7 @@ This library would not have gotten to this working state without the help of
 ```
 
 ```bibtex
-@misc{Saharia2022,
+@misc{Saharia2022,https://stability.ai/
     title   = {Imagen: unprecedented photorealism × deep level of language understanding},
     author  = {Chitwan Saharia*, William Chan*, Saurabh Saxena†, Lala Li†, Jay Whang†, Emily Denton, Seyed Kamyar Seyed Ghasemipour, Burcu Karagol Ayan, S. Sara Mahdavi, Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho†, David Fleet†, Mohammad Norouzi*},
     year    = {2022}
