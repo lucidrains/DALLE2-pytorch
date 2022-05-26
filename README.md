@@ -1094,7 +1094,7 @@ This library would not have gotten to this working state without the help of
 - [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
 - [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
-- [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove
+- [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove https://arxiv.org/abs/2204.01697
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 - [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
 - [ ] bring in skip-layer excitatons (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
@@ -1144,7 +1144,8 @@ This library would not have gotten to this working state without the help of
 @inproceedings{Tu2022MaxViTMV,
     title   = {MaxViT: Multi-Axis Vision Transformer},
     author  = {Zhengzhong Tu and Hossein Talebi and Han Zhang and Feng Yang and Peyman Milanfar and Alan Conrad Bovik and Yinxiao Li},
-    year    = {2022}
+    year    = {2022},
+    url     = {https://arxiv.org/abs/2204.01697}
 }
 ```
 
@@ -1199,7 +1200,7 @@ This library would not have gotten to this working state without the help of
 ```
 
 ```bibtex
-@misc{Saharia2022,https://stability.ai/
+@misc{Saharia2022,
     title   = {Imagen: unprecedented photorealism × deep level of language understanding},
     author  = {Chitwan Saharia*, William Chan*, Saurabh Saxena†, Lala Li†, Jay Whang†, Emily Denton, Seyed Kamyar Seyed Ghasemipour, Burcu Karagol Ayan, S. Sara Mahdavi, Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho†, David Fleet†, Mohammad Norouzi*},
     year    = {2022}
