@@ -1140,7 +1140,7 @@ This library would not have gotten to this working state without the help of
 ```bibtex
 @inproceedings{Tu2022MaxViTMV,
     title   = {MaxViT: Multi-Axis Vision Transformer},
-    author  = {Zhe-Wei Tu and Hossein Talebi and Han Zhang and Feng Yang and Peyman Milanfar and Alan Conrad Bovik and Yinxiao Li},
+    author  = {Zhengzhong Tu and Hossein Talebi and Han Zhang and Feng Yang and Peyman Milanfar and Alan Conrad Bovik and Yinxiao Li},
     year    = {2022}
 }
 ```
