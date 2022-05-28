@@ -2099,7 +2099,8 @@ class Decoder(BaseGaussianDiffusion):
         text_encodings = None,
         batch_size = 1,
         cond_scale = 1.,
-        stop_at_unet_number = None
+        stop_at_unet_number = None,
+        distributed = False,
     ):
         assert self.unconditional or exists(image_embed), 'image embed must be present on sampling from decoder unless if trained unconditionally'
 
@@ -2118,7 +2119,7 @@ class Decoder(BaseGaussianDiffusion):
 
         for unet_number, unet, vae, channel, image_size, predict_x_start, learned_variance in tqdm(zip(range(1, len(self.unets) + 1), self.unets, self.vaes, self.sample_channels, self.image_sizes, self.predict_x_start, self.learned_variance)):
 
-            context = self.one_unet_in_gpu(unet = unet) if is_cuda else null_context()
+            context = self.one_unet_in_gpu(unet = unet) if is_cuda and not distributed else null_context()
 
             with context:
                 lowres_cond_img = None

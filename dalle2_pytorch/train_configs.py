@@ -261,6 +261,7 @@ class TrainDecoderConfig(BaseModel):
     evaluate: DecoderEvaluateConfig
     tracker: TrackerConfig
     load: DecoderLoadConfig
+    seed: int = 0
 
     @classmethod
     def from_json_path(cls, json_path):
