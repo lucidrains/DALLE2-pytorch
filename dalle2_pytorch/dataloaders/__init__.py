@@ -1,2 +1,2 @@
 from dalle2_pytorch.dataloaders.decoder_loader import ImageEmbeddingDataset, create_image_embedding_dataloader
-from dalle2_pytorch.dataloaders.embedding_wrapper import make_splits
+from dalle2_pytorch.dataloaders.prior_loader import make_splits, get_reader, PriorEmbeddingDataset
