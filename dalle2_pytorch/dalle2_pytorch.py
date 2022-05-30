@@ -1347,7 +1347,7 @@ class Unet(nn.Module):
         init_dim = None,
         init_conv_kernel_size = 7,
         resnet_groups = 8,
-        num_resnet_blocks = 1,
+        num_resnet_blocks = 2,
         init_cross_embed_kernel_sizes = (3, 7, 15),
         cross_embed_downsample = False,
         cross_embed_downsample_kernel_sizes = (2, 4),
