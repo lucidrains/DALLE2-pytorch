@@ -117,7 +117,6 @@ def get_example_data(dataloader, device, n=5):
         captions.extend(list(txt))
         if len(images) >= n:
             break
-    print("Generated {} examples".format(len(images)))
     return list(zip(images[:n], embeddings[:n], captions[:n]))
 
 def generate_samples(trainer, example_data, text_prepend=""):
@@ -161,21 +160,25 @@ def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID
     # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
     int_real_images = real_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)
     int_generated_images = generated_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)
+
+    def null_sync(t, *args, **kwargs):
+        return [t]
+
     if exists(FID):
-        fid = FrechetInceptionDistance(**FID)
+        fid = FrechetInceptionDistance(**FID, dist_sync_fn=null_sync)
         fid.to(device=device)
         fid.update(int_real_images, real=True)
         fid.update(int_generated_images, real=False)
         metrics["FID"] = fid.compute().item()
     if exists(IS):
-        inception = InceptionScore(**IS)
+        inception = InceptionScore(**IS, dist_sync_fn=null_sync)
         inception.to(device=device)
         inception.update(int_real_images)
         is_mean, is_std = inception.compute()
         metrics["IS_mean"] = is_mean.item()
         metrics["IS_std"] = is_std.item()
     if exists(KID):
-        kernel_inception = KernelInceptionDistance(**KID)
+        kernel_inception = KernelInceptionDistance(**KID, dist_sync_fn=null_sync)
         kernel_inception.to(device=device)
         kernel_inception.update(int_real_images, real=True)
         kernel_inception.update(int_generated_images, real=False)
@@ -186,10 +189,21 @@ def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID
         # Convert from [0, 1] to [-1, 1]
         renorm_real_images = real_images.mul(2).sub(1)
         renorm_generated_images = generated_images.mul(2).sub(1)
-        lpips = LearnedPerceptualImagePatchSimilarity(**LPIPS)
+        lpips = LearnedPerceptualImagePatchSimilarity(**LPIPS, dist_sync_fn=null_sync)
         lpips.to(device=device)
         lpips.update(renorm_real_images, renorm_generated_images)
         metrics["LPIPS"] = lpips.compute().item()
+
+    if trainer.accelerator.num_processes > 1:
+        # Then we should sync the metrics
+        metrics_order = sorted(metrics.keys())
+        metrics_tensor = torch.zeros(1, len(metrics), device=device, dtype=torch.float)
+        for i, metric_name in enumerate(metrics_order):
+            metrics_tensor[0, i] = metrics[metric_name]
+        metrics_tensor = trainer.accelerator.gather(metrics_tensor)
+        metrics_tensor = metrics_tensor.mean(dim=0)
+        for i, metric_name in enumerate(metrics_order):
+            metrics[metric_name] = metrics_tensor[i].item()
     return metrics
 
 def save_trainer(tracker, trainer, epoch, step, validation_losses, relative_paths):
@@ -378,13 +392,14 @@ def train(
             val_loss_map = { f"Unet {index} Validation Loss": loss.item() for index, loss in enumerate(unet_average_val_loss) if loss != 0 }
             tracker.log(val_loss_map, step=step, verbose=True)
 
-        if is_master:
-            # Only evaluate, generate examples, and save the model if we are the master
-            if exists(evaluate_config):
-                print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
+        if exists(evaluate_config):
+            accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
+            evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
+            if is_master:
                 tracker.log(evaluation, step=step, verbose=True)
 
+        if is_master:
+            # Generate examples and save the model if we are the master
             # Generate sample images
             print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
             test_images, test_captions = generate_grid_samples(trainer, test_example_data, "Test: ")
