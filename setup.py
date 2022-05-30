@@ -32,6 +32,7 @@ setup(
     'embedding-reader',
     'kornia>=0.5.4',
     'numpy',
+    'packaging',
     'pillow',
     'pydantic',
     'resize-right>=0.0.2',
