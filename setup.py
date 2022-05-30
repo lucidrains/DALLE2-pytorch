@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+exec(open('dalle2_pytorch/version.py').read())
 
 setup(
   name = 'dalle2-pytorch',
@@ -10,7 +11,7 @@ setup(
       'dream = dalle2_pytorch.cli:dream'
     ],
   },
-  version = '0.6.1',
+  version = __version__,
   license='MIT',
   description = 'DALL-E 2',
   author = 'Phil Wang',
