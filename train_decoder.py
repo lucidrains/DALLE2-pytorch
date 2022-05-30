@@ -1,6 +1,6 @@
 from dalle2_pytorch.trainer import DecoderTrainer
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
-from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker
+from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker, DummyTracker
 from dalle2_pytorch.train_configs import TrainDecoderConfig
 from dalle2_pytorch.utils import Timer, print_ribbon
 from dalle2_pytorch.dalle2_pytorch import resize_image_to
@@ -206,29 +206,25 @@ def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID
             metrics[metric_name] = metrics_tensor[i].item()
     return metrics
 
-def save_trainer(tracker, trainer, epoch, step, validation_losses, relative_paths):
+def save_trainer(tracker, trainer, epoch, validation_losses, relative_paths):
     """
     Logs the model with an appropriate method depending on the tracker
     """
     if isinstance(relative_paths, str):
         relative_paths = [relative_paths]
-    trainer_state_dict = {}
-    trainer_state_dict["trainer"] = trainer.state_dict()
-    trainer_state_dict['epoch'] = epoch
-    trainer_state_dict['step'] = step
-    trainer_state_dict['validation_losses'] = validation_losses
     for relative_path in relative_paths:
-        tracker.save_state_dict(trainer_state_dict, relative_path)
+        local_path = str(tracker.data_path / relative_path)
+        trainer.save(local_path, epoch=epoch, validation_losses=validation_losses)
+        tracker.save_file(local_path)
     
 def recall_trainer(tracker, trainer, recall_source=None, **load_config):
     """
     Loads the model with an appropriate method depending on the tracker
     """
     print(print_ribbon(f"Loading model from {recall_source}"))
-    state_dict = tracker.recall_state_dict(recall_source, **load_config.dict())
-    trainer.load_state_dict(state_dict["trainer"])
-    print("Model loaded")
-    return state_dict["epoch"], state_dict["step"], state_dict["validation_losses"]
+    local_filepath = tracker.recall_file(recall_source, **load_config)
+    state_dict = trainer.load(local_filepath)
+    return state_dict["epoch"], state_dict["validation_losses"]
 
 def train(
     dataloaders,
@@ -261,12 +257,12 @@ def train(
     )
 
     # Set up starting model and parameters based on a recalled state dict
-    start_step = 0
     start_epoch = 0
     validation_losses = []
+    step = lambda: int(trainer.step.item())
 
     if exists(load_config) and exists(load_config.source):
-        start_epoch, start_step, validation_losses = recall_trainer(tracker, trainer, recall_source=load_config.source, **load_config.dict())
+        start_epoch, validation_losses = recall_trainer(tracker, trainer, recall_source=load_config.source, **load_config.dict())
     trainer.to(device=inference_device)
 
     if not exists(unet_training_mask):
@@ -278,10 +274,11 @@ def train(
     accelerator.print("This can take a while to load the shard lists...")
     if is_master:
         train_example_data = get_example_data(dataloaders["train_sampling"], inference_device, n_sample_images)
+        accelerator.print("Generated training examples")
         test_example_data = get_example_data(dataloaders["test_sampling"], inference_device, n_sample_images)
+        accelerator.print("Generated testing examples")
     
     send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]
-    step = start_step
 
     sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)
     unet_losses_tensor = torch.zeros(TRAIN_CALC_LOSS_EVERY_ITERS, trainer.num_unets, dtype=torch.float, device=inference_device)
@@ -298,7 +295,6 @@ def train(
             sample_length_tensor[0] = len(img)
             all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
             total_samples = all_samples.sum().item()
-            step += 1
             sample += total_samples
             img, emb = send_to_device((img, emb))
 
@@ -331,7 +327,7 @@ def train(
                 }
                 # print(f"I am rank {accelerator.state.process_index}. Example weight: {trainer.decoder.state_dict()['module.unets.0.init_conv.convs.0.weight'][0,0,0,0]}")
                 if is_master:
-                    tracker.log(log_data, step=step, verbose=True)
+                    tracker.log(log_data, step=step(), verbose=True)
 
             if is_master and last_snapshot + save_every_n_samples < sample:  # This will miss by some amount every time, but it's not a big deal... I hope
                 # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
@@ -342,12 +338,12 @@ def train(
                 if save_latest:
                     save_paths.append("latest.pth")
                 if save_all:
-                    save_paths.append(f"checkpoints/epoch_{epoch}_step_{step}.pth")
-                save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
+                    save_paths.append(f"checkpoints/epoch_{epoch}_step_{step()}.pth")
+                save_trainer(tracker, trainer, epoch, validation_losses, save_paths)
                 if exists(n_sample_images) and n_sample_images > 0:
                     trainer.eval()
                     train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
-                    tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step)
+                    tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
             
             if epoch_samples is not None and sample >= epoch_samples:
                 break
@@ -390,13 +386,13 @@ def train(
         if is_master:
             unet_average_val_loss = all_average_val_losses.mean(dim=0)
             val_loss_map = { f"Unet {index} Validation Loss": loss.item() for index, loss in enumerate(unet_average_val_loss) if loss != 0 }
-            tracker.log(val_loss_map, step=step, verbose=True)
+            tracker.log(val_loss_map, step=step(), verbose=True)
 
         if exists(evaluate_config):
             accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
             evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
             if is_master:
-                tracker.log(evaluation, step=step, verbose=True)
+                tracker.log(evaluation, step=step(), verbose=True)
 
         if is_master:
             # Generate examples and save the model if we are the master
@@ -404,8 +400,8 @@ def train(
             print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
             test_images, test_captions = generate_grid_samples(trainer, test_example_data, "Test: ")
             train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
-            tracker.log_images(test_images, captions=test_captions, image_section="Test Samples", step=step)
-            tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step)
+            tracker.log_images(test_images, captions=test_captions, image_section="Test Samples", step=step())
+            tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
 
             print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
             # Get the same paths
@@ -416,7 +412,7 @@ def train(
             if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
                 save_paths.append("best.pth")
             validation_losses.append(average_loss)
-            save_trainer(tracker, trainer, epoch, step, validation_losses, save_paths)
+            save_trainer(tracker, trainer, epoch, validation_losses, save_paths)
 
 def create_tracker(config, tracker_type=None, data_path=None, **kwargs):
     """
@@ -428,7 +424,9 @@ def create_tracker(config, tracker_type=None, data_path=None, **kwargs):
     if exists(tracker_config.init_config):
         init_config["config"] = tracker_config.init_config
 
-    if tracker_type == "console":
+    if tracker_type is None:
+        tracker = DummyTracker(**init_config)
+    elif tracker_type == "console":
         tracker = ConsoleTracker(**init_config)
     elif tracker_type == "wandb":
         # We need to initialize the resume state here
@@ -479,7 +477,7 @@ def initialize_training(config):
     accelerator.print(f"Number of parameters: {num_parameters}")
 
     # Create and initialize the tracker if we are the master
-    tracker = create_tracker(config, **config.tracker.dict()) if rank == 0 else None
+    tracker = create_tracker(config, **config.tracker.dict()) if rank == 0 else create_tracker(config, tracker_type=None)
 
     accelerator.print(print_ribbon("Loaded Config", repeat=40))
     train(dataloaders, decoder, accelerator,

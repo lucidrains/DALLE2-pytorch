@@ -522,9 +522,9 @@ class DecoderTrainer(nn.Module):
         )
 
         for ind in range(0, self.num_unets):
-            optimizer_key = f'scaler{ind}'
+            optimizer_key = f'optim{ind}'
             optimizer = getattr(self, optimizer_key)
-            save_obj = {**save_obj, optimizer_key: self.accelerator.unwrap(optimizer).state_dict()}
+            save_obj = {**save_obj, optimizer_key: self.accelerator.unwrap_model(optimizer).state_dict()}
 
         if self.use_ema:
             save_obj = {**save_obj, 'ema': self.ema_unets.state_dict()}
@@ -540,20 +540,17 @@ class DecoderTrainer(nn.Module):
         if version.parse(__version__) != loaded_obj['version']:
             print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {__version__}')
 
-        self.decoder.load_state_dict(loaded_obj['model'], strict = strict)
+        self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
         self.step.copy_(torch.ones_like(self.step) * loaded_obj['step'])
 
         if only_model:
             return loaded_obj
 
         for ind in range(0, self.num_unets):
-            scaler_key = f'scaler{ind}'
-            optimizer_key = f'scaler{ind}'
-            scaler = getattr(self, scaler_key)
+            optimizer_key = f'optim{ind}'
             optimizer = getattr(self, optimizer_key)
 
-            scaler.load_state_dict(loaded_obj[scaler_key])
-            optimizer.load_state_dict(loaded_obj[optimizer_key])
+            self.accelerator.unwrap_model(optimizer).load_state_dict(loaded_obj[optimizer_key])
 
         if self.use_ema:
             assert 'ema' in loaded_obj
