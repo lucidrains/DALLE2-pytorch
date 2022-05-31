@@ -222,7 +222,7 @@ def recall_trainer(tracker, trainer, recall_source=None, **load_config):
     """
     Loads the model with an appropriate method depending on the tracker
     """
-    print(print_ribbon(f"Loading model from {recall_source}"))
+    trainer.accelerator.print(print_ribbon(f"Loading model from {recall_source}"))
     local_filepath = tracker.recall_file(recall_source, **load_config)
     state_dict = trainer.load(local_filepath)
     return state_dict["epoch"], state_dict["validation_losses"]
@@ -254,7 +254,6 @@ def train(
     trainer = DecoderTrainer(
         accelerator,
         decoder,
-        group_wd_params=True,
         **kwargs
     )
 
@@ -265,6 +264,7 @@ def train(
 
     if exists(load_config) and exists(load_config.source):
         start_epoch, validation_losses = recall_trainer(tracker, trainer, recall_source=load_config.source, **load_config.dict())
+        accelerator.print(f"Loaded model from {load_config.source} on epoch {start_epoch} with minimum validation loss {min(validation_losses)}")
     trainer.to(device=inference_device)
 
     if not exists(unet_training_mask):
@@ -431,7 +431,7 @@ def create_tracker(accelerator, config, tracker_type=None, data_path=None):
     data_path = data_path or tracker_config.data_path
     tracker_type = tracker_type or tracker_config.tracker_type
 
-    if tracker_type is None:
+    if tracker_type is "dummy":
         tracker = DummyTracker(data_path)
         tracker.init(**init_config)
     elif tracker_type == "console":
@@ -469,7 +469,6 @@ def initialize_training(config):
     shards_per_process = len(all_shards) // world_size
     assert shards_per_process > 0, "Not enough shards to split evenly"
     my_shards = all_shards[rank * shards_per_process: (rank + 1) * shards_per_process]
-
     dataloaders = create_dataloaders (
         available_shards=my_shards,
         img_preproc = config.data.img_preproc,
@@ -483,12 +482,13 @@ def initialize_training(config):
     # Create the decoder model and print basic info
     decoder = config.decoder.create()
     num_parameters = sum(p.numel() for p in decoder.parameters())
-    accelerator.print(f"Number of parameters: {num_parameters}")
 
     # Create and initialize the tracker if we are the master
-    tracker = create_tracker(accelerator, config) if rank == 0 else create_tracker(accelerator, config, tracker_type=None)
+    tracker = create_tracker(accelerator, config) if rank == 0 else create_tracker(accelerator, config, tracker_type="dummy")
 
     accelerator.print(print_ribbon("Loaded Config", repeat=40))
+    accelerator.print(f"Running training with {accelerator.num_processes} processes and {accelerator.distributed_type} distributed training")
+    accelerator.print(f"Number of parameters: {num_parameters}")
     train(dataloaders, decoder, accelerator,
         tracker=tracker,
         inference_device=accelerator.device,

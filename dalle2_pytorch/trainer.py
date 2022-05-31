@@ -515,7 +515,7 @@ class DecoderTrainer(nn.Module):
         path.parent.mkdir(parents = True, exist_ok = True)
 
         save_obj = dict(
-            model = self.accelerator.unwrap(self.decoder).state_dict(),
+            model = self.accelerator.unwrap_model(self.decoder).state_dict(),
             version = __version__,
             step = self.step.item(),
             **kwargs
@@ -537,8 +537,8 @@ class DecoderTrainer(nn.Module):
 
         loaded_obj = torch.load(str(path))
 
-        if version.parse(__version__) != loaded_obj['version']:
-            print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {__version__}')
+        if version.parse(__version__) != version.parse(loaded_obj['version']):
+            self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {get_pkg_version()}')
 
         self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
         self.step.copy_(torch.ones_like(self.step) * loaded_obj['step'])
@@ -572,8 +572,7 @@ class DecoderTrainer(nn.Module):
         optimizer = getattr(self, f'optim{index}')
 
         if exists(self.max_grad_norm):
-            self.accelerator.unscale_gradients(optimizer)
-            self.accelerator.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)
+            self.accelerator.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)  # Automatically unscales gradients
         optimizer.step()
         optimizer.zero_grad()
 

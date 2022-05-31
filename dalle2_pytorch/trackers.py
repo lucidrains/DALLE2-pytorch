@@ -16,8 +16,8 @@ DEFAULT_DATA_PATH = './.tracker-data'
 
 def exists(val):
     return val is not None
-
-# load state dict functions
+    
+# load file functions
 
 def load_wandb_file(run_path, file_path, **kwargs):
     wandb = import_or_print_error('wandb', '`pip install wandb` to use the wandb recall function')
