@@ -12,6 +12,7 @@ from torchmetrics.image.inception import InceptionScore
 from torchmetrics.image.kid import KernelInceptionDistance
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate.utils import dataclasses as accelerate_dataclasses
 import webdataset as wds
 import click
 
@@ -253,7 +254,7 @@ def train(
     trainer = DecoderTrainer(
         accelerator,
         decoder,
-        group_wd_params=False,
+        group_wd_params=True,
         **kwargs
     )
 
@@ -415,20 +416,27 @@ def train(
             validation_losses.append(average_loss)
             save_trainer(tracker, trainer, epoch, validation_losses, save_paths)
 
-def create_tracker(config, tracker_type=None, data_path=None, **kwargs):
+def create_tracker(accelerator, config, tracker_type=None, data_path=None):
     """
     Creates a tracker of the specified type and initializes special features based on the full config
     """
     tracker_config = config.tracker
-    init_config = {}
-
-    if exists(tracker_config.init_config):
-        init_config["config"] = tracker_config.init_config
+    accelerator_config = {
+        "Distributed": accelerator.distributed_type != accelerate_dataclasses.DistributedType.NO,
+        "DistributedType": accelerator.distributed_type,
+        "NumProcesses": accelerator.num_processes,
+        "MixedPrecision": accelerator.mixed_precision
+    }
+    init_config = { "config": {**config.dict(), **accelerator_config} }
+    data_path = data_path or tracker_config.data_path
+    tracker_type = tracker_type or tracker_config.tracker_type
 
     if tracker_type is None:
-        tracker = DummyTracker(**init_config)
+        tracker = DummyTracker(data_path)
+        tracker.init(**init_config)
     elif tracker_type == "console":
-        tracker = ConsoleTracker(**init_config)
+        tracker = ConsoleTracker(data_path)
+        tracker.init(**init_config)
     elif tracker_type == "wandb":
         # We need to initialize the resume state here
         load_config = config.load
@@ -478,7 +486,7 @@ def initialize_training(config):
     accelerator.print(f"Number of parameters: {num_parameters}")
 
     # Create and initialize the tracker if we are the master
-    tracker = create_tracker(config, **config.tracker.dict()) if rank == 0 else create_tracker(config, tracker_type=None)
+    tracker = create_tracker(accelerator, config) if rank == 0 else create_tracker(accelerator, config, tracker_type=None)
 
     accelerator.print(print_ribbon("Loaded Config", repeat=40))
     train(dataloaders, decoder, accelerator,
