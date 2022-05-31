@@ -178,7 +178,7 @@ class EMA(nn.Module):
     def __init__(
         self,
         model,
-        beta = 0.9999,
+        beta = 0.99,
         update_after_step = 1000,
         update_every = 10,
     ):
