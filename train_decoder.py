@@ -253,6 +253,7 @@ def train(
     trainer = DecoderTrainer(
         accelerator,
         decoder,
+        group_wd_params=False,
         **kwargs
     )
 
