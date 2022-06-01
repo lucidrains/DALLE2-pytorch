@@ -83,7 +83,7 @@ Defines which evaluation metrics will be used to test the model.
 Each metric can be enabled by setting its configuration. The configuration keys for each metric are defined by the torchmetrics constructors which will be linked.
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
-| `n_evalation_samples` | No | `1000` | The number of samples to generate to test the model. |
+| `n_evaluation_samples` | No | `1000` | The number of samples to generate to test the model. |
 | `FID` | No | `None` | Setting to an object enables the [Frechet Inception Distance](https://torchmetrics.readthedocs.io/en/stable/image/frechet_inception_distance.html) metric. 
 | `IS` | No | `None` | Setting to an object enables the [Inception Score](https://torchmetrics.readthedocs.io/en/stable/image/inception_score.html) metric.
 | `KID` | No | `None` | Setting to an object enables the [Kernel Inception Distance](https://torchmetrics.readthedocs.io/en/stable/image/kernel_inception_distance.html) metric. |
