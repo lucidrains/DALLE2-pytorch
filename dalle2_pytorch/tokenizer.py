@@ -2,7 +2,6 @@
 # to give users a quick easy start to training DALL-E without doing BPE
 
 import torch
-import youtokentome as yttm
 
 import html
 import os
@@ -10,6 +9,8 @@ import ftfy
 import regex as re
 from functools import lru_cache
 from pathlib import Path
+
+from dalle2_pytorch.utils import import_or_print_error
 
 # OpenAI simple tokenizer
 
@@ -156,7 +157,9 @@ class YttmTokenizer:
         bpe_path = Path(bpe_path)
         assert bpe_path.exists(), f'BPE json path {str(bpe_path)} does not exist'
 
-        tokenizer = yttm.BPE(model = str(bpe_path))
+        self.yttm = import_or_print_error('youtokentome', 'you need to install youtokentome by `pip install youtokentome`')
+
+        tokenizer = self.yttm.BPE(model = str(bpe_path))
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size()
 
@@ -167,7 +170,7 @@ class YttmTokenizer:
         return self.tokenizer.decode(tokens, ignore_ids = pad_tokens.union({0}))
 
     def encode(self, texts):
-        encoded = self.tokenizer.encode(texts, output_type = yttm.OutputType.ID)
+        encoded = self.tokenizer.encode(texts, output_type = self.yttm.OutputType.ID)
         return list(map(torch.tensor, encoded))
 
     def tokenize(self, texts, context_length = 256, truncate_text = False):

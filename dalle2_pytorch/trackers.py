@@ -6,6 +6,8 @@ from itertools import zip_longest
 import torch
 from torch import nn
 
+from dalle2_pytorch.utils import import_or_print_error
+
 # constants
 
 DEFAULT_DATA_PATH = './.tracker-data'
@@ -14,14 +16,6 @@ DEFAULT_DATA_PATH = './.tracker-data'
 
 def exists(val):
     return val is not None
-
-def import_or_print_error(pkg_name, err_str = None):
-    try:
-        return importlib.import_module(pkg_name)
-    except ModuleNotFoundError as e:
-        if exists(err_str):
-            print(err_str)
-        exit()
 
 # load state dict functions
 
