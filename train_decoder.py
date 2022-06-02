@@ -331,7 +331,7 @@ def train(
             sample = 0
             average_loss = 0
             timer = Timer()
-            for i, (img, emb, txt) in enumerate(dataloaders["val"]):
+            for i, (img, emb, *_) in enumerate(dataloaders["val"]):
                 sample += img.shape[0]
                 img, emb = send_to_device((img, emb))
                 
