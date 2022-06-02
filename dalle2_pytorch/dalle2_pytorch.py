@@ -1704,10 +1704,12 @@ class LowresConditioner(nn.Module):
 
             # allow for drawing a random sigma between lo and hi float values
             if isinstance(blur_sigma, tuple):
+                blur_sigma = tuple(map(float, blur_sigma))
                 blur_sigma = random.uniform(*blur_sigma)
 
             # allow for drawing a random kernel size between lo and hi int values
             if isinstance(blur_kernel_size, tuple):
+                blur_kernel_size = tuple(map(int, blur_kernel_size))
                 kernel_size_lo, kernel_size_hi = blur_kernel_size
                 blur_kernel_size = random.randrange(kernel_size_lo, kernel_size_hi + 1)
 
