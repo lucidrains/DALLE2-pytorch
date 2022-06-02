@@ -535,7 +535,7 @@ class DecoderTrainer(nn.Module):
         path = Path(path)
         assert path.exists()
 
-        loaded_obj = torch.load(str(path))
+        loaded_obj = torch.load(str(path), map_location = 'cpu')
 
         if version.parse(__version__) != version.parse(loaded_obj['version']):
             self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {get_pkg_version()}')

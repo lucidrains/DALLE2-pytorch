@@ -53,7 +53,7 @@ def create_dataloaders(
     num_test = round(test_prop*len(available_shards))
     num_val = len(available_shards) - num_train - num_test
     assert num_train + num_test + num_val == len(available_shards), f"{num_train} + {num_test} + {num_val} = {num_train + num_test + num_val} != {len(available_shards)}"
-    train_split, test_split, val_split = torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(0))
+    train_split, test_split, val_split = torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(1))
 
     # The shard number in the webdataset file names has a fixed width. We zero pad the shard numbers so they correspond to a filename.
     train_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]
@@ -155,6 +155,9 @@ def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID
     metrics = {}
     # Prepare the data
     examples = get_example_data(dataloader, device, n_evaluation_samples)
+    if len(examples) == 0:
+        print("No data to evaluate. Check that your dataloader has shards.")
+        return metrics
     real_images, generated_images, captions = generate_samples(trainer, examples)
     real_images = torch.stack(real_images).to(device=device, dtype=torch.float)
     generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)
@@ -207,7 +210,7 @@ def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID
             metrics[metric_name] = metrics_tensor[i].item()
     return metrics
 
-def save_trainer(tracker, trainer, epoch, validation_losses, relative_paths):
+def save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, relative_paths):
     """
     Logs the model with an appropriate method depending on the tracker
     """
@@ -215,7 +218,7 @@ def save_trainer(tracker, trainer, epoch, validation_losses, relative_paths):
         relative_paths = [relative_paths]
     for relative_path in relative_paths:
         local_path = str(tracker.data_path / relative_path)
-        trainer.save(local_path, epoch=epoch, validation_losses=validation_losses)
+        trainer.save(local_path, epoch=epoch, sample=sample, next_task=next_task, validation_losses=validation_losses)
         tracker.save_file(local_path)
     
 def recall_trainer(tracker, trainer, recall_source=None, **load_config):
@@ -225,7 +228,7 @@ def recall_trainer(tracker, trainer, recall_source=None, **load_config):
     trainer.accelerator.print(print_ribbon(f"Loading model from {recall_source}"))
     local_filepath = tracker.recall_file(recall_source, **load_config)
     state_dict = trainer.load(local_filepath)
-    return state_dict["epoch"], state_dict["validation_losses"]
+    return state_dict.get("epoch", 0), state_dict.get("validation_losses", []), state_dict.get("next_task", "train"), state_dict.get("sample", 0)
 
 def train(
     dataloaders,
@@ -260,11 +263,19 @@ def train(
     # Set up starting model and parameters based on a recalled state dict
     start_epoch = 0
     validation_losses = []
+    next_task = 'train'
+    sample = 0
+    val_sample = 0
     step = lambda: int(trainer.step.item())
 
     if exists(load_config) and exists(load_config.source):
-        start_epoch, validation_losses = recall_trainer(tracker, trainer, recall_source=load_config.source, **load_config.dict())
-        accelerator.print(f"Loaded model from {load_config.source} on epoch {start_epoch} with minimum validation loss {min(validation_losses)}")
+        start_epoch, validation_losses, next_task, recalled_sample = recall_trainer(tracker, trainer, recall_source=load_config.source, **load_config.dict())
+        if next_task == 'train':
+            sample = recalled_sample
+        if next_task == 'val':
+            val_sample = recalled_sample
+        accelerator.print(f"Loaded model from {load_config.source} on epoch {start_epoch} with minimum validation loss {min(validation_losses) if len(validation_losses) > 0 else 'N/A'}")
+        accelerator.print(f"Starting training from task {next_task} at sample {sample} and validation sample {val_sample}")
     trainer.to(device=inference_device)
 
     if not exists(unet_training_mask):
@@ -288,133 +299,145 @@ def train(
         accelerator.print(print_ribbon(f"Starting epoch {epoch}", repeat=40))
 
         timer = Timer()
-        sample = 0
-        last_sample = 0
-        last_snapshot = 0
+        last_sample = sample
+        last_snapshot = sample
 
-        for i, (img, emb) in enumerate(dataloaders["train"]):
-            # We want to count the total number of samples across all processes
-            sample_length_tensor[0] = len(img)
-            all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
-            total_samples = all_samples.sum().item()
-            sample += total_samples
-            img, emb = send_to_device((img, emb))
+        if next_task == 'train':
+            for i, (img, emb) in enumerate(dataloaders["train"]):
+                # We want to count the total number of samples across all processes
+                sample_length_tensor[0] = len(img)
+                all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
+                total_samples = all_samples.sum().item()
+                sample += total_samples
+                img, emb = send_to_device((img, emb))
 
-            trainer.train()
-            for unet in range(1, trainer.num_unets+1):
-                # Check if this is a unet we are training
-                if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
-                    continue
+                trainer.train()
+                for unet in range(1, trainer.num_unets+1):
+                    # Check if this is a unet we are training
+                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
+                        continue
 
-                loss = trainer.forward(img, image_embed=emb, unet_number=unet)
-                trainer.update(unet_number=unet)
-                unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
-            
-            samples_per_sec = (sample - last_sample) / timer.elapsed()
-            timer.reset()
-            last_sample = sample
+                    loss = trainer.forward(img, image_embed=emb, unet_number=unet)
+                    trainer.update(unet_number=unet)
+                    unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
+                
+                samples_per_sec = (sample - last_sample) / timer.elapsed()
+                timer.reset()
+                last_sample = sample
 
-            if i % TRAIN_CALC_LOSS_EVERY_ITERS == 0:
-                # We want to average losses across all processes
-                unet_all_losses = accelerator.gather(unet_losses_tensor)
-                mask = unet_all_losses != 0
-                unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)
-                loss_map = { f"Unet {index} Training Loss": loss.item() for index, loss in enumerate(unet_average_loss) if loss != 0 }
-                log_data = {
-                    "Epoch": epoch,
-                    "Sample": sample,
-                    "Step": i,
-                    "Samples per second": samples_per_sec,
-                    **loss_map
-                }
-                # print(f"I am rank {accelerator.state.process_index}. Example weight: {trainer.decoder.state_dict()['module.unets.0.init_conv.convs.0.weight'][0,0,0,0]}")
+                if i % TRAIN_CALC_LOSS_EVERY_ITERS == 0:
+                    # We want to average losses across all processes
+                    unet_all_losses = accelerator.gather(unet_losses_tensor)
+                    mask = unet_all_losses != 0
+                    unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)
+                    loss_map = { f"Unet {index} Training Loss": loss.item() for index, loss in enumerate(unet_average_loss) if loss != 0 }
+                    log_data = {
+                        "Epoch": epoch,
+                        "Sample": sample,
+                        "Step": i,
+                        "Samples per second": samples_per_sec,
+                        **loss_map
+                    }
+                    # print(f"I am rank {accelerator.state.process_index}. Example weight: {trainer.decoder.state_dict()['module.unets.0.init_conv.convs.0.weight'][0,0,0,0]}")
+                    if is_master:
+                        tracker.log(log_data, step=step(), verbose=True)
+
+                if is_master and last_snapshot + save_every_n_samples < sample:  # This will miss by some amount every time, but it's not a big deal... I hope
+                    # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
+                    print("Saving snapshot")
+                    last_snapshot = sample
+                    # We need to know where the model should be saved
+                    save_paths = []
+                    if save_latest:
+                        save_paths.append("latest.pth")
+                    if save_all:
+                        save_paths.append(f"checkpoints/epoch_{epoch}_step_{step()}.pth")
+                    save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, save_paths)
+                    if exists(n_sample_images) and n_sample_images > 0:
+                        trainer.eval()
+                        train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
+                        tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
+                
+                if epoch_samples is not None and sample >= epoch_samples:
+                    break
+            next_task = 'val'
+            sample = 0
+
+        if next_task == 'val':
+            trainer.eval()
+            accelerator.print(print_ribbon(f"Starting Validation {epoch}", repeat=40))
+            last_val_sample = val_sample
+            val_sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)
+            average_val_loss_tensor = torch.zeros(1, trainer.num_unets, dtype=torch.float, device=inference_device)
+            timer = Timer()
+            accelerator.wait_for_everyone()
+            i = 0
+            for i, (img, emb, txt) in enumerate(dataloaders["val"]):
+                val_sample_length_tensor[0] = len(img)
+                all_samples = accelerator.gather(val_sample_length_tensor)
+                total_samples = all_samples.sum().item()
+                val_sample += total_samples
+                img, emb = send_to_device((img, emb))
+
+                for unet in range(1, len(decoder.unets)+1):
+                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
+                        # No need to evaluate an unchanging unet
+                        continue
+
+                    loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
+                    average_val_loss_tensor[0, unet-1] += loss
+
+                if i % VALID_CALC_LOSS_EVERY_ITERS == 0:
+                    samples_per_sec = (val_sample - last_val_sample) / timer.elapsed()
+                    timer.reset()
+                    last_val_sample = val_sample
+                    accelerator.print(f"Epoch {epoch}/{epochs} Val Step {i} -  Sample {val_sample} - {samples_per_sec:.2f} samples/sec")
+                    accelerator.print(f"Loss: {(average_val_loss_tensor / (i+1))}")
+                    accelerator.print("")
+                
+                if validation_samples is not None and val_sample >= validation_samples:
+                    break
+            print(f"Rank {accelerator.state.process_index} finished validation after {i} steps")
+            accelerator.wait_for_everyone()
+            average_val_loss_tensor /= i+1
+            # Gather all the average loss tensors
+            all_average_val_losses = accelerator.gather(average_val_loss_tensor)
+            if is_master:
+                unet_average_val_loss = all_average_val_losses.mean(dim=0)
+                val_loss_map = { f"Unet {index} Validation Loss": loss.item() for index, loss in enumerate(unet_average_val_loss) if loss != 0 }
+                tracker.log(val_loss_map, step=step(), verbose=True)
+            next_task = 'eval'
+
+        if next_task == 'eval':
+            if exists(evaluate_config):
+                accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
+                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
                 if is_master:
-                    tracker.log(log_data, step=step(), verbose=True)
+                    tracker.log(evaluation, step=step(), verbose=True)
+            next_task = 'sample'
+            val_sample = 0
 
-            if is_master and last_snapshot + save_every_n_samples < sample:  # This will miss by some amount every time, but it's not a big deal... I hope
-                # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
-                print("Saving snapshot")
-                last_snapshot = sample
-                # We need to know where the model should be saved
+        if next_task == 'sample':
+            if is_master:
+                # Generate examples and save the model if we are the master
+                # Generate sample images
+                print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
+                test_images, test_captions = generate_grid_samples(trainer, test_example_data, "Test: ")
+                train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
+                tracker.log_images(test_images, captions=test_captions, image_section="Test Samples", step=step())
+                tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
+
+                print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
+                # Get the same paths
                 save_paths = []
                 if save_latest:
                     save_paths.append("latest.pth")
-                if save_all:
-                    save_paths.append(f"checkpoints/epoch_{epoch}_step_{step()}.pth")
-                save_trainer(tracker, trainer, epoch, validation_losses, save_paths)
-                if exists(n_sample_images) and n_sample_images > 0:
-                    trainer.eval()
-                    train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
-                    tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
-            
-            if epoch_samples is not None and sample >= epoch_samples:
-                break
-
-        trainer.eval()
-        accelerator.print(print_ribbon(f"Starting Validation {epoch}", repeat=40))
-        val_sample = 0
-        last_val_sample = 0
-        val_sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)
-        average_val_loss_tensor = torch.zeros(1, trainer.num_unets, dtype=torch.float, device=inference_device)
-        timer = Timer()
-        for i, (img, emb, txt) in enumerate(dataloaders["val"]):
-            val_sample_length_tensor[0] = len(img)
-            all_samples = accelerator.gather(val_sample_length_tensor)
-            total_samples = all_samples.sum().item()
-            val_sample += total_samples
-            img, emb = send_to_device((img, emb))
-
-            for unet in range(1, len(decoder.unets)+1):
-                if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
-                    # No need to evaluate an unchanging unet
-                    continue
-
-                loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
-                average_val_loss_tensor[0, unet-1] += loss
-
-            if i % VALID_CALC_LOSS_EVERY_ITERS == 0:
-                samples_per_sec = (val_sample - last_val_sample) / timer.elapsed()
-                timer.reset()
-                last_val_sample = val_sample
-                accelerator.print(f"Epoch {epoch}/{epochs} Val Step {i} -  Sample {val_sample} - {samples_per_sec:.2f} samples/sec")
-                accelerator.print(f"Loss: {(average_val_loss_tensor / (i+1))}")
-                accelerator.print("")
-            
-            if validation_samples is not None and val_sample >= validation_samples:
-                break
-        average_val_loss_tensor /= i+1
-        # Gather all the average loss tensors
-        all_average_val_losses = accelerator.gather(average_val_loss_tensor)
-        if is_master:
-            unet_average_val_loss = all_average_val_losses.mean(dim=0)
-            val_loss_map = { f"Unet {index} Validation Loss": loss.item() for index, loss in enumerate(unet_average_val_loss) if loss != 0 }
-            tracker.log(val_loss_map, step=step(), verbose=True)
-
-        if exists(evaluate_config):
-            accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-            evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
-            if is_master:
-                tracker.log(evaluation, step=step(), verbose=True)
-
-        if is_master:
-            # Generate examples and save the model if we are the master
-            # Generate sample images
-            print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-            test_images, test_captions = generate_grid_samples(trainer, test_example_data, "Test: ")
-            train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
-            tracker.log_images(test_images, captions=test_captions, image_section="Test Samples", step=step())
-            tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
-
-            print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
-            # Get the same paths
-            save_paths = []
-            if save_latest:
-                save_paths.append("latest.pth")
-            average_loss = all_average_val_losses.mean(dim=0).item()
-            if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
-                save_paths.append("best.pth")
-            validation_losses.append(average_loss)
-            save_trainer(tracker, trainer, epoch, validation_losses, save_paths)
+                average_loss = all_average_val_losses.mean(dim=0).item()
+                if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
+                    save_paths.append("best.pth")
+                validation_losses.append(average_loss)
+                save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, save_paths)
+            next_task = 'train'
 
 def create_tracker(accelerator, config, tracker_type=None, data_path=None):
     """
@@ -476,7 +499,8 @@ def initialize_training(config):
         val_prop = config.data.splits.val,
         test_prop = config.data.splits.test,
         n_sample_images=config.train.n_sample_images,
-        **config.data.dict()
+        **config.data.dict(),
+        rank = rank,
     )
 
     # Create the decoder model and print basic info
