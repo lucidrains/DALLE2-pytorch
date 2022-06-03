@@ -591,7 +591,7 @@ class DecoderTrainer(nn.Module):
         if kwargs.pop('use_non_ema', False) or not self.use_ema:
             return base_decoder.sample(*args, **kwargs, distributed = distributed)
 
-        trainable_unets = self.decoder.unets
+        trainable_unets = self.accelerator.unwrap_model(self.decoder).unets
         base_decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling
 
         output = base_decoder.sample(*args, **kwargs, distributed = distributed)

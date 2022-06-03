@@ -16,7 +16,7 @@ DEFAULT_DATA_PATH = './.tracker-data'
 
 def exists(val):
     return val is not None
-    
+
 # load file functions
 
 def load_wandb_file(run_path, file_path, **kwargs):
@@ -149,4 +149,4 @@ class WandbTracker(BaseTracker):
         """
         if base_path is None:
             base_path = self.data_path
-        self.wandb.save(str(file_path), base_path = str(self.data_path))
+        self.wandb.save(str(file_path), base_path = str(base_path))

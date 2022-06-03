@@ -43,6 +43,7 @@ def create_dataloaders(
     train_prop = 0.75,
     val_prop = 0.15,
     test_prop = 0.10,
+    seed = 0,
     **kwargs
 ):
     """
@@ -53,7 +54,7 @@ def create_dataloaders(
     num_test = round(test_prop*len(available_shards))
     num_val = len(available_shards) - num_train - num_test
     assert num_train + num_test + num_val == len(available_shards), f"{num_train} + {num_test} + {num_val} = {num_train + num_test + num_val} != {len(available_shards)}"
-    train_split, test_split, val_split = torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(1))
+    train_split, test_split, val_split = torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(seed))
 
     # The shard number in the webdataset file names has a fixed width. We zero pad the shard numbers so they correspond to a filename.
     train_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]
@@ -363,6 +364,7 @@ def train(
             next_task = 'val'
             sample = 0
 
+        all_average_val_losses = None
         if next_task == 'val':
             trainer.eval()
             accelerator.print(print_ribbon(f"Starting Validation {epoch}", repeat=40))
@@ -383,7 +385,7 @@ def train(
                     if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
                         # No need to evaluate an unchanging unet
                         continue
-
+                    
                     loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
                     average_val_loss_tensor[0, unet-1] += loss
 
@@ -432,9 +434,10 @@ def train(
                 save_paths = []
                 if save_latest:
                     save_paths.append("latest.pth")
-                average_loss = all_average_val_losses.mean(dim=0).item()
-                if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
-                    save_paths.append("best.pth")
+                if all_average_val_losses is not None:
+                    average_loss = all_average_val_losses.mean(dim=0).item()
+                    if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
+                        save_paths.append("best.pth")
                 validation_losses.append(average_loss)
                 save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, save_paths)
             next_task = 'train'
@@ -501,6 +504,7 @@ def initialize_training(config):
         n_sample_images=config.train.n_sample_images,
         **config.data.dict(),
         rank = rank,
+        seed = config.seed,
     )
 
     # Create the decoder model and print basic info
