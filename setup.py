@@ -1,6 +1,8 @@
 from setuptools import setup, find_packages
 exec(open('dalle2_pytorch/version.py').read())
 
+print("ColossialAI has been enabled.")
+
 setup(
   name = 'dalle2-pytorch',
   packages = find_packages(exclude=[]),
