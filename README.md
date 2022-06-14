@@ -1207,4 +1207,14 @@ This library would not have gotten to this working state without the help of
 }
 ```
 
+```bibtex
+@article{Choi2022PerceptionPT,
+    title   = {Perception Prioritized Training of Diffusion Models},
+    author  = {Jooyoung Choi and Jungbeom Lee and Chaehun Shin and Sungwon Kim and Hyunwoo J. Kim and Sung-Hoon Yoon},
+    journal = {ArXiv},
+    year    = {2022},
+    volume  = {abs/2204.00227}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
