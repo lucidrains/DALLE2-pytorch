@@ -17,7 +17,7 @@ from einops.layers.torch import Rearrange
 
 # constants
 
-MList = nn.ModuleList
+MLIST = nn.ModuleList
 
 # helper functions
 
@@ -159,7 +159,7 @@ class Discriminator(nn.Module):
         super().__init__()
         dim_pairs = zip(dims[:-1], dims[1:])
 
-        self.layers = MList([nn.Sequential(nn.Conv2d(channels, dims[0], init_kernel_size, padding = init_kernel_size // 2), leaky_relu())])
+        self.layers = MLIST([nn.Sequential(nn.Conv2d(channels, dims[0], init_kernel_size, padding = init_kernel_size // 2), leaky_relu())])
 
         for dim_in, dim_out in dim_pairs:
             self.layers.append(nn.Sequential(
@@ -188,7 +188,7 @@ class ContinuousPositionBias(nn.Module):
 
     def __init__(self, *, dim, heads, layers = 2):
         super().__init__()
-        self.net = MList([])
+        self.net = MLIST([])
         self.net.append(nn.Sequential(nn.Linear(2, dim), leaky_relu()))
 
         for _ in range(layers - 1):
@@ -240,8 +240,8 @@ class ResnetEncDec(nn.Module):
 
         self.layers = layers
 
-        self.encoders = MList([])
-        self.decoders = MList([])
+        self.encoders = MLIST([])
+        self.decoders = MLIST([])
 
         layer_mults = default(layer_mults, list(map(lambda t: 2 ** t, range(layers))))
         assert len(layer_mults) == layers, 'layer multipliers must be equal to designated number of layers'
