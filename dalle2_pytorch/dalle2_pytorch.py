@@ -1476,17 +1476,15 @@ class Unet(nn.Module):
         self.mid_attn = EinopsToAndFrom('b c h w', 'b (h w) c', Residual(Attention(mid_dim, **attn_kwargs))) if attend_at_middle else None
         self.mid_block2 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
 
-        up_in_out_slice = slice(1 if not memory_efficient else None, None)
-
-        for ind, ((dim_in, dim_out), groups, layer_num_resnet_blocks) in enumerate(zip(reversed(in_out[up_in_out_slice]), reversed(resnet_groups), reversed(num_resnet_blocks))):
-            is_last = ind >= (num_resolutions - 2)
+        for ind, ((dim_in, dim_out), groups, layer_num_resnet_blocks) in enumerate(zip(reversed(in_out), reversed(resnet_groups), reversed(num_resnet_blocks))):
+            is_last = ind >= (len(in_out) - 1)
             layer_cond_dim = cond_dim if not is_last else None
 
             self.ups.append(nn.ModuleList([
                 ResnetBlock(dim_out * 2, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
                 Residual(LinearAttention(dim_in, **attn_kwargs)) if sparse_attn else nn.Identity(),
                 nn.ModuleList([ResnetBlock(dim_in, dim_in, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups)  for _ in range(layer_num_resnet_blocks)]),
-                Upsample(dim_in)
+                Upsample(dim_in) if not is_last or memory_efficient else nn.Identity()
             ]))
 
         self.final_conv = nn.Sequential(
@@ -1682,7 +1680,7 @@ class Unet(nn.Module):
         x = self.mid_block2(x, mid_c, t)
 
         for init_block, sparse_attn, resnet_blocks, upsample in self.ups:
-            x = torch.cat((x, hiddens.pop()), dim=1)
+            x = torch.cat((x, hiddens.pop()), dim = 1)
             x = init_block(x, c, t)
             x = sparse_attn(x)
 
