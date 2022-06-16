@@ -1489,8 +1489,10 @@ class Unet(nn.Module):
                 Upsample(dim_in)
             ]))
 
+        final_dim_in = dim * (1 if memory_efficient else 2)
+
         self.final_conv = nn.Sequential(
-            ResnetBlock(dim, dim, groups = resnet_groups[0]),
+            ResnetBlock(final_dim_in, dim, groups = resnet_groups[0]),
             nn.Conv2d(dim, self.channels_out, 1)
         )
 
@@ -1682,7 +1684,7 @@ class Unet(nn.Module):
         x = self.mid_block2(x, mid_c, t)
 
         for init_block, sparse_attn, resnet_blocks, upsample in self.ups:
-            x = torch.cat((x, hiddens.pop()), dim=1)
+            x = torch.cat((x, hiddens.pop()), dim = 1)
             x = init_block(x, c, t)
             x = sparse_attn(x)
 
@@ -1690,6 +1692,9 @@ class Unet(nn.Module):
                 x = resnet_block(x, c, t)
 
             x = upsample(x)
+
+        if len(hiddens) > 0:
+            x = torch.cat((x, hiddens.pop()), dim = 1)
 
         return self.final_conv(x)
 
