@@ -538,7 +538,7 @@ class DecoderTrainer(nn.Module):
         loaded_obj = torch.load(str(path), map_location = 'cpu')
 
         if version.parse(__version__) != version.parse(loaded_obj['version']):
-            self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {get_pkg_version()}')
+            self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {__version__}')
 
         self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)
         self.step.copy_(torch.ones_like(self.step) * loaded_obj['step'])
