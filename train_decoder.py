@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from dalle2_pytorch.trainer import DecoderTrainer
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
 from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker, DummyTracker
@@ -438,11 +440,11 @@ def train(
                     average_loss = all_average_val_losses.mean(dim=0).item()
                     if save_best and (len(validation_losses) == 0 or average_loss < min(validation_losses)):
                         save_paths.append("best.pth")
-                validation_losses.append(average_loss)
+                    validation_losses.append(average_loss)
                 save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, save_paths)
             next_task = 'train'
 
-def create_tracker(accelerator, config, tracker_type=None, data_path=None):
+def create_tracker(accelerator, config, config_path, tracker_type=None, data_path=None):
     """
     Creates a tracker of the specified type and initializes special features based on the full config
     """
@@ -457,7 +459,7 @@ def create_tracker(accelerator, config, tracker_type=None, data_path=None):
     data_path = data_path or tracker_config.data_path
     tracker_type = tracker_type or tracker_config.tracker_type
 
-    if tracker_type is "dummy":
+    if tracker_type == "dummy":
         tracker = DummyTracker(data_path)
         tracker.init(**init_config)
     elif tracker_type == "console":
@@ -476,11 +478,12 @@ def create_tracker(accelerator, config, tracker_type=None, data_path=None):
         init_config["project"] = tracker_config.wandb_project
         tracker = WandbTracker(data_path)
         tracker.init(**init_config)
+        tracker.save_file(str(config_path.absolute()), str(config_path.parent.absolute()))
     else:
         raise ValueError(f"Tracker type {tracker_type} not supported by decoder trainer")
     return tracker
     
-def initialize_training(config):
+def initialize_training(config, config_path):
     # Make sure if we are not loading, distributed models are initialized to the same values
     torch.manual_seed(config.seed)
 
@@ -512,7 +515,7 @@ def initialize_training(config):
     num_parameters = sum(p.numel() for p in decoder.parameters())
 
     # Create and initialize the tracker if we are the master
-    tracker = create_tracker(accelerator, config) if rank == 0 else create_tracker(accelerator, config, tracker_type="dummy")
+    tracker = create_tracker(accelerator, config, config_path) if rank == 0 else create_tracker(accelerator, config, config_path, tracker_type="dummy")
 
     accelerator.print(print_ribbon("Loaded Config", repeat=40))
     accelerator.print(f"Running training with {accelerator.num_processes} processes and {accelerator.distributed_type} distributed training")
@@ -529,8 +532,9 @@ def initialize_training(config):
 @click.command()
 @click.option("--config_file", default="./train_decoder_config.json", help="Path to config file")
 def main(config_file):
-    config = TrainDecoderConfig.from_json_path(config_file)
-    initialize_training(config)
+    config_file_path = Path(config_file)
+    config = TrainDecoderConfig.from_json_path(str(config_file_path))
+    initialize_training(config, config_path=config_file_path)
 
 if __name__ == "__main__":
     main()
