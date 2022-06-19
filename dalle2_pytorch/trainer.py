@@ -14,6 +14,8 @@ from dalle2_pytorch.optimizer import get_optimizer
 from dalle2_pytorch.version import __version__
 from packaging import version
 
+from accelerate import Accelerator
+
 import numpy as np
 
 # helper functions
@@ -189,13 +191,13 @@ class EMA(nn.Module):
     By adjusting the power, you can control how fast EMA will ramp up to your specified beta.
 
     @crowsonkb's notes on EMA Warmup:
-    
+
     If gamma=1 and power=1, implements a simple average. gamma=1, power=2/3 are
     good values for models you plan to train for a million or more steps (reaches decay
     factor 0.999 at 31.6K steps, 0.9999 at 1M steps), gamma=1, power=3/4 for models
     you plan to train for less (reaches decay factor 0.999 at 10K steps, 0.9999 at
     215.4k steps).
-    
+
     Args:
         inv_gamma (float): Inverse multiplicative factor of EMA warmup. Default: 1.
         power (float): Exponential factor of EMA warmup. Default: 1.
@@ -205,7 +207,7 @@ class EMA(nn.Module):
         self,
         model,
         beta = 0.9999,
-        update_after_step = 10000,
+        update_after_step = 100,
         update_every = 10,
         inv_gamma = 1.0,
         power = 2/3,
@@ -280,6 +282,7 @@ class EMA(nn.Module):
     def __call__(self, *args, **kwargs):
         return self.ema_model(*args, **kwargs)
 
+
 # diffusion prior trainer
 
 def prior_sample_in_chunks(fn):
@@ -303,19 +306,24 @@ class DiffusionPriorTrainer(nn.Module):
         max_grad_norm = None,
         amp = False,
         group_wd_params = True,
+        device = None,
+        accelerator = None,
         **kwargs
     ):
         super().__init__()
         assert isinstance(diffusion_prior, DiffusionPrior)
+        assert not exists(accelerator) or isinstance(accelerator, Accelerator)
+        assert exists(accelerator) or exists(device), "You must supply some method of obtaining a device."
         ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
 
+        # assign some helpful member vars
+        self.accelerator = accelerator
+        self.device = accelerator.device if exists(accelerator) else device
+        self.text_conditioned = diffusion_prior.condition_on_text_encodings
+
+        # save model
+
         self.diffusion_prior = diffusion_prior
-
-        # exponential moving average
-
-        self.use_ema = use_ema
-        if self.use_ema:
-            self.ema_diffusion_prior = EMA(diffusion_prior, **ema_kwargs)
 
         # optimizer and mixed precision stuff
 
@@ -323,68 +331,164 @@ class DiffusionPriorTrainer(nn.Module):
 
         self.scaler = GradScaler(enabled = amp)
 
+        self.optim_kwargs = dict(lr=lr, wd=wd, eps=eps, group_wd_params=group_wd_params)
+
         self.optimizer = get_optimizer(
-            diffusion_prior.parameters(),
-            lr = lr,
-            wd = wd,
-            eps = eps,
-            group_wd_params = group_wd_params,
+            self.diffusion_prior.parameters(),
+            **self.optim_kwargs,
             **kwargs
         )
+
+        # distribute the model if using HFA
+        if exists(self.accelerator):
+            self.diffusion_prior, self.optimizer = self.accelerator.prepare(self.diffusion_prior, self.optimizer)
+
+        # exponential moving average stuff
+
+        self.use_ema = use_ema
+
+        if self.use_ema:
+            self.ema_diffusion_prior = EMA(self.unwrap_model(self.diffusion_prior), **ema_kwargs)
 
         # gradient clipping if needed
 
         self.max_grad_norm = max_grad_norm
 
+        # track steps internally
+
         self.register_buffer('step', torch.tensor([0]))
 
+    # accelerator wrappers
+
+    def print(self, msg):
+        if exists(self.accelerator):
+            self.accelerator.print(msg)
+        else:
+            print(msg)
+
+    def unwrap_model(self, model):
+        if exists(self.accelerator):
+            return self.accelerator.unwrap_model(model)
+        else:
+            return model
+
+    def wait_for_everyone(self):
+        if exists(self.accelerator):
+            self.accelerator.wait_for_everyone()
+
+    def is_main_process(self):
+        if exists(self.accelerator):
+            return self.accelerator.is_main_process
+        else:
+            return True
+
+    def clip_grad_norm_(self, *args):
+        if exists(self.accelerator):
+            return self.accelerator.clip_grad_norm_(*args)
+        else:
+            return torch.nn.utils.clip_grad_norm_(*args)
+
+    def backprop(self, x):
+        if exists(self.accelerator):
+            self.accelerator.backward(x)
+        else:
+            try:
+                x.backward()
+            except Exception as e:
+                self.print(f"Caught error in backprop call: {e}")
+
+    # utility
+
     def save(self, path, overwrite = True, **kwargs):
-        path = Path(path)
-        assert not (path.exists() and not overwrite)
-        path.parent.mkdir(parents = True, exist_ok = True)
+        # ensure we sync gradients before continuing
+        self.wait_for_everyone()
 
-        save_obj = dict(
-            scaler = self.scaler.state_dict(),
-            optimizer = self.optimizer.state_dict(),
-            model = self.diffusion_prior.state_dict(),
-            version = __version__,
-            step = self.step.item(),
-            **kwargs
-        )
+        # only save on the main process
+        if self.is_main_process():
+            self.print(f"Saving checkpoint at step: {self.step.item()}")
+            path = Path(path)
+            assert not (path.exists() and not overwrite)
+            path.parent.mkdir(parents = True, exist_ok = True)
 
-        if self.use_ema:
-            save_obj = {**save_obj, 'ema': self.ema_diffusion_prior.state_dict()}
+            save_obj = dict(
+                scaler = self.scaler.state_dict(),
+                optimizer = self.optimizer.state_dict(),
+                model = self.unwrap_model(self.diffusion_prior).state_dict(), # unwrap the model from distribution if applicable
+                version = version.parse(__version__),
+                step = self.step.item(),
+                **kwargs
+            )
 
-        torch.save(save_obj, str(path))
+            if self.use_ema:
+                save_obj = {
+                    **save_obj,
+                    'ema': self.ema_diffusion_prior.state_dict(),
+                    'ema_model': self.ema_diffusion_prior.ema_model.state_dict() # save the ema model specifically for easy ema-only reload
+                }
 
-    def load(self, path, only_model = False, strict = True):
+            torch.save(save_obj, str(path))
+
+    def load(self, path, overwrite_lr = True, strict = True):
+        """
+        Load a checkpoint of a diffusion prior trainer.
+
+        Will load the entire trainer, including the optimizer and EMA.
+
+        Params:
+            - path (str): a path to the DiffusionPriorTrainer checkpoint file
+            - overwrite_lr (bool): wether or not to overwrite the stored LR with the LR specified in the new trainer
+            - strict (bool): kwarg for `torch.nn.Module.load_state_dict`, will force an exact checkpoint match
+
+        Returns:
+            loaded_obj (dict): The loaded checkpoint dictionary
+        """
+
+        # all processes need to load checkpoint. no restriction here
         path = Path(path)
         assert path.exists()
 
-        loaded_obj = torch.load(str(path))
+        loaded_obj = torch.load(str(path), map_location=self.device)
 
         if version.parse(__version__) != loaded_obj['version']:
             print(f'loading saved diffusion prior at version {loaded_obj["version"]} but current package version is at {__version__}')
 
-        self.diffusion_prior.load_state_dict(loaded_obj['model'], strict = strict)
+        # unwrap the model when loading from checkpoint
+        self.unwrap_model(self.diffusion_prior).load_state_dict(loaded_obj['model'], strict = strict)
         self.step.copy_(torch.ones_like(self.step) * loaded_obj['step'])
-
-        if only_model:
-            return loaded_obj
 
         self.scaler.load_state_dict(loaded_obj['scaler'])
         self.optimizer.load_state_dict(loaded_obj['optimizer'])
 
+        if overwrite_lr:
+            new_lr = self.optim_kwargs["lr"]
+
+            self.print(f"Overriding LR to be {new_lr}")
+
+            for group in self.optimizer.param_groups:
+                group["lr"] = new_lr
+
         if self.use_ema:
             assert 'ema' in loaded_obj
             self.ema_diffusion_prior.load_state_dict(loaded_obj['ema'], strict = strict)
+            # below not be necessary, but I had a suspicion that this wasn't being loaded correctly
+            self.ema_diffusion_prior.ema_model.load_state_dict(loaded_obj["ema_model"])
+
+        # sync and inform
+        self.wait_for_everyone()
+        self.print(f"Loaded model")
 
         return loaded_obj
 
+    # model functionality
+
     def update(self):
+        # only continue with updates until all ranks finish
+        self.wait_for_everyone()
+
         if exists(self.max_grad_norm):
             self.scaler.unscale_(self.optimizer)
-            nn.utils.clip_grad_norm_(self.diffusion_prior.parameters(), self.max_grad_norm)
+            # utilize HFA clipping where applicable
+            self.clip_grad_norm_(self.diffusion_prior.parameters(), self.max_grad_norm)
 
         self.scaler.step(self.optimizer)
         self.scaler.update()
@@ -399,17 +503,32 @@ class DiffusionPriorTrainer(nn.Module):
     @cast_torch_tensor
     @prior_sample_in_chunks
     def p_sample_loop(self, *args, **kwargs):
-        return self.ema_diffusion_prior.ema_model.p_sample_loop(*args, **kwargs)
+        if self.use_ema:
+            return self.ema_diffusion_prior.ema_model.p_sample_loop(*args, **kwargs)
+        else:
+            return self.diffusion_prior.p_sample_loop(*args, **kwargs)
 
     @torch.no_grad()
     @cast_torch_tensor
     @prior_sample_in_chunks
     def sample(self, *args, **kwargs):
-        return self.ema_diffusion_prior.ema_model.sample(*args, **kwargs)
+        if self.use_ema:
+            return self.ema_diffusion_prior.ema_model.sample(*args, **kwargs)
+        else:
+            return self.diffusion_prior.sample(*args, **kwargs)
 
     @torch.no_grad()
     def sample_batch_size(self, *args, **kwargs):
-        return self.ema_diffusion_prior.ema_model.sample_batch_size(*args, **kwargs)
+        if self.use_ema:
+            return self.ema_diffusion_prior.ema_model.sample_batch_size(*args, **kwargs)
+        else:
+            return self.diffusion_prior.sample_batch_size(*args, **kwargs)
+
+    @torch.no_grad()
+    @cast_torch_tensor
+    @prior_sample_in_chunks
+    def embed_text(self, *args, **kwargs):
+        return self.unwrap_model(self.diffusion_prior).clip.embed_text(*args, **kwargs)
 
     @cast_torch_tensor
     def forward(
@@ -427,8 +546,10 @@ class DiffusionPriorTrainer(nn.Module):
 
             total_loss += loss.item()
 
+            # backprop with accelerate if applicable
+
             if self.training:
-                self.scaler.scale(loss).backward()
+                self.backprop(self.scaler.scale(loss))
 
         return total_loss
 
