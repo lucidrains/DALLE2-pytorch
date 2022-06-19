@@ -24,6 +24,7 @@ setup(
     'text to image'
   ],
   install_requires=[
+    'accelerate',
     'click',
     'clip-anytorch',
     'coca-pytorch>=0.0.5',

@@ -31,6 +31,21 @@ As of 5/23/22, it is no longer SOTA. SOTA will be <a href="https://github.com/lu
 - Decoder - <a href="https://wandb.ai/veldrovive/dalle2_train_decoder/runs/jkrtg0so?workspace=user-veldrovive">In-progress test run</a> 🚧
 - DALL-E 2 🚧
 
+## Appreciation
+
+This library would not have gotten to this working state without the help of
+
+- <a href="https://github.com/nousr">Zion</a> for the distributed training code for the diffusion prior
+- <a href="https://github.com/Veldrovive">Aidan</a> for the distributed training code for the decoder as well as the dataloaders
+- <a href="https://github.com/krish240574">Kumar</a> for working on the initial diffusion training script
+- <a href="https://github.com/rom1504">Romain</a> for the pull request reviews and project management
+- <a href="https://github.com/Ciaohe">He Cao</a> and <a href="https://github.com/xiankgx">xiankgx</a> for the Q&A and for identifying of critical bugs
+- <a href="https://github.com/crowsonkb">Katherine</a> for her advice
+- <a href="https://stability.ai/">Stability AI</a> for the generous sponsorship
+- <a href="https://huggingface.co">🤗 Huggingface</a> and in particular <a href="https://github.com/sgugger">Sylvain</a> for the <a href="https://github.com/huggingface/accelerate">Accelerate</a> library
+
+... and many others. Thank you! 🙏
+
 ## Install
 
 ```bash
@@ -1040,19 +1055,6 @@ Once built, images will be saved to the same directory the command is invoked
 ## Training CLI (wip)
 
 <a href="https://github.com/lucidrains/stylegan2-pytorch">template</a>
-
-## Appreciation
-
-This library would not have gotten to this working state without the help of
-
-- <a href="https://github.com/nousr">Zion</a> and <a href="https://github.com/krish240574">Kumar</a> for the diffusion training script
-- <a href="https://github.com/Veldrovive">Aidan</a> for the decoder training script and dataloaders
-- <a href="https://github.com/rom1504">Romain</a> for the pull request reviews and project management
-- <a href="https://github.com/Ciaohe">He Cao</a> and <a href="https://github.com/xiankgx">xiankgx</a> for the Q&A and for identifying of critical bugs
-- <a href="https://github.com/crowsonkb">Katherine</a> for her advice
-- <a href="https://stability.ai/">Stability AI</a> for the generous sponsorship
-
-... and many others. Thank you! 🙏
 
 ## Todo
 
