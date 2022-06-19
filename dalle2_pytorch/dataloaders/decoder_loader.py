@@ -164,9 +164,6 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             # There may be webdataset shards that do not have a embedding shard associated with it. If we do not skip these, they would cause issues.
             self.append(skip_unassociated_shards(embeddings_url=embedding_folder_url, handler=handler))
 
-        self.append(wds.split_by_node)
-        self.append(wds.split_by_worker)
-
         self.append(wds.tarfile_to_samples(handler=handler))
         self.append(wds.decode("pilrgb", handler=handler))
         if embedding_folder_url is not None:
