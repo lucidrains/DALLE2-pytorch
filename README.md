@@ -1092,19 +1092,14 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)
 - [x] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes
 - [x] allow for creation of diffusion prior model off pydantic config classes - consider the same for tracker configs
+- [x] bring in skip-layer excitations (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training (doesnt work well)
+- [x] test out grid attention in cascading ddpm locally, decide whether to keep or remove https://arxiv.org/abs/2204.01697 (keeping, seems to be fine)
+- [x] allow for unet to be able to condition non-cross attention style as well
 - [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
-- [ ] transcribe code to Jax, which lowers the activation energy for distributed training, given access to TPUs
-- [ ] train on a toy task, offer in colab
-- [ ] think about how best to design a declarative training config that handles preencoding for prior and training of multiple networks in decoder
-- [ ] extend diffusion head to use diffusion-gan (potentially using lightweight-gan) to speed up inference
+- [ ] speed up inference, read up on papers (ddim or diffusion-gan, etc)
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
-- [ ] test out grid attention in cascading ddpm locally, decide whether to keep or remove https://arxiv.org/abs/2204.01697
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
-- [ ] make sure FILIP works with DALL-E2 from x-clip https://arxiv.org/abs/2111.07783
-- [ ] bring in skip-layer excitations (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training
-- [ ] decoder needs one day worth of refactor for tech debt
-- [ ] allow for unet to be able to condition non-cross attention style as well
-- [ ] read the paper, figure it out, and build it https://github.com/lucidrains/DALLE2-pytorch/issues/89
+- [ ] build infilling
 
 ## Citations
 
