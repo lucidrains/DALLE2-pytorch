@@ -28,6 +28,7 @@ setup(
     'click',
     'clip-anytorch',
     'coca-pytorch>=0.0.5',
+    'ema-pytorch>=0.0.3',
     'einops>=0.4',
     'einops-exts>=0.0.3',
     'embedding-reader',
