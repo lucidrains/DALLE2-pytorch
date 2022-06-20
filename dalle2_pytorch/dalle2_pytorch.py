@@ -1703,7 +1703,7 @@ class LowresConditioner(nn.Module):
     def __init__(
         self,
         downsample_first = True,
-        blur_sigma = (0.1, 0.2),
+        blur_sigma = 0.6,
         blur_kernel_size = 3,
     ):
         super().__init__()
