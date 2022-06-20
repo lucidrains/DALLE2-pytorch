@@ -1017,33 +1017,6 @@ The most significant parameters for the script are as follows:
 
 - `clip`, default = `None` # Signals the prior to use pre-computed embeddings
 
-#### Loading and Saving the DiffusionPrior model
-
-Two methods are provided, load_diffusion_model and save_diffusion_model, the names being self-explanatory. 
-
-```python
-from dalle2_pytorch.train import load_diffusion_model, save_diffusion_model
-```
-
-##### Loading
-
-    load_diffusion_model(dprior_path, device) 
-        dprior_path : path to saved model(.pth)
-        device      : the cuda device you're running on
-    
-##### Saving
-
-    save_diffusion_model(save_path, model, optimizer, scaler, config, image_embed_dim)
-        save_path : path to save at
-        model     : object of Diffusion_Prior
-        optimizer : optimizer object - see train_diffusion_prior.py for how to create one. 
-            e.g: optimizer = get_optimizer(diffusion_prior.net.parameters(), wd=weight_decay, lr=learning_rate)
-        scaler    : a GradScaler object.
-            e.g: scaler = GradScaler(enabled=amp)
-        config    : config object created in train_diffusion_prior.py - see file for example. 
-        image_embed_dim - the dimension of the image_embedding
-            e.g: 768
-
 ## CLI (wip)
 
 ```bash
