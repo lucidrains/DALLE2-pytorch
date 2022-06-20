@@ -173,7 +173,7 @@ class DecoderConfig(BaseModel):
     channels: int = 3
     timesteps: int = 1000
     loss_type: str = 'l2'
-    beta_schedule: str = 'cosine'
+    beta_schedule: ListOrTuple(str) = 'cosine'
     learned_variance: bool = True
     image_cond_drop_prob: float = 0.1
     text_cond_drop_prob: float = 0.5
