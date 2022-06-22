@@ -258,8 +258,8 @@ def train(
     is_master = accelerator.process_index == 0
 
     trainer = DecoderTrainer(
-        accelerator,
-        decoder,
+        decoder=decoder,
+        accelerator=accelerator,
         **kwargs
     )
 
