@@ -451,6 +451,8 @@ class DecoderTrainer(nn.Module):
 
         lr, wd, eps = map(partial(cast_tuple, length = self.num_unets), (lr, wd, eps))
 
+        assert all([unet_lr < 1e-3 for unet_lr in lr]), 'your learning rate is too high, recommend sticking with 1e-4, at most 5e-4'
+
         optimizers = []
 
         for unet, unet_lr, unet_wd, unet_eps in zip(decoder.unets, lr, wd, eps):
