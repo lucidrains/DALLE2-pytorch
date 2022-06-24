@@ -1,6 +1,7 @@
 import os
 import webdataset as wds
 import torch
+from torch.utils.data import DataLoader
 import numpy as np
 import fsspec
 import shutil
@@ -255,7 +256,7 @@ def create_image_embedding_dataloader(
     )
     if shuffle_num is not None and shuffle_num > 0:
         ds.shuffle(1000)
-    return wds.WebLoader(
+    return DataLoader(
         ds,
         num_workers=num_workers,
         batch_size=batch_size,
