@@ -16,7 +16,7 @@ from packaging import version
 
 from ema_pytorch import EMA
 
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 
 import numpy as np
 
@@ -424,6 +424,7 @@ class DecoderTrainer(nn.Module):
         self,
         decoder,
         accelerator = None,
+        dataloaders = None,
         use_ema = True,
         lr = 1e-4,
         wd = 1e-2,
@@ -476,8 +477,10 @@ class DecoderTrainer(nn.Module):
 
         self.register_buffer('step', torch.tensor([0.]))
 
-        decoder, *optimizers = list(self.accelerator.prepare(decoder, *optimizers))
+        decoder, train_loader, val_loader, *optimizers = list(self.accelerator.prepare(decoder, dataloaders["train"], dataloaders["val"], *optimizers))
 
+        self.train_loader = train_loader
+        self.val_loader = val_loader
         self.decoder = decoder
 
         for opt_ind, optimizer in zip(range(len(optimizers)), optimizers):
@@ -606,9 +609,12 @@ class DecoderTrainer(nn.Module):
 
         total_loss = 0.
 
+        using_deepspeed = self.accelerator.distributed_type == DistributedType.DEEPSPEED
+        using_amp = self.accelerator.mixed_precision != 'no'
+
         for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs):
-            # with autocast(enabled = self.amp):
-            with self.accelerator.autocast():
+            context_manager = autocast(enabled = using_amp) if using_deepspeed else self.accelerator.autocast()  # This version of accelerate does not handle deepspeed autocast correctly
+            with context_manager:
                 loss = self.decoder(*chunked_args, unet_number = unet_number, **chunked_kwargs)
                 loss = loss * chunk_size_frac
 

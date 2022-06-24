@@ -279,6 +279,7 @@ def train(
     trainer = DecoderTrainer(
         decoder=decoder,
         accelerator=accelerator,
+        dataloaders=dataloaders,
         **kwargs
     )
 
@@ -326,7 +327,7 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for i, (img, emb, txt) in enumerate(dataloaders["train"]):
+            for i, (img, emb, txt) in enumerate(trainer.train_loader):
                 # We want to count the total number of samples across all processes
                 sample_length_tensor[0] = len(img)
                 all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
@@ -419,7 +420,7 @@ def train(
             timer = Timer()
             accelerator.wait_for_everyone()
             i = 0
-            for i, (img, emb, txt) in enumerate(dataloaders["val"]):
+            for i, (img, emb, txt) in enumerate(trainer.val_loader):  # Use the accelerate prepared loader
                 val_sample_length_tensor[0] = len(img)
                 all_samples = accelerator.gather(val_sample_length_tensor)
                 total_samples = all_samples.sum().item()
