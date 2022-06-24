@@ -6,6 +6,7 @@ from dalle2_pytorch.trackers import WandbTracker, ConsoleTracker, DummyTracker
 from dalle2_pytorch.train_configs import TrainDecoderConfig
 from dalle2_pytorch.utils import Timer, print_ribbon
 from dalle2_pytorch.dalle2_pytorch import resize_image_to
+from clip import tokenize
 
 import torchvision
 import torch
@@ -130,7 +131,7 @@ def get_example_data(dataloader, device, n=5):
             break
     return list(zip(images[:n], img_embeddings[:n], text_embeddings[:n], captions[:n]))
 
-def generate_samples(trainer, example_data, text_prepend=""):
+def generate_samples(trainer, example_data, condition_on_text_encodings=False, text_prepend=""):
     """
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
@@ -138,8 +139,16 @@ def generate_samples(trainer, example_data, text_prepend=""):
     real_images, img_embeddings, text_embeddings, txts = zip(*example_data)
     if img_embeddings[0] is None:
         # Then we are using clip to generate embeddings
-        # TODO: Add the ability to generate a clip embeddings from the images so that we can run the sample generation on the images
-        raise NotImplementedError("Generating samples from clip is not implemented")
+        # Generate image embeddings
+        imgs_tensor = torch.stack(real_images)
+        img_embeddings, *_ = trainer.embed_image(imgs_tensor)
+        if condition_on_text_encodings:
+            # Generate text embeddings
+            tokenized_texts = tokenize(txts, truncate=True)
+            text_embeddings, *_ = trainer.embed_text(tokenized_texts)
+            samples = trainer.sample(img_embeddings, text_encodings=text_embeddings)
+        else:
+            samples = trainer.sample(img_embeddings)
     elif text_embeddings[0] is None:
         # Then we are using only image embeddings
         img_embeddings_tensor = torch.stack(img_embeddings)
@@ -153,11 +162,11 @@ def generate_samples(trainer, example_data, text_prepend=""):
     captions = [text_prepend + txt for txt in txts]
     return real_images, generated_images, captions
 
-def generate_grid_samples(trainer, examples, text_prepend=""):
+def generate_grid_samples(trainer, examples, condition_on_text_encodings=False, text_prepend=""):
     """
     Generates samples and uses torchvision to put them in a side by side grid for easy viewing
     """
-    real_images, generated_images, captions = generate_samples(trainer, examples, text_prepend)
+    real_images, generated_images, captions = generate_samples(trainer, examples, condition_on_text_encodings, text_prepend)
 
     real_image_size = real_images[0].shape[-1]
     generated_image_size = generated_images[0].shape[-1]
@@ -169,7 +178,7 @@ def generate_grid_samples(trainer, examples, text_prepend=""):
     grid_images = [torchvision.utils.make_grid([original_image, generated_image]) for original_image, generated_image in zip(real_images, generated_images)]
     return grid_images, captions
                     
-def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
+def evaluate_trainer(trainer, dataloader, device, condition_on_text_encodings=False, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
     """
     Computes evaluation metrics for the decoder
     """
@@ -179,7 +188,7 @@ def evaluate_trainer(trainer, dataloader, device, n_evaluation_samples=1000, FID
     if len(examples) == 0:
         print("No data to evaluate. Check that your dataloader has shards.")
         return metrics
-    real_images, generated_images, captions = generate_samples(trainer, examples)
+    real_images, generated_images, captions = generate_samples(trainer, examples, condition_on_text_encodings)
     real_images = torch.stack(real_images).to(device=device, dtype=torch.float)
     generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)
     # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
@@ -268,6 +277,7 @@ def train(
     save_latest=True,
     save_best=True,
     unet_training_mask=None,
+    condition_on_text_encodings=False,
     **kwargs
 ):
     """
@@ -348,8 +358,12 @@ def train(
 
                     if img_emb is None:
                         # Then we are using clip to compute embeddings on the fly
-                        assert txt is not None, "Text not loaded. Cannot use on the fly embedding generation."
-                        loss = trainer.forward(img, text=txt, unet=unet)
+                        if condition_on_text_encodings:
+                            assert txt is not None, "Text not loaded. Cannot use on the fly embedding generation."
+                            text_tokens = tokenize(txt, truncate=True)
+                            loss = trainer.forward(img, text=text_tokens, unet_number=unet)
+                        else:
+                            loss = trainer.forward(img, unet_number=unet)
                     elif text_emb is None:
                         # Then we are conditioning only on the image
                         assert img_emb is not None, "Image embeddings not loaded."
@@ -402,7 +416,7 @@ def train(
                     save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, save_paths)
                     if exists(n_sample_images) and n_sample_images > 0:
                         trainer.eval()
-                        train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
+                        train_images, train_captions = generate_grid_samples(trainer, train_example_data, condition_on_text_encodings, "Train: ")
                         tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
                 
                 if epoch_samples is not None and sample >= epoch_samples:
@@ -439,7 +453,11 @@ def train(
                         continue
                     if img_emb is None:
                         # Then we are using clip to compute embeddings on the fly
-                        loss = trainer.forward(img.float(), text=txt, unet=unet)
+                        if condition_on_text_encodings:
+                            text_tokens = tokenize(txt, truncate=True)
+                            loss = trainer.forward(img.float(), text=text_tokens, unet_number=unet)
+                        else:
+                            loss = trainer.forward(img.float(), unet_number=unet)
                     elif text_emb is None:
                         # Then we are conditioning only on the image
                         loss = trainer.forward(img.float(), image_embed=img_emb.float(), unet_number=unet)
@@ -472,7 +490,7 @@ def train(
         if next_task == 'eval':
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict())
+                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings)
                 if is_master:
                     tracker.log(evaluation, step=step(), verbose=True)
             next_task = 'sample'
@@ -483,8 +501,8 @@ def train(
                 # Generate examples and save the model if we are the master
                 # Generate sample images
                 print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-                test_images, test_captions = generate_grid_samples(trainer, test_example_data, "Test: ")
-                train_images, train_captions = generate_grid_samples(trainer, train_example_data, "Train: ")
+                test_images, test_captions = generate_grid_samples(trainer, test_example_data, condition_on_text_encodings, "Test: ")
+                train_images, train_captions = generate_grid_samples(trainer, train_example_data, condition_on_text_encodings, "Train: ")
                 tracker.log_images(test_images, captions=test_captions, image_section="Test Samples", step=step())
                 tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
 
@@ -595,6 +613,7 @@ def initialize_training(config, config_path):
         inference_device=accelerator.device,
         load_config=config.load,
         evaluate_config=config.evaluate,
+        condition_on_text_encodings=config.decoder.condition_on_text_encodings,
         **config.train.dict(),
     )
     

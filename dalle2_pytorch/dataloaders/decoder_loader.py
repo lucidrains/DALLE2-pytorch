@@ -170,7 +170,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             # Then this has an s3 link for the webdataset and we need extra packages
             if shutil.which("s3cmd") is None:
                 raise RuntimeError("s3cmd is required for s3 webdataset")
-        if "s3:" in img_embedding_folder_url or "s3:" in text_embedding_folder_url:
+        if (img_embedding_folder_url is not None and "s3:" in img_embedding_folder_url) or (text_embedding_folder_url is not None and "s3:" in text_embedding_folder_url):
             # Then the embeddings are being loaded from s3 and fsspec requires s3fs
             try:
                 import s3fs

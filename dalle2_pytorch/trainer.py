@@ -578,6 +578,18 @@ class DecoderTrainer(nn.Module):
 
         return output
 
+    @torch.no_grad()
+    @cast_torch_tensor
+    @prior_sample_in_chunks
+    def embed_text(self, *args, **kwargs):
+        return self.accelerator.unwrap_model(self.decoder).clip.embed_text(*args, **kwargs)
+
+    @torch.no_grad()
+    @cast_torch_tensor
+    @prior_sample_in_chunks
+    def embed_image(self, *args, **kwargs):
+        return self.accelerator.unwrap_model(self.decoder).clip.embed_image(*args, **kwargs)
+
     @cast_torch_tensor
     def forward(
         self,
