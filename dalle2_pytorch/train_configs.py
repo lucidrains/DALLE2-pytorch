@@ -13,7 +13,7 @@ from dalle2_pytorch.dalle2_pytorch import (
     Decoder,
     DiffusionPrior,
     DiffusionPriorNetwork,
-    XClipAdapter,
+    XClipAdapter
 )
 
 # helper functions
@@ -170,6 +170,8 @@ class DecoderConfig(BaseModel):
     unets: ListOrTuple(UnetConfig)
     image_size: int = None
     image_sizes: ListOrTuple(int) = None
+    condition_on_text_encodings: bool = False
+    clip: Optional[AdapterConfig]   # The clip model to use if embeddings are not provided
     channels: int = 3
     timesteps: int = 1000
     loss_type: str = 'l2'
@@ -180,9 +182,16 @@ class DecoderConfig(BaseModel):
 
     def create(self):
         decoder_kwargs = self.dict()
+
         unet_configs = decoder_kwargs.pop('unets')
         unets = [Unet(**config) for config in unet_configs]
-        return Decoder(unets, **decoder_kwargs)
+
+        has_clip = exists(decoder_kwargs.pop('clip'))
+        clip = None
+        if has_clip:
+            clip = self.clip.create()
+
+        return Decoder(unets, clip=clip, **decoder_kwargs)
 
     @validator('image_sizes')
     def check_image_sizes(cls, image_sizes, values):
@@ -194,8 +203,9 @@ class DecoderConfig(BaseModel):
         extra = "allow"
 
 class DecoderDataConfig(BaseModel):
-    webdataset_base_url: str     # path to a webdataset with jpg images
-    embeddings_url: str          # path to .npy files with embeddings
+    webdataset_base_url: str               # path to a webdataset with jpg images
+    img_embeddings_url: Optional[str]      # path to .npy files with embeddings
+    text_embeddings_url: Optional[str]     # path to .npy files with embeddings
     num_workers: int = 4
     batch_size: int = 64
     start_shard: int = 0
@@ -268,3 +278,28 @@ class TrainDecoderConfig(BaseModel):
         with open(json_path) as f:
             config = json.load(f)
         return cls(**config)
+    
+    @root_validator
+    def check_has_embeddings(cls, values):
+        # Makes sure that enough information is provided to get the embeddings specified for training
+        data_config, decoder_config = values.get('data'), values.get('decoder')
+        if data_config is None or decoder_config is None:
+            # Then something else errored and we should just pass through
+            return values
+        using_text_embeddings = decoder_config.condition_on_text_encodings
+        using_clip = exists(decoder_config.clip)
+        img_emb_url = data_config.img_embeddings_url
+        text_emb_url = data_config.text_embeddings_url
+        if using_clip:
+            # Then we are using clip and there should be no embeddings urls
+            assert not img_emb_url and not text_emb_url, "Clip model specified. No embeddings urls should be provided"
+            return values
+        if using_text_embeddings:
+            # We are not using a clip model and we are conditioning on text embeddings so we need to have a text embeddings url
+            assert text_emb_url, "Text embeddings are being conditioned on and no clip model has been specified. Provide a text embeddings url"
+        if text_emb_url:
+            # Just make sure they specified to use text embeddings so that they don't accidentally only use image embeddings
+            assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on"
+        # We are not using a clip model and we always condition on image embeddings so we need to have an image embeddings url
+        assert img_emb_url, "Image embeddings are being conditioned on and no clip model has been specified. Provide an image embeddings url"
+        return values

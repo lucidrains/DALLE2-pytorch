@@ -33,7 +33,8 @@ def exists(val):
 def create_dataloaders(
     available_shards,
     webdataset_base_url,
-    embeddings_url,
+    img_embeddings_url=None,
+    text_embeddings_url=None,
     shard_width=6,
     num_workers=4,
     batch_size=32,
@@ -63,14 +64,15 @@ def create_dataloaders(
     test_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]
     val_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]
     
-    create_dataloader = lambda tar_urls, shuffle=False, resample=False, with_text=False, for_sampling=False: create_image_embedding_dataloader(
+    create_dataloader = lambda tar_urls, shuffle=False, resample=False, for_sampling=False: create_image_embedding_dataloader(
         tar_url=tar_urls,
         num_workers=num_workers,
         batch_size=batch_size if not for_sampling else n_sample_images,
-        embeddings_url=embeddings_url,
+        img_embeddings_url=img_embeddings_url,
+        text_embeddings_url=text_embeddings_url,
         index_width=index_width,
         shuffle_num = None,
-        extra_keys= ["txt"] if with_text else [],
+        extra_keys= ["txt"],
         shuffle_shards = shuffle,
         resample_shards = resample, 
         img_preproc=img_preproc,
@@ -79,8 +81,8 @@ def create_dataloaders(
 
     train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)
     train_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)
-    val_dataloader = create_dataloader(val_urls, shuffle=False, with_text=True)
-    test_dataloader = create_dataloader(test_urls, shuffle=False, with_text=True)
+    val_dataloader = create_dataloader(val_urls, shuffle=False)
+    test_dataloader = create_dataloader(test_urls, shuffle=False)
     test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)
     return {
         "train": train_dataloader,
@@ -104,33 +106,49 @@ def get_example_data(dataloader, device, n=5):
     Samples the dataloader and returns a zipped list of examples
     """
     images = []
-    embeddings = []
+    img_embeddings = []
+    text_embeddings = []
     captions = []
-    dataset_keys = get_dataset_keys(dataloader)
-    has_caption = "txt" in dataset_keys
-    for data in dataloader:
-        if has_caption:
-            img, emb, txt = data
+    for img, emb, txt in dataloader:
+        img_emb, text_emb = emb.get('img'), emb.get('text')
+        if img_emb is not None:
+            img_emb = img_emb.to(device=device, dtype=torch.float)
+            img_embeddings.extend(list(img_emb))
         else:
-            img, emb = data
-            txt = [""] * emb.shape[0]
+            # Then we add None img.shape[0] times
+            img_embeddings.extend([None]*img.shape[0])
+        if text_emb is not None:
+            text_emb = text_emb.to(device=device, dtype=torch.float)
+            text_embeddings.extend(list(text_emb))
+        else:
+            # Then we add None img.shape[0] times
+            text_embeddings.extend([None]*img.shape[0])
         img = img.to(device=device, dtype=torch.float)
-        emb = emb.to(device=device, dtype=torch.float)
         images.extend(list(img))
-        embeddings.extend(list(emb))
         captions.extend(list(txt))
         if len(images) >= n:
             break
-    return list(zip(images[:n], embeddings[:n], captions[:n]))
+    return list(zip(images[:n], img_embeddings[:n], text_embeddings[:n], captions[:n]))
 
 def generate_samples(trainer, example_data, text_prepend=""):
     """
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
     """
-    real_images, embeddings, txts = zip(*example_data)
-    embeddings_tensor = torch.stack(embeddings)
-    samples = trainer.sample(embeddings_tensor)
+    real_images, img_embeddings, text_embeddings, txts = zip(*example_data)
+    if img_embeddings[0] is None:
+        # Then we are using clip to generate embeddings
+        # TODO: Add the ability to generate a clip embeddings from the images so that we can run the sample generation on the images
+        raise NotImplementedError("Generating samples from clip is not implemented")
+    elif text_embeddings[0] is None:
+        # Then we are using only image embeddings
+        img_embeddings_tensor = torch.stack(img_embeddings)
+        samples = trainer.sample(img_embeddings_tensor)
+    else:
+        # Then we are using both image and text embeddings
+        img_embeddings_tensor = torch.stack(img_embeddings)
+        text_embeddings_tensor = torch.stack(text_embeddings)
+        samples = trainer.sample(img_embeddings_tensor, text_encodings=text_embeddings_tensor)
     generated_images = list(samples)
     captions = [text_prepend + txt for txt in txts]
     return real_images, generated_images, captions
@@ -307,14 +325,20 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for i, (img, emb) in enumerate(dataloaders["train"]):
+            for i, (img, emb, txt) in enumerate(dataloaders["train"]):
                 # We want to count the total number of samples across all processes
                 sample_length_tensor[0] = len(img)
                 all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
                 total_samples = all_samples.sum().item()
                 sample += total_samples
                 samples_seen += total_samples
-                img, emb = send_to_device((img, emb))
+                img_emb = emb.get('img')
+                if img_emb is not None:
+                    img_emb, = send_to_device((img_emb,))
+                text_emb = emb.get('text')
+                if text_emb is not None:
+                    text_emb, = send_to_device((text_emb,))
+                img, = send_to_device((img,))
 
                 trainer.train()
                 for unet in range(1, trainer.num_unets+1):
@@ -322,7 +346,19 @@ def train(
                     if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
                         continue
 
-                    loss = trainer.forward(img, image_embed=emb, unet_number=unet)
+                    if img_emb is None:
+                        # Then we are using clip to compute embeddings on the fly
+                        assert txt is not None, "Text not loaded. Cannot use on the fly embedding generation."
+                        loss = trainer.forward(img, text=txt, unet=unet)
+                    elif text_emb is None:
+                        # Then we are conditioning only on the image
+                        assert img_emb is not None, "Image embeddings not loaded."
+                        loss = trainer.forward(img, image_embed=img_emb, unet_number=unet)
+                    else:
+                        # Then we are conditioning on both image and text
+                        assert img_emb is not None, "Image embeddings not loaded."
+                        assert text_emb is not None, "Text embeddings not loaded."
+                        loss = trainer.forward(img, image_embed=img_emb, text_encodings=text_emb, unet_number=unet)
                     trainer.update(unet_number=unet)
                     unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
                 
@@ -389,14 +425,27 @@ def train(
                 all_samples = accelerator.gather(val_sample_length_tensor)
                 total_samples = all_samples.sum().item()
                 val_sample += total_samples
-                img, emb = send_to_device((img, emb))
+                img_emb = emb.get('img')
+                if img_emb is not None:
+                    img_emb, = send_to_device((img_emb,))
+                text_emb = emb.get('text')
+                if text_emb is not None:
+                    text_emb, = send_to_device((text_emb,))
+                img, = send_to_device((img,))
 
                 for unet in range(1, len(decoder.unets)+1):
                     if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
                         # No need to evaluate an unchanging unet
                         continue
-                    
-                    loss = trainer.forward(img.float(), image_embed=emb.float(), unet_number=unet)
+                    if img_emb is None:
+                        # Then we are using clip to compute embeddings on the fly
+                        loss = trainer.forward(img.float(), text=txt, unet=unet)
+                    elif text_emb is None:
+                        # Then we are conditioning only on the image
+                        loss = trainer.forward(img.float(), image_embed=img_emb.float(), unet_number=unet)
+                    else:
+                        # Then we are conditioning on both image and text
+                        loss = trainer.forward(img.float(), image_embed=img_emb.float(), text_encodings=text_emb.float(), unet_number=unet)
                     average_val_loss_tensor[0, unet-1] += loss
 
                 if i % VALID_CALC_LOSS_EVERY_ITERS == 0:
@@ -525,8 +574,21 @@ def initialize_training(config, config_path):
     # Create and initialize the tracker if we are the master
     tracker = create_tracker(accelerator, config, config_path) if rank == 0 else create_tracker(accelerator, config, config_path, tracker_type="dummy")
 
+    has_img_embeddings = config.data.img_embeddings_url is not None
+    has_text_embeddings = config.data.text_embeddings_url is not None
+    conditioning_on_text = config.decoder.condition_on_text_encodings
+    has_clip_model = config.decoder.clip is not None
+    data_source_string = ""
+    if has_clip_model:
+        data_source_string += "on the fly embeddings with clip"
+    elif has_img_embeddings:
+        data_source_string += "precomputed image embeddings"
+        if has_text_embeddings:
+            data_source_string += " and precomputed text embeddings"
+
     accelerator.print(print_ribbon("Loaded Config", repeat=40))
     accelerator.print(f"Running training with {accelerator.num_processes} processes and {accelerator.distributed_type} distributed training")
+    accelerator.print(f"Training using {data_source_string} {'conditioned on text' if conditioning_on_text else 'not conditioned on text'}")
     accelerator.print(f"Number of parameters: {num_parameters}")
     train(dataloaders, decoder, accelerator,
         tracker=tracker,
