@@ -1072,7 +1072,7 @@ Once built, images will be saved to the same directory the command is invoked
 - [ ] speed up inference, read up on papers (ddim or diffusion-gan, etc)
 - [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
-- [ ] build infilling
+- [ ] add inpainting ability using resampler from repaint paper https://arxiv.org/abs/2201.09865
 
 ## Citations
 
