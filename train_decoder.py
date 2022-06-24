@@ -137,27 +137,26 @@ def generate_samples(trainer, example_data, condition_on_text_encodings=False, t
     Returns three lists: real images, generated images, and captions
     """
     real_images, img_embeddings, text_embeddings, txts = zip(*example_data)
+    sample_params = {}
     if img_embeddings[0] is None:
-        # Then we are using clip to generate embeddings
-        # Generate image embeddings
+        # Generate image embeddings from clip
         imgs_tensor = torch.stack(real_images)
         img_embeddings, *_ = trainer.embed_image(imgs_tensor)
-        if condition_on_text_encodings:
-            # Generate text embeddings
-            tokenized_texts = tokenize(txts, truncate=True)
-            text_embeddings, *_ = trainer.embed_text(tokenized_texts)
-            samples = trainer.sample(img_embeddings, text_encodings=text_embeddings)
-        else:
-            samples = trainer.sample(img_embeddings)
-    elif text_embeddings[0] is None:
-        # Then we are using only image embeddings
-        img_embeddings_tensor = torch.stack(img_embeddings)
-        samples = trainer.sample(img_embeddings_tensor)
+        sample_params["image_embed"] = img_embeddings
     else:
-        # Then we are using both image and text embeddings
-        img_embeddings_tensor = torch.stack(img_embeddings)
-        text_embeddings_tensor = torch.stack(text_embeddings)
-        samples = trainer.sample(img_embeddings_tensor, text_encodings=text_embeddings_tensor)
+        # Then we are using precomputed image embeddings
+        img_embeddings = torch.stack(img_embeddings)
+        sample_params["image_embed"] = img_embeddings
+    if condition_on_text_encodings:
+        if text_embeddings[0] is None:
+            # Generate text embeddings from text
+            tokenized_texts = tokenize(txts, truncate=True)
+            sample_params["text"] = tokenized_texts
+        else:
+            # Then we are using precomputed text embeddings
+            text_embeddings = torch.stack(text_embeddings)
+            sample_params["text_encodings"] = text_embeddings
+    samples = trainer.sample(**sample_params)
     generated_images = list(samples)
     captions = [text_prepend + txt for txt in txts]
     return real_images, generated_images, captions
@@ -343,10 +342,12 @@ def train(
                 sample += total_samples
                 samples_seen += total_samples
                 img_emb = emb.get('img')
-                if img_emb is not None:
+                has_img_embedding = img_emb is not None
+                if has_img_embedding:
                     img_emb, = send_to_device((img_emb,))
                 text_emb = emb.get('text')
-                if text_emb is not None:
+                has_text_embedding = text_emb is not None
+                if has_text_embedding:
                     text_emb, = send_to_device((text_emb,))
                 img, = send_to_device((img,))
 
@@ -356,23 +357,20 @@ def train(
                     if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
                         continue
 
-                    if img_emb is None:
-                        # Then we are using clip to compute embeddings on the fly
-                        if condition_on_text_encodings:
-                            assert txt is not None, "Text not loaded. Cannot use on the fly embedding generation."
-                            text_tokens = tokenize(txt, truncate=True)
-                            loss = trainer.forward(img, text=text_tokens, unet_number=unet)
-                        else:
-                            loss = trainer.forward(img, unet_number=unet)
-                    elif text_emb is None:
-                        # Then we are conditioning only on the image
-                        assert img_emb is not None, "Image embeddings not loaded."
-                        loss = trainer.forward(img, image_embed=img_emb, unet_number=unet)
+                    forward_params = {}
+                    if has_img_embedding:
+                        forward_params['image_embed'] = img_emb
                     else:
-                        # Then we are conditioning on both image and text
-                        assert img_emb is not None, "Image embeddings not loaded."
-                        assert text_emb is not None, "Text embeddings not loaded."
-                        loss = trainer.forward(img, image_embed=img_emb, text_encodings=text_emb, unet_number=unet)
+                        # Forward pass automatically generates embedding
+                        pass
+                    if condition_on_text_encodings:
+                        if has_text_embedding:
+                            forward_params['text_encodings'] = text_emb
+                        else:
+                            # Then we need to pass the text instead
+                            tokenized_texts = tokenize(txt, truncate=True)
+                            forward_params['text'] = tokenized_texts
+                    loss = trainer.forward(img, **forward_params, unet_number=unet)
                     trainer.update(unet_number=unet)
                     unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
                 
@@ -440,10 +438,12 @@ def train(
                 total_samples = all_samples.sum().item()
                 val_sample += total_samples
                 img_emb = emb.get('img')
-                if img_emb is not None:
+                has_img_embedding = img_emb is not None
+                if has_img_embedding:
                     img_emb, = send_to_device((img_emb,))
                 text_emb = emb.get('text')
-                if text_emb is not None:
+                has_text_embedding = text_emb is not None
+                if has_text_embedding:
                     text_emb, = send_to_device((text_emb,))
                 img, = send_to_device((img,))
 
@@ -451,19 +451,21 @@ def train(
                     if not unet_training_mask[unet-1]: # Unet index is the unet number - 1
                         # No need to evaluate an unchanging unet
                         continue
-                    if img_emb is None:
-                        # Then we are using clip to compute embeddings on the fly
-                        if condition_on_text_encodings:
-                            text_tokens = tokenize(txt, truncate=True)
-                            loss = trainer.forward(img.float(), text=text_tokens, unet_number=unet)
-                        else:
-                            loss = trainer.forward(img.float(), unet_number=unet)
-                    elif text_emb is None:
-                        # Then we are conditioning only on the image
-                        loss = trainer.forward(img.float(), image_embed=img_emb.float(), unet_number=unet)
+                        
+                    forward_params = {}
+                    if has_img_embedding:
+                        forward_params['image_embed'] = img_emb.float()
                     else:
-                        # Then we are conditioning on both image and text
-                        loss = trainer.forward(img.float(), image_embed=img_emb.float(), text_encodings=text_emb.float(), unet_number=unet)
+                        # Forward pass automatically generates embedding
+                        pass
+                    if condition_on_text_encodings:
+                        if has_text_embedding:
+                            forward_params['text_encodings'] = text_emb.float()
+                        else:
+                            # Then we need to pass the text instead
+                            tokenized_texts = tokenize(txt, truncate=True)
+                            forward_params['text'] = tokenized_texts
+                    loss = trainer.forward(img.float(), **forward_params, unet_number=unet)
                     average_val_loss_tensor[0, unet-1] += loss
 
                 if i % VALID_CALC_LOSS_EVERY_ITERS == 0:
@@ -597,16 +599,23 @@ def initialize_training(config, config_path):
     conditioning_on_text = config.decoder.condition_on_text_encodings
     has_clip_model = config.decoder.clip is not None
     data_source_string = ""
-    if has_clip_model:
-        data_source_string += "on the fly embeddings with clip"
-    elif has_img_embeddings:
+    if has_img_embeddings:
         data_source_string += "precomputed image embeddings"
+    elif has_clip_model:
+        data_source_string += "clip image embeddings generation"
+    else:
+        raise ValueError("No image embeddings source specified")
+    if conditioning_on_text:
         if has_text_embeddings:
             data_source_string += " and precomputed text embeddings"
+        elif has_clip_model:
+            data_source_string += " and clip text encoding generation"
+        else:
+            raise ValueError("No text embeddings source specified")
 
     accelerator.print(print_ribbon("Loaded Config", repeat=40))
     accelerator.print(f"Running training with {accelerator.num_processes} processes and {accelerator.distributed_type} distributed training")
-    accelerator.print(f"Training using {data_source_string} {'conditioned on text' if conditioning_on_text else 'not conditioned on text'}")
+    accelerator.print(f"Training using {data_source_string}. {'conditioned on text' if conditioning_on_text else 'not conditioned on text'}")
     accelerator.print(f"Number of parameters: {num_parameters}")
     train(dataloaders, decoder, accelerator,
         tracker=tracker,

@@ -290,16 +290,14 @@ class TrainDecoderConfig(BaseModel):
         using_clip = exists(decoder_config.clip)
         img_emb_url = data_config.img_embeddings_url
         text_emb_url = data_config.text_embeddings_url
-        if using_clip:
-            # Then we are using clip and there should be no embeddings urls
-            assert not img_emb_url and not text_emb_url, "Clip model specified. No embeddings urls should be provided"
-            return values
         if using_text_embeddings:
-            # We are not using a clip model and we are conditioning on text embeddings so we need to have a text embeddings url
-            assert text_emb_url, "Text embeddings are being conditioned on and no clip model has been specified. Provide a text embeddings url"
+            # Then we need some way to get the embeddings
+            assert using_clip or text_emb_url is not None, 'If condition_on_text_encodings is true, either clip or text_embeddings_url must be provided'
+        if using_clip:
+            if using_text_embeddings:
+                assert text_emb_url is None or img_emb_url is None, 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
+            else:
+                assert img_emb_url is None, 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
         if text_emb_url:
-            # Just make sure they specified to use text embeddings so that they don't accidentally only use image embeddings
-            assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on"
-        # We are not using a clip model and we always condition on image embeddings so we need to have an image embeddings url
-        assert img_emb_url, "Image embeddings are being conditioned on and no clip model has been specified. Provide an image embeddings url"
+            assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason."
         return values
