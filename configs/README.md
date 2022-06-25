@@ -91,21 +91,85 @@ Each metric can be enabled by setting its configuration. The configuration keys 
 
 **<ins>Tracker</ins>:**
 
-Selects which tracker to use and configures it.
+Selects how the experiment will be tracked.
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
-| `tracker_type` | No | `console` | Which tracker to use. Currently accepts `console` or `wandb`. |
-| `data_path` | No | `./models` | Where the tracker will store local data. |
-| `verbose` | No | `False` | Enables console logging for non-console trackers. |
+| `data_path` | No | `./.tracker-data` | The path to the folder where temporary tracker data will be saved. |
+| `overwrite_data_path` | No | `False` | If true, the data path will be overwritten. Otherwise, you need to delete it yourself. |
+| `log` | Yes | N/A | Logging configuration. |
+| `load` | No | `None` | Checkpoint loading configuration. |
+| `save` | Yes | N/A | Checkpoint/Model saving configuration. |
+Tracking is split up into three sections:
+* Log: Where to save run metadata and image output. Options are `console` or `wandb`.
+* Load: Where to load a checkpoint from. Options are `local`, `url`, or `wandb`.
+* Save: Where to save a checkpoint to. Options are `local`, `huggingface`, or `wandb`.
 
-Other configuration options are required for the specific trackers. To see which are required, reference the initializer parameters of each [tracker](../dalle2_pytorch/trackers.py).
+**Logging:**
 
-**<ins>Load</ins>:**
-
-Selects where to load a pretrained model from.
+If using `console` there is no further configuration than setting `log_type` to `console`.
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
-| `source` | No | `None` | Supports `file` or `wandb`. |
-| `resume` | No | `False` | If the tracker support resuming the run, resume it. |
+| `log_type` | Yes | N/A | Must be `console`. |
 
-Other configuration options are required for loading from a specific source. To see which are required, reference the load methods at the top of the [tracker file](../dalle2_pytorch/trackers.py).
+If using `wandb`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `log_type` | Yes | N/A | Must be `wandb`. |
+| `wandb_entity` | Yes | N/A | The wandb entity to log to. |
+| `wandb_project` | Yes | N/A | The wandb project save the run to. |
+| `wandb_run_name` | No | `None` | The wandb run name. |
+| `wandb_run_id` | No | `None` | The wandb run id. Used if resuming an old run. |
+| `wandb_resume` | No | `False` | Whether to resume an old run. |
+
+**Loading:**
+
+If using `local`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `load_from` | Yes | N/A | Must be `local`. |
+| `file_path` | Yes | N/A | The path to the checkpoint file. |
+
+If using `url`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `load_from` | Yes | N/A | Must be `url`. |
+| `url` | Yes | N/A | The url of the checkpoint file. |
+
+If using `wandb`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `load_from` | Yes | N/A | Must be `wandb`. |
+| `wandb_run_path` | No | `None` | The wandb run path. If `None`, uses the run that is being resumed. |
+| `wandb_file_path` | Yes | N/A | The path to the checkpoint file in the W&B file system. |
+
+**Saving:**
+Unlike `log` and `load`, `save` may be an array of options so that you can save to different locations in a run.
+
+All save locations have these configuration options
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `save_to` | Yes | N/A | Must be `local`, `huggingface`, or `wandb`. |
+| `save_all` | No | `False` | If true, saves a checkpoint for every epoch. |
+| `save_latest` | No | `True` | If true, overwrites the `latest.pth` every time the model is saved. |
+| `save_best` | No | `True` | If true, overwrites the `best.pth` every time the model has a lower validation loss than all previous models. |
+| `save_type` | No | `'checkpoint'` | The type of save. `'checkpoint'` saves a checkpoint, `'model'` saves a model without any fluff (Saves with ema if ema is enabled). |
+
+If using `local`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `save_to` | Yes | N/A | Must be `local`. |
+| `file_path` | Yes | N/A | The path to a folder where models will be saved. |
+
+If using `huggingface`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `save_to` | Yes | N/A | Must be `huggingface`. |
+| `huggingface_repo` | Yes | N/A | The huggingface repository to save to. |
+| `huggingface_base_path` | Yes | N/A | The base path that checkpoints will be saved under. |
+| `token_path` | No | `None` | If logging in with the huggingface cli is not possible, point to a token file instead. |
+
+If using `wandb`
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `save_to` | Yes | N/A | Must be `wandb`. |
+| `wandb_run_path` | No | `None` | The wandb run path. If `None`, uses the current run. You will almost always want this to be `None`. |

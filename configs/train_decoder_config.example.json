@@ -80,20 +80,32 @@
         }
     },
     "tracker": {
-        "tracker_type": "console",
-        "data_path": "./models",
+        "overwrite_data_path": true,
 
-        "wandb_entity": "",
-        "wandb_project": "",
+        "log": {
+            "log_type": "wandb",
 
-        "verbose": false
-    },
-    "load": {
-        "source": null,
+            "wandb_entity": "your_wandb",
+            "wandb_project": "your_project",
 
-        "run_path": "",
-        "file_path": "",
+            "verbose": true
+        },
 
-        "resume": false
+        "load": {
+            "load_from": null
+        },
+
+        "save": [{
+            "save_to": "wandb"
+        }, {
+            "save_to": "huggingface",
+            "huggingface_repo": "Veldrovive/test_model",
+
+            "save_all": true,
+            "save_latest": true,
+            "save_best": true,
+
+            "save_type": "model"
+        }]
     }
 }
