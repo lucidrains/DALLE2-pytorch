@@ -1,6 +1,6 @@
 import math
 import random
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from functools import partial, wraps
 from contextlib import contextmanager
 from collections import namedtuple
