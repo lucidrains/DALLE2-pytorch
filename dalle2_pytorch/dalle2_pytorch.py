@@ -1852,7 +1852,7 @@ class Decoder(nn.Module):
             one_unet = one_unet.cast_model_parameters(
                 lowres_cond = not is_first,
                 cond_on_image_embeds = not unconditional and is_first,
-                cond_on_text_encodings = not unconditional and (is_first or one_unet.cond_on_text_encodings),
+                cond_on_text_encodings = not unconditional and one_unet.cond_on_text_encodings,
                 channels = unet_channels,
                 channels_out = unet_channels_out
             )
