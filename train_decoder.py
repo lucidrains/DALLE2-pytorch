@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List
+from datetime import timedelta
 
 from dalle2_pytorch.trainer import DecoderTrainer
 from dalle2_pytorch.dataloaders import create_image_embedding_dataloader
@@ -11,11 +12,12 @@ from clip import tokenize
 
 import torchvision
 import torch
+from torch import nn
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.inception import InceptionScore
 from torchmetrics.image.kid import KernelInceptionDistance
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
-from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGroupKwargs
 from accelerate.utils import dataclasses as accelerate_dataclasses
 import webdataset as wds
 import click
@@ -132,7 +134,7 @@ def get_example_data(dataloader, device, n=5):
             break
     return list(zip(images[:n], img_embeddings[:n], text_embeddings[:n], captions[:n]))
 
-def generate_samples(trainer, example_data, condition_on_text_encodings=False, text_prepend="", match_image_size=True):
+def generate_samples(trainer, example_data, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend="", match_image_size=True):
     """
     Takes example data and generates images from the embeddings
     Returns three lists: real images, generated images, and captions
@@ -157,6 +159,13 @@ def generate_samples(trainer, example_data, condition_on_text_encodings=False, t
             # Then we are using precomputed text embeddings
             text_embeddings = torch.stack(text_embeddings)
             sample_params["text_encodings"] = text_embeddings
+    sample_params["start_at_unet_number"] = start_unet
+    sample_params["stop_at_unet_number"] = end_unet
+    if start_unet > 1:
+        # If we are only training upsamplers
+        sample_params["image"] = torch.stack(real_images)
+    if device is not None:
+        sample_params["_device"] = device
     samples = trainer.sample(**sample_params)
     generated_images = list(samples)
     captions = [text_prepend + txt for txt in txts]
@@ -165,15 +174,15 @@ def generate_samples(trainer, example_data, condition_on_text_encodings=False, t
         real_images = [resize_image_to(image, generated_image_size, clamp_range=(0, 1)) for image in real_images]
     return real_images, generated_images, captions
 
-def generate_grid_samples(trainer, examples, condition_on_text_encodings=False, text_prepend=""):
+def generate_grid_samples(trainer, examples, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=""):
     """
     Generates samples and uses torchvision to put them in a side by side grid for easy viewing
     """
-    real_images, generated_images, captions = generate_samples(trainer, examples, condition_on_text_encodings, text_prepend)
+    real_images, generated_images, captions = generate_samples(trainer, examples, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)
     grid_images = [torchvision.utils.make_grid([original_image, generated_image]) for original_image, generated_image in zip(real_images, generated_images)]
     return grid_images, captions
                     
-def evaluate_trainer(trainer, dataloader, device, condition_on_text_encodings=False, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
+def evaluate_trainer(trainer, dataloader, device,  start_unet, end_unet, condition_on_text_encodings=False, cond_scale=1.0, inference_device=None, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):
     """
     Computes evaluation metrics for the decoder
     """
@@ -183,7 +192,7 @@ def evaluate_trainer(trainer, dataloader, device, condition_on_text_encodings=Fa
     if len(examples) == 0:
         print("No data to evaluate. Check that your dataloader has shards.")
         return metrics
-    real_images, generated_images, captions = generate_samples(trainer, examples, condition_on_text_encodings)
+    real_images, generated_images, captions = generate_samples(trainer, examples, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)
     real_images = torch.stack(real_images).to(device=device, dtype=torch.float)
     generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)
     # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8
@@ -259,17 +268,34 @@ def train(
     evaluate_config=None,
     epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch
     validation_samples = None,
+    save_immediately=False,
     epochs = 20,
     n_sample_images = 5,
     save_every_n_samples = 100000,
     unet_training_mask=None,
     condition_on_text_encodings=False,
+    cond_scale=1.0,
     **kwargs
 ):
     """
     Trains a decoder on a dataset.
     """
     is_master = accelerator.process_index == 0
+
+    if not exists(unet_training_mask):
+        # Then the unet mask should be true for all unets in the decoder
+        unet_training_mask = [True] * len(decoder.unets)
+    assert len(unet_training_mask) == len(decoder.unets), f"The unet training mask should be the same length as the number of unets in the decoder. Got {len(unet_training_mask)} and {trainer.num_unets}"
+    trainable_unet_numbers = [i+1 for i, trainable in enumerate(unet_training_mask) if trainable]
+    first_trainable_unet = trainable_unet_numbers[0]
+    last_trainable_unet = trainable_unet_numbers[-1]
+    def move_unets(unet_training_mask):
+        for i in range(len(decoder.unets)):
+            if not unet_training_mask[i]:
+                # Replace the unet from the module list with a nn.Identity(). This training script never uses unets that aren't being trained so this is fine.
+                decoder.unets[i] = nn.Identity().to(inference_device)
+    # Remove non-trainable unets
+    move_unets(unet_training_mask)
 
     trainer = DecoderTrainer(
         decoder=decoder,
@@ -285,6 +311,7 @@ def train(
     sample = 0
     samples_seen = 0
     val_sample = 0
+    step = lambda: int(trainer.num_steps_taken(unet_number=first_trainable_unet))
 
     if tracker.can_recall:
         start_epoch, validation_losses, next_task, recalled_sample, samples_seen = recall_trainer(tracker, trainer)
@@ -295,13 +322,6 @@ def train(
         accelerator.print(f"Loaded model from {type(tracker.loader).__name__} on epoch {start_epoch} having seen {samples_seen} samples with minimum validation loss {min(validation_losses) if len(validation_losses) > 0 else 'N/A'}")
         accelerator.print(f"Starting training from task {next_task} at sample {sample} and validation sample {val_sample}")
     trainer.to(device=inference_device)
-
-    if not exists(unet_training_mask):
-        # Then the unet mask should be true for all unets in the decoder
-        unet_training_mask = [True] * trainer.num_unets
-    first_training_unet = min(index for index, mask in enumerate(unet_training_mask) if mask)
-    step = lambda: int(trainer.num_steps_taken(unet_number=first_training_unet+1))
-    assert len(unet_training_mask) == trainer.num_unets, f"The unet training mask should be the same length as the number of unets in the decoder. Got {len(unet_training_mask)} and {trainer.num_unets}"
 
     accelerator.print(print_ribbon("Generating Example Data", repeat=40))
     accelerator.print("This can take a while to load the shard lists...")
@@ -360,7 +380,7 @@ def train(
                             tokenized_texts = tokenize(txt, truncate=True)
                             assert tokenized_texts.shape[0] == len(img), f"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(img)})"
                             forward_params['text'] = tokenized_texts
-                    loss = trainer.forward(img, **forward_params, unet_number=unet)
+                    loss = trainer.forward(img, **forward_params, unet_number=unet, _device=inference_device)
                     trainer.update(unet_number=unet)
                     unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss
                 
@@ -373,10 +393,10 @@ def train(
                     unet_all_losses = accelerator.gather(unet_losses_tensor)
                     mask = unet_all_losses != 0
                     unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)
-                    loss_map = { f"Unet {index} Training Loss": loss.item() for index, loss in enumerate(unet_average_loss) if loss != 0 }
+                    loss_map = { f"Unet {index} Training Loss": loss.item() for index, loss in enumerate(unet_average_loss) if unet_training_mask[index] }
 
                     # gather decay rate on each UNet
-                    ema_decay_list = {f"Unet {index} EMA Decay": ema_unet.get_current_decay() for index, ema_unet in enumerate(trainer.ema_unets)}
+                    ema_decay_list = {f"Unet {index} EMA Decay": ema_unet.get_current_decay() for index, ema_unet in enumerate(trainer.ema_unets) if unet_training_mask[index]}
 
                     log_data = {
                         "Epoch": epoch,
@@ -391,7 +411,7 @@ def train(
                     if is_master:
                         tracker.log(log_data, step=step())
 
-                if is_master and last_snapshot + save_every_n_samples < sample:  # This will miss by some amount every time, but it's not a big deal... I hope
+                if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope
                     # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master
                     print("Saving snapshot")
                     last_snapshot = sample
@@ -399,7 +419,7 @@ def train(
                     save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)
                     if exists(n_sample_images) and n_sample_images > 0:
                         trainer.eval()
-                        train_images, train_captions = generate_grid_samples(trainer, train_example_data, condition_on_text_encodings, "Train: ")
+                        train_images, train_captions = generate_grid_samples(trainer, train_example_data, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
                         tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
                 
                 if epoch_samples is not None and sample >= epoch_samples:
@@ -449,8 +469,9 @@ def train(
                         else:
                             # Then we need to pass the text instead
                             tokenized_texts = tokenize(txt, truncate=True)
+                            assert tokenized_texts.shape[0] == len(img), f"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(img)})"
                             forward_params['text'] = tokenized_texts
-                    loss = trainer.forward(img.float(), **forward_params, unet_number=unet)
+                    loss = trainer.forward(img.float(), **forward_params, unet_number=unet, _device=inference_device)
                     average_val_loss_tensor[0, unet-1] += loss
 
                 if i % VALID_CALC_LOSS_EVERY_ITERS == 0:
@@ -477,7 +498,7 @@ def train(
         if next_task == 'eval':
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings)
+                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, first_trainable_unet, last_trainable_unet, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
                 if is_master:
                     tracker.log(evaluation, step=step())
             next_task = 'sample'
@@ -488,15 +509,15 @@ def train(
                 # Generate examples and save the model if we are the master
                 # Generate sample images
                 print(print_ribbon(f"Sampling Set {epoch}", repeat=40))
-                test_images, test_captions = generate_grid_samples(trainer, test_example_data, condition_on_text_encodings, "Test: ")
-                train_images, train_captions = generate_grid_samples(trainer, train_example_data, condition_on_text_encodings, "Train: ")
+                test_images, test_captions = generate_grid_samples(trainer, test_example_data,  first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Test: ")
+                train_images, train_captions = generate_grid_samples(trainer, train_example_data,  first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, "Train: ")
                 tracker.log_images(test_images, captions=test_captions, image_section="Test Samples", step=step())
                 tracker.log_images(train_images, captions=train_captions, image_section="Train Samples", step=step())
 
                 print(print_ribbon(f"Starting Saving {epoch}", repeat=40))
                 is_best = False
                 if all_average_val_losses is not None:
-                    average_loss = all_average_val_losses.mean(dim=0).item()
+                    average_loss = all_average_val_losses.mean(dim=0).sum() / sum(unet_training_mask)
                     if len(validation_losses) == 0 or average_loss < min(validation_losses):
                         is_best = True
                     validation_losses.append(average_loss)
@@ -522,7 +543,8 @@ def initialize_training(config: TrainDecoderConfig, config_path):
 
     # Set up accelerator for configurable distributed training
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters)
-    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
+    init_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=60*60))
+    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs, init_kwargs])
 
     if accelerator.num_processes > 1:
         # We are using distributed training and want to immediately ensure all can connect

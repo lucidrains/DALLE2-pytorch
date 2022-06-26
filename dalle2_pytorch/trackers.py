@@ -530,11 +530,14 @@ class Tracker:
                 prior = trainer.ema_diffusion_prior.ema_model if trainer.use_ema else trainer.diffusion_prior
                 prior: DiffusionPrior = trainer.unwrap_model(prior)
                 # Remove CLIP if it is part of the model
+                original_clip = prior.clip
                 prior.clip = None
                 model_state_dict = prior.state_dict()
+                prior.clip = original_clip
             elif isinstance(trainer, DecoderTrainer):
                 decoder: Decoder = trainer.accelerator.unwrap_model(trainer.decoder)
                 # Remove CLIP if it is part of the model
+                original_clip = decoder.clip
                 decoder.clip = None
                 if trainer.use_ema:
                     trainable_unets = decoder.unets
@@ -543,6 +546,7 @@ class Tracker:
                     decoder.unets = trainable_unets  # Swap back
                 else:
                     model_state_dict = decoder.state_dict()
+                decoder.clip = original_clip
             else:
                 raise NotImplementedError('Saving this type of model with EMA mode enabled is not yet implemented. Actually, how did you get here?')
             state_dict = {
