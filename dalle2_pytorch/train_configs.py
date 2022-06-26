@@ -158,6 +158,8 @@ class UnetConfig(BaseModel):
     dim: int
     dim_mults: ListOrTuple(int)
     image_embed_dim: int = None
+    text_embed_dim: int = None
+    cond_on_text_encodings: bool = None
     cond_dim: int = None
     channels: int = 3
     attn_dim_head: int = 32
@@ -170,7 +172,6 @@ class DecoderConfig(BaseModel):
     unets: ListOrTuple(UnetConfig)
     image_size: int = None
     image_sizes: ListOrTuple(int) = None
-    condition_on_text_encodings: bool = False
     clip: Optional[AdapterConfig]   # The clip model to use if embeddings are not provided
     channels: int = 3
     timesteps: int = 1000
@@ -286,16 +287,16 @@ class TrainDecoderConfig(BaseModel):
         if data_config is None or decoder_config is None:
             # Then something else errored and we should just pass through
             return values
-        using_text_embeddings = decoder_config.condition_on_text_encodings
+        using_text_encodings = decoder_config.unets[0].cond_on_text_encodings # in dalle2 only the first UNet is text conditioned
         using_clip = exists(decoder_config.clip)
         img_emb_url = data_config.img_embeddings_url
         text_emb_url = data_config.text_embeddings_url
         if using_text_embeddings:
             # Then we need some way to get the embeddings
-            assert using_clip or text_emb_url is not None, 'If condition_on_text_encodings is true, either clip or text_embeddings_url must be provided'
+            assert using_clip or text_emb_url is not None, 'If text conditioning, either clip or text_embeddings_url must be provided'
         if using_clip:
             if using_text_embeddings:
-                assert text_emb_url is None or img_emb_url is None, 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
+                assert text_emb_url is None or img_emb_url is None, 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'
             else:
                 assert img_emb_url is None, 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
         if text_emb_url:
