@@ -21,7 +21,7 @@ def get_example_file(fs, path, file_format):
     """
     return fs.glob(os.path.join(path, f"*.{file_format}"))[0]
 
-def embedding_inserter(samples, embeddings_url, index_width, handler=wds.handlers.reraise_exception):
+def embedding_inserter(samples, embeddings_url, index_width, sample_key='npy', handler=wds.handlers.reraise_exception):
     """Given a datum of {"__key__": str, "__url__": str, ...} adds the cooresponding embedding and yields"""
     previous_tar_url = None
     current_embeddings = None
@@ -56,7 +56,7 @@ def embedding_inserter(samples, embeddings_url, index_width, handler=wds.handler
             # We need to check if this sample is nonzero. If it is, this embedding is not valid and we should continue to the next loop
             if torch.count_nonzero(embedding) == 0:
                 raise RuntimeError(f"Webdataset had a sample, but no embedding was found. ImgShard: {key[:-index_width]} - Index: {key[-index_width:]}")
-            sample["npy"] = embedding
+            sample[sample_key] = embedding
             yield sample
         except Exception as exn:  # From wds implementation
             if handler(exn):
@@ -84,24 +84,43 @@ def unassociated_shard_skipper(tarfiles, embeddings_url, handler=wds.handlers.re
                 continue
             else:
                 break
-    
 skip_unassociated_shards = wds.filters.pipelinefilter(unassociated_shard_skipper)
 
-def verify_keys(samples, handler=wds.handlers.reraise_exception):
+def join_embeddings(samples, handler=wds.handlers.reraise_exception):
     """
-    Requires that both the image and embedding are present in the sample
-    This is important to do as a user may forget they do not have embeddings in their webdataset and neglect to add them using the embedding_folder_url parameter.
+    Takes the img_emb and text_emb keys and turns them into one key "emb": { "text": text_emb, "img": img_emb }
+    either or both of text_emb and img_emb may not be in the sample so we only add the ones that exist
     """
     for sample in samples:
         try:
-            assert "jpg" in sample, f"Sample {sample['__key__']} missing image"
-            assert "npy" in sample, f"Sample {sample['__key__']} missing embedding. Did you set embedding_folder_url?"
+            sample['emb'] = {}
+            if 'text_emb' in sample:
+                sample['emb']['text'] = sample['text_emb']
+            if 'img_emb' in sample:
+                sample['emb']['img'] = sample['img_emb']
             yield sample
         except Exception as exn:  # From wds implementation
             if handler(exn):
                 continue
             else:
                 break
+
+def verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):
+    """
+    Requires that both the image and embedding are present in the sample
+    This is important to do as a user may forget they do not have embeddings in their webdataset and neglect to add them using the embedding_folder_url parameter.
+    """
+    for sample in samples:
+        try:
+            for key in required_keys:
+                assert key in sample, f"Sample {sample['__key__']} missing {key}. Has keys {sample.keys()}"
+            yield sample
+        except Exception as exn:  # From wds implementation
+            if handler(exn):
+                continue
+            else:
+                break
+key_verifier = wds.filters.pipelinefilter(verify_keys)
 
 class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
     """
@@ -112,7 +131,8 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
     def __init__(
             self,
             urls,
-            embedding_folder_url=None,
+            img_embedding_folder_url=None,
+            text_embedding_folder_url=None,
             index_width=None,
             img_preproc=None,
             extra_keys=[],
@@ -136,7 +156,12 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
 
         """
         super().__init__()
-        keys = ["jpg", "npy"] + extra_keys
+        keys = ["jpg", "emb"] + extra_keys
+        # if img_embedding_folder_url is not None:
+        #     keys.append("img_emb")
+        # if text_embedding_folder_url is not None:
+        #     keys.append("text_emb")
+        # keys.extend(extra_keys)
         self.key_map = {key: i for i, key in enumerate(keys)}
         self.resampling = resample
         self.img_preproc = img_preproc
@@ -145,7 +170,7 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             # Then this has an s3 link for the webdataset and we need extra packages
             if shutil.which("s3cmd") is None:
                 raise RuntimeError("s3cmd is required for s3 webdataset")
-        if "s3:" in embedding_folder_url:
+        if (img_embedding_folder_url is not None and "s3:" in img_embedding_folder_url) or (text_embedding_folder_url is not None and "s3:" in text_embedding_folder_url):
             # Then the embeddings are being loaded from s3 and fsspec requires s3fs
             try:
                 import s3fs
@@ -160,17 +185,24 @@ class ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):
             if shuffle_shards:
                 self.append(wds.filters.shuffle(1000))
         
-        if embedding_folder_url is not None:
+        if img_embedding_folder_url is not None:
             # There may be webdataset shards that do not have a embedding shard associated with it. If we do not skip these, they would cause issues.
-            self.append(skip_unassociated_shards(embeddings_url=embedding_folder_url, handler=handler))
+            self.append(skip_unassociated_shards(embeddings_url=img_embedding_folder_url, handler=handler))
+        if text_embedding_folder_url is not None:
+            self.append(skip_unassociated_shards(embeddings_url=text_embedding_folder_url, handler=handler))
 
         self.append(wds.tarfile_to_samples(handler=handler))
         self.append(wds.decode("pilrgb", handler=handler))
-        if embedding_folder_url is not None:
-            # Then we are loading embeddings for a remote source
+        if img_embedding_folder_url is not None:
+            # Then we are loading image embeddings for a remote source
             assert index_width is not None, "Reading embeddings separately requires index width length to be given"
-            self.append(insert_embedding(embeddings_url=embedding_folder_url, index_width=index_width, handler=handler))
-        self.append(verify_keys)
+            self.append(insert_embedding(embeddings_url=img_embedding_folder_url, index_width=index_width, sample_key='img_emb', handler=handler))
+        if text_embedding_folder_url is not None:
+            # Then we are loading image embeddings for a remote source
+            assert index_width is not None, "Reading embeddings separately requires index width length to be given"
+            self.append(insert_embedding(embeddings_url=text_embedding_folder_url, index_width=index_width, sample_key='text_emb', handler=handler))
+        self.append(join_embeddings)
+        self.append(key_verifier(required_keys=keys, handler=handler))
         # Apply preprocessing
         self.append(wds.map(self.preproc))
         self.append(wds.to_tuple(*keys))
@@ -185,7 +217,8 @@ def create_image_embedding_dataloader(
     tar_url,
     num_workers,
     batch_size,
-    embeddings_url=None,
+    img_embeddings_url=None,
+    text_embeddings_url=None,
     index_width=None,
     shuffle_num = None,
     shuffle_shards = True,
@@ -211,7 +244,8 @@ def create_image_embedding_dataloader(
     """
     ds = ImageEmbeddingDataset(
         tar_url,
-        embeddings_url,
+        img_embedding_folder_url=img_embeddings_url,
+        text_embedding_folder_url=text_embeddings_url,
         index_width=index_width,
         shuffle_shards=shuffle_shards,
         resample=resample_shards,
