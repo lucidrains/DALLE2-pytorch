@@ -1189,4 +1189,14 @@ Once built, images will be saved to the same directory the command is invoked
 }
 ```
 
+```bibtex
+@article{Saharia2021PaletteID,
+    title   = {Palette: Image-to-Image Diffusion Models},
+    author  = {Chitwan Saharia and William Chan and Huiwen Chang and Chris A. Lee and Jonathan Ho and Tim Salimans and David J. Fleet and Mohammad Norouzi},
+    journal = {ArXiv},
+    year    = {2021},
+    volume  = {abs/2111.05826}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
