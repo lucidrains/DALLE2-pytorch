@@ -57,6 +57,9 @@ class BaseLogger:
     def log_file(self, file_path, **kwargs) -> None:
         raise NotImplementedError
 
+    def log_error(self, error_string, **kwargs) -> None:
+        raise NotImplementedError
+
 class ConsoleLogger(BaseLogger):
     def init(self, full_config: BaseModel, extra_config: dict, **kwargs) -> None:
         pass
@@ -69,6 +72,9 @@ class ConsoleLogger(BaseLogger):
 
     def log_file(self, file_path, **kwargs) -> None:
         pass
+
+    def log_error(self, error_string, **kwargs) -> None:
+        print(error_string)
 
 class WandbLogger(BaseLogger):
     """
@@ -136,6 +142,11 @@ class WandbLogger(BaseLogger):
             # Then we take the basepath as the parent of the file_path
             base_path = Path(file_path).parent
         self.wandb.save(str(file_path), base_path = str(base_path))
+
+    def log_error(self, error_string, **kwargs) -> None:
+        if self.verbose:
+            print(error_string)
+        self.wandb.log({"error": error_string, **kwargs}, **kwargs)
 
 logger_type_map = {
     'console': ConsoleLogger,
@@ -468,10 +479,18 @@ class Tracker:
             local_path = checkpoint_path if saver.save_type == 'checkpoint' else model_path
             if saver.saving_latest and is_latest:
                 latest_checkpoint_path = saver.save_latest_to.format(**kwargs)
-                saver.save(local_path, latest_checkpoint_path, is_latest=True, **kwargs)
+                try:
+                    saver.save(local_path, latest_checkpoint_path, is_latest=True, **kwargs)
+                except Exception as e:
+                    self.logger.log_error(f'Error saving checkpoint: {e}', **kwargs)
+                    print(f'Error saving checkpoint: {e}')
             if saver.saving_best and is_best:
                 best_checkpoint_path = saver.save_best_to.format(**kwargs)
-                saver.save(local_path, best_checkpoint_path, is_best=True, **kwargs)
+                try:
+                    saver.save(local_path, best_checkpoint_path, is_best=True, **kwargs)
+                except Exception as e:
+                    self.logger.log_error(f'Error saving checkpoint: {e}', **kwargs)
+                    print(f'Error saving checkpoint: {e}')
     
     def recall(self):
         if self.loader is not None:
