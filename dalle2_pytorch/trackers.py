@@ -249,152 +249,76 @@ def create_loader(loader_type: str, data_path: str, **kwargs) -> BaseLoader:
 class BaseSaver:
     def __init__(self,
         data_path: str,
-        save_all: bool = False,
-        save_latest: bool = True,
-        save_best: bool = True,
+        save_latest_to: Optional[Union[str, bool]] = 'latest.pth',
+        save_best_to: Optional[Union[str, bool]] = 'best.pth',
+        save_meta_to: str = './',
         save_type: str = 'checkpoint',
         **kwargs
     ):
         self.data_path = Path(data_path)
-        assert save_type in ['checkpoint', 'model'], '`save_type` must be one of `checkpoint` or `model`'
-        assert save_all or save_latest or save_best, 'At least one of `save_all`, `save_latest`, or `save_best` must be True'
-        self.save_all = save_all
-        self.save_latest = save_latest
-        self.save_best = save_best
+        self.save_latest_to = save_latest_to
+        self.saving_latest = save_latest_to is not None and save_latest_to is not False
+        self.save_best_to = save_best_to
+        self.saving_best = save_best_to is not None and save_best_to is not False
+        self.save_meta_to = save_meta_to
         self.save_type = save_type
-    
-    def init(self, logger: BaseLogger, **kwargs):
+        assert save_type in ['checkpoint', 'model'], '`save_type` must be one of `checkpoint` or `model`'
+        assert self.save_meta_to is not None, '`save_meta_to` must be provided'
+        assert self.saving_latest or self.saving_best, '`save_latest_to` or `save_best_to` must be provided'
+
+    def init(self, logger: BaseLogger, **kwargs) -> None:
         raise NotImplementedError
 
-    def _save_state_dict(self, trainer: Union[DiffusionPriorTrainer, DecoderTrainer], file_path: str, **kwargs) -> Path:
+    def save_file(self, local_path: Path, save_path: str, is_best=False, is_latest=False, **kwargs) -> None:
         """
-        Gets the state dict to be saved and writes it to file_path.
-        If save_type is 'checkpoint', we save the entire trainer state dict.
-        If save_type is 'model', we save only the model state dict.
-        """
-        if self.save_type == 'checkpoint':
-            trainer.save(file_path, overwrite=True, **kwargs)
-        elif self.save_type == 'model':
-            if isinstance(trainer, DiffusionPriorTrainer):
-                prior = trainer.ema_diffusion_prior.ema_model if trainer.use_ema else trainer.diffusion_prior
-                state_dict = trainer.unwrap_model(prior).state_dict()
-                torch.save(state_dict, file_path)
-            elif isinstance(trainer, DecoderTrainer):
-                decoder = trainer.accelerator.unwrap_model(trainer.decoder)
-                if trainer.use_ema:
-                    trainable_unets = decoder.unets
-                    decoder.unets = trainer.unets  # Swap EMA unets in
-                    state_dict = decoder.state_dict()
-                    decoder.unets = trainable_unets  # Swap back
-                else:
-                    state_dict = decoder.state_dict()
-                torch.save(state_dict, file_path)
-            else:
-                raise NotImplementedError('Saving this type of model with EMA mode enabled is not yet implemented. Actually, how did you get here?')
-        return Path(file_path)
-
-    def save_config(self, config_path, config_name = 'config.json'):
-        """
-        Uploads the config under the given name
-        """
-        raise NotImplementedError
-
-    def save(self, trainer, is_best: bool, is_latest: bool, **kwargs):
-        """
-        Saves the checkpoint or model
+        Save a general file under save_meta_to
         """
         raise NotImplementedError
 
 class LocalSaver(BaseSaver):
-    def __init__(self, data_path: str, file_path: str, **kwargs):
+    def __init__(self,
+        data_path: str,
+        **kwargs
+    ):
         super().__init__(data_path, **kwargs)
-        self.file_path = Path(file_path)
 
-    def init(self, logger: BaseLogger, **kwargs):
+    def init(self, logger: BaseLogger, **kwargs) -> None:
         # Makes sure the directory exists to be saved to
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.data_path.exists():
+            self.data_path.mkdir(parents=True)
 
-    def save_config(self, config_path, config_name = 'config.json'):
-        # Copy the config to file_path / config_name
-        config_path = Path(config_path)
-        new_path = self.file_path / config_name
-        new_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(str(config_path), str(new_path))
-
-    def save(self, trainer, is_best: bool, is_latest: bool, epoch: int, sample: int, **kwargs):
-        # Create a place to house the checkpoint temporarily
-        checkpoint_path = self.data_path / f'checkpoint_{epoch}_{sample}.pt'
-        # Save the checkpoint
-        self._save_state_dict(trainer, checkpoint_path, epoch=epoch, sample=sample, **kwargs)
-        # Save the file
-        if self.save_latest and is_latest:
-            # Copy the checkpoint to file_path / latest.pth
-            latest_path = self.file_path / 'latest.pth'
-            shutil.copyfile(checkpoint_path, latest_path)
-        if self.save_best and is_best:
-            # Copy the checkpoint to file_path / best.pth
-            best_path = self.file_path / 'best.pth'
-            shutil.copyfile(checkpoint_path, best_path)
-        if self.save_all:
-            # Copy the checkpoint to file_path / checkpoints / epoch_step.pth
-            all_path = self.file_path / 'checkpoints' / f'{epoch}_{sample}.pth'
-            shutil.copyfile(checkpoint_path, all_path)
-        # Remove the temporary checkpoint
-        checkpoint_path.unlink()
+    def save_file(self, local_path: str, save_path: str, **kwargs) -> None:
+        # Copy the file to save_path
+        shutil.copy(local_path, save_path)
 
 class WandbSaver(BaseSaver):
     def __init__(self, data_path: str, wandb_run_path: Optional[str] = None, **kwargs):
         super().__init__(data_path, **kwargs)
         self.run_path = wandb_run_path
 
-    def init(self, logger: BaseLogger, **kwargs):
+    def init(self, logger: BaseLogger, **kwargs) -> None:
         self.wandb = import_or_print_error('wandb', '`pip install wandb` to use the wandb logger')
         os.environ["WANDB_SILENT"] = "true"
         # Makes sure that the user can upload tot his run
         if self.run_path is not None:
-            entity, project, run_id = run_path.split("/")
+            entity, project, run_id = self.run_path.split("/")
             self.run = self.wandb.init(entity=entity, project=project, id=run_id)
         else:
             assert self.wandb.run is not None, 'You must be using the wandb logger if you are saving to wandb and have not set `wandb_run_path`'
             self.run = self.wandb.run
         # TODO: Now actually check if upload is possible
 
-    def save_config(self, config_path, config_name = 'config.json'):
-        # Upload the config to wandb
-        config_path = Path(config_path)
-        new_path = self.data_path / config_name
-        shutil.copy(config_path, new_path)
-        self.run.save(str(new_path), base_path = str(self.data_path), policy='now')
-
-    def save(self, trainer, is_best: bool, is_latest: bool, epoch: int, sample: int, **kwargs):
-        # Create a place to house the checkpoint temporarily
-        checkpoint_path = self.data_path / f'checkpoint_{epoch}_{sample}.pt'
-        # Save the checkpoint
-        self._save_state_dict(trainer, checkpoint_path, epoch=epoch, sample=sample, **kwargs)
-        # Save the file
-        if self.save_latest and is_latest:
-            # Copy the checkpoint to file_path / latest.pth
-            latest_path = self.data_path / 'latest.pth'
-            shutil.copyfile(checkpoint_path, latest_path)
-            self.run.save(str(latest_path), base_path = str(self.data_path), policy='now')
-        if self.save_best and is_best:
-            # Copy the checkpoint to file_path / best.pth
-            best_path = self.data_path / 'best.pth'
-            shutil.copyfile(checkpoint_path, best_path)
-            self.run.save(str(best_path), base_path = str(self.data_path), policy='now')
-        if self.save_all:
-            # Copy the checkpoint to file_path / checkpoints / epoch_step.pth
-            all_path = self.data_path / 'checkpoints' / f'{epoch}_{sample}.pth'
-            shutil.copyfile(checkpoint_path, all_path)
-            self.run.save(str(all_path), base_path = str(self.data_path), policy='now')
-        # Remove the temporary checkpoint
-        checkpoint_path.unlink()
+    def save_file(self, local_path: Path, save_path: str, **kwargs) -> None:
+        # In order to log something in the correct place in wandb, we need to have the same file structure here
+        save_path = Path(self.base_path) / save_path
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(local_path, save_path)
+        self.run.save(str(save_path), base_path = str(self.data_path), policy='now')
 
 class HuggingfaceSaver(BaseSaver):
-    def __init__(self, data_path: str, huggingface_repo: str, huggingface_base_path: Optional[str] = "./", token_path: Optional[str] = None, **kwargs):
+    def __init__(self, data_path: str, huggingface_repo: str, token_path: Optional[str] = None, **kwargs):
         super().__init__(data_path, **kwargs)
         self.huggingface_repo = huggingface_repo
-        self.hf_base_path = huggingface_base_path
         self.token_path = token_path
 
     def init(self, logger: BaseLogger, **kwargs):
@@ -412,40 +336,14 @@ class HuggingfaceSaver(BaseSaver):
             self.hub.HfApi.set_access_token(token)
             identity = self.hub.whoami()
 
-    def save_config(self, config_path, config_name = 'config.json'):
+    def save_file(self, local_path: Path, save_path: str, **kwargs) -> None:
+        # Saving to huggingface is easy, we just need to upload the file with the correct name
         self.hub.upload_file(
-            path_or_fileobj=str(config_path),
-            path_in_repo=str(Path(self.hf_base_path) / config_name),
+            path_or_fileobj=str(local_path),
+            path_in_repo=str(save_path),
             repo_id=self.huggingface_repo
         )
-
-    def save(self, trainer, is_best: bool, is_latest: bool, epoch: int, sample: int, **kwargs):
-        # Create a place to house the checkpoint temporarily
-        checkpoint_path = self.data_path / f'checkpoint_{epoch}_{sample}.pt'
-        # Save the checkpoint
-        self._save_state_dict(trainer, checkpoint_path, epoch=epoch, sample=sample, **kwargs)
-        # Save the file
-        if self.save_latest and is_latest:
-            self.hub.upload_file(
-                path_or_fileobj=str(checkpoint_path),
-                path_in_repo=str(Path(self.hf_base_path) / 'latest.pth'),
-                repo_id=self.huggingface_repo
-            )
-        if self.save_best and is_best:
-            self.hub.upload_file(
-                path_or_fileobj=str(checkpoint_path),
-                path_in_repo=str(Path(self.hf_base_path) / 'best.pth'),
-                repo_id=self.huggingface_repo
-            )
-        if self.save_all:
-            self.hub.upload_file(
-                path_or_fileobj=str(checkpoint_path),
-                path_in_repo=str(Path(self.hf_base_path) / 'checkpoints' / f'{epoch}_{sample}.pth'),
-                repo_id=self.huggingface_repo
-            )
-        # Remove the temporary checkpoint
-        checkpoint_path.unlink()
-
+        
 saver_type_map = {
     'local': LocalSaver,
     'wandb': WandbSaver,
@@ -461,8 +359,6 @@ def create_saver(saver_type: str, data_path: str, **kwargs) -> BaseSaver:
     return saver_class(data_path, **kwargs)
 
 
-
-# base class
 class Tracker:
     def __init__(self, data_path: Optional[str] = DEFAULT_DATA_PATH, overwrite_data_path: bool = False, dummy_mode: bool = False):
         self.data_path = Path(data_path)
@@ -524,17 +420,58 @@ class Tracker:
             return
         self.logger.log_file(*args, **kwargs)
 
-    def save_config(self, config_path, config_name = 'config.json'):
-        if self.dummy_mode:
-            return
+    def save_config(self, current_config_path: str, config_name = 'config.json'):
+        # Save the config under config_name in the root folder of data_path
+        shutil.copy(current_config_path, self.data_path / config_name)
         for saver in self.savers:
-            saver.save_config(config_path, config_name)
-    
-    def save(self, trainer, is_best: bool, is_latest: bool, *args, **kwargs):
-        if self.dummy_mode:
+            remote_path = Path(saver.save_meta_to) / config_name
+            saver.save_config(current_config_path, str(remote_path))
+
+    def _save_state_dict(self, trainer: Union[DiffusionPriorTrainer, DecoderTrainer], file_path: str, **kwargs) -> Path:
+        """
+        Gets the state dict to be saved and writes it to file_path.
+        If save_type is 'checkpoint', we save the entire trainer state dict.
+        If save_type is 'model', we save only the model state dict.
+        """
+        if self.save_type == 'checkpoint':
+            trainer.save(file_path, overwrite=True, **kwargs)
+        elif self.save_type == 'model':
+            if isinstance(trainer, DiffusionPriorTrainer):
+                prior = trainer.ema_diffusion_prior.ema_model if trainer.use_ema else trainer.diffusion_prior
+                state_dict = trainer.unwrap_model(prior).state_dict()
+                torch.save(state_dict, file_path)
+            elif isinstance(trainer, DecoderTrainer):
+                decoder = trainer.accelerator.unwrap_model(trainer.decoder)
+                if trainer.use_ema:
+                    trainable_unets = decoder.unets
+                    decoder.unets = trainer.unets  # Swap EMA unets in
+                    state_dict = decoder.state_dict()
+                    decoder.unets = trainable_unets  # Swap back
+                else:
+                    state_dict = decoder.state_dict()
+                torch.save(state_dict, file_path)
+            else:
+                raise NotImplementedError('Saving this type of model with EMA mode enabled is not yet implemented. Actually, how did you get here?')
+        return Path(file_path)
+
+    def save(self, trainer, is_best: bool, is_latest: bool, **kwargs):
+        if not is_best and not is_latest:
+            # Nothing to do
             return
+        # Save the checkpoint and model to data_path
+        checkpoint_path = self.data_path / 'checkpoint.pth'
+        self._save_state_dict(trainer, checkpoint_path, **kwargs)
+        model_path = self.data_path / 'model.pth'
+        self._save_state_dict(trainer, model_path, **kwargs)
+        # Call the save methods on the savers
         for saver in self.savers:
-            saver.save(trainer, is_best, is_latest, *args, **kwargs)
+            local_path = checkpoint_path if saver.save_type == 'checkpoint' else model_path
+            if saver.saving_latest and is_latest:
+                latest_checkpoint_path = saver.save_latest_to.format(**kwargs)
+                saver.save(local_path, latest_checkpoint_path, is_latest=True, **kwargs)
+            if saver.saving_best and is_best:
+                best_checkpoint_path = saver.save_best_to.format(**kwargs)
+                saver.save(local_path, best_checkpoint_path, is_best=True, **kwargs)
     
     def recall(self):
         if self.loader is not None:
