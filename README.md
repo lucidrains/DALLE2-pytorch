@@ -368,7 +368,8 @@ unet1 = Unet(
     image_embed_dim = 512,
     cond_dim = 128,
     channels = 3,
-    dim_mults=(1, 2, 4, 8)
+    dim_mults=(1, 2, 4, 8),
+    cond_on_text_encodings = True    # set to True for any unets that need to be conditioned on text encodings
 ).cuda()
 
 unet2 = Unet(
@@ -385,8 +386,7 @@ decoder = Decoder(
     clip = clip,
     timesteps = 100,
     image_cond_drop_prob = 0.1,
-    text_cond_drop_prob = 0.5,
-    condition_on_text_encodings = False  # set this to True if you wish to condition on text during training and sampling
+    text_cond_drop_prob = 0.5
 ).cuda()
 
 for unet_number in (1, 2):

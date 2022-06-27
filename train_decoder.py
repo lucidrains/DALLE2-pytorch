@@ -596,7 +596,8 @@ def initialize_training(config, config_path):
 
     has_img_embeddings = config.data.img_embeddings_url is not None
     has_text_embeddings = config.data.text_embeddings_url is not None
-    conditioning_on_text = config.decoder.unets[0].cond_on_text_encodings
+    conditioning_on_text = any([unet.cond_on_text_encodings for unet in config.decoder.unets])
+
     has_clip_model = config.decoder.clip is not None
     data_source_string = ""
 

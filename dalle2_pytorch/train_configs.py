@@ -284,21 +284,27 @@ class TrainDecoderConfig(BaseModel):
     def check_has_embeddings(cls, values):
         # Makes sure that enough information is provided to get the embeddings specified for training
         data_config, decoder_config = values.get('data'), values.get('decoder')
-        if data_config is None or decoder_config is None:
+
+        if not exists(data_config) or not exists(decoder_config):
             # Then something else errored and we should just pass through
             return values
-        using_text_encodings = decoder_config.unets[0].cond_on_text_encodings # in dalle2 only the first UNet is text conditioned
+
+        using_text_encodings = any([unet.cond_on_text_encodings for unet in decoder_config.unets])
         using_clip = exists(decoder_config.clip)
         img_emb_url = data_config.img_embeddings_url
         text_emb_url = data_config.text_embeddings_url
+
         if using_text_embeddings:
             # Then we need some way to get the embeddings
-            assert using_clip or text_emb_url is not None, 'If text conditioning, either clip or text_embeddings_url must be provided'
+            assert using_clip or exists(text_emb_url), 'If text conditioning, either clip or text_embeddings_url must be provided'
+
         if using_clip:
             if using_text_embeddings:
-                assert text_emb_url is None or img_emb_url is None, 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'
+                assert not exists(text_emb_url) or not exists(img_emb_url), 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'
             else:
-                assert img_emb_url is None, 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
+                assert not exists(img_emb_url), 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
+
         if text_emb_url:
             assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason."
+
         return values
