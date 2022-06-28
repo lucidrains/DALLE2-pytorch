@@ -412,18 +412,12 @@ class Tracker:
             saver.init(self.logger)
 
     def add_logger(self, logger: BaseLogger):
-        if self.dummy_mode:
-            return
         self.logger = logger
 
     def add_loader(self, loader: BaseLoader):
-        if self.dummy_mode:
-            return
         self.loader = loader
 
     def add_saver(self, saver: BaseSaver):
-        if self.dummy_mode:
-            return
         self.savers.append(saver)
 
     def log(self, *args, **kwargs):
@@ -442,6 +436,8 @@ class Tracker:
         self.logger.log_file(*args, **kwargs)
 
     def save_config(self, current_config_path: str, config_name = 'config.json'):
+        if self.dummy_mode:
+            return
         # Save the config under config_name in the root folder of data_path
         shutil.copy(current_config_path, self.data_path / config_name)
         for saver in self.savers:
@@ -477,6 +473,8 @@ class Tracker:
         return Path(file_path)
 
     def save(self, trainer, is_best: bool, is_latest: bool, **kwargs):
+        if self.dummy_mode:
+            return
         if not is_best and not is_latest:
             # Nothing to do
             return

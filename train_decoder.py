@@ -517,12 +517,12 @@ def create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_
     tracker.save_config(config_path, config_name='decoder_config.json')
     return tracker
     
-def initialize_training(config, config_path):
+def initialize_training(config: TrainDecoderConfig, config_path):
     # Make sure if we are not loading, distributed models are initialized to the same values
     torch.manual_seed(config.seed)
 
     # Set up accelerator for configurable distributed training
-    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters)
     accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
     
     # Set up data

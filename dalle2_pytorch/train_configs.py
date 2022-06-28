@@ -292,6 +292,7 @@ class DecoderTrainConfig(BaseModel):
     epochs: int = 20
     lr: SingularOrIterable(float) = 1e-4
     wd: SingularOrIterable(float) = 0.01
+    find_unused_parameters: bool = True
     max_grad_norm: SingularOrIterable(float) = 0.5
     save_every_n_samples: int = 100000
     n_sample_images: int = 6                       # The number of example images to produce when sampling the train and test dataset
