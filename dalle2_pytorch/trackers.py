@@ -143,10 +143,10 @@ class WandbLogger(BaseLogger):
             base_path = Path(file_path).parent
         self.wandb.save(str(file_path), base_path = str(base_path))
 
-    def log_error(self, error_string, **kwargs) -> None:
+    def log_error(self, error_string, step=None, **kwargs) -> None:
         if self.verbose:
             print(error_string)
-        self.wandb.log({"error": error_string, **kwargs}, **kwargs)
+        self.wandb.log({"error": error_string, **kwargs}, step=step)
 
 logger_type_map = {
     'console': ConsoleLogger,
