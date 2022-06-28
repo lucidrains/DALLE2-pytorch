@@ -234,6 +234,7 @@ class WandbLoader(BaseLoader):
         # Make sure the file can be downloaded
         if self.wandb.run is not None and self.run_path is None:
             self.run_path = self.wandb.run.path
+            assert self.run_path is not None, 'wandb run was not found to load from. If not using the wandb logger must specify the `wandb_run_path`.'
         assert self.run_path is not None, '`wandb_run_path` must be provided for the wandb loader'
         assert self.file_path is not None, '`wandb_file_path` must be provided for the wandb loader'
         
