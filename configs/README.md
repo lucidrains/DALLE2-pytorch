@@ -149,16 +149,14 @@ All save locations have these configuration options
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
 | `save_to` | Yes | N/A | Must be `local`, `huggingface`, or `wandb`. |
-| `save_all` | No | `False` | If true, saves a checkpoint for every epoch. |
-| `save_latest` | No | `True` | If true, overwrites the `latest.pth` every time the model is saved. |
-| `save_best` | No | `True` | If true, overwrites the `best.pth` every time the model has a lower validation loss than all previous models. |
+| `save_latest_to` | No | `latest.pth` | Sets the relative path to save the latest model to. |
+| `save_best_to` | No | `best.pth` | Sets the relative path to save the best model to every time the model has a lower validation loss than all previous models. |
 | `save_type` | No | `'checkpoint'` | The type of save. `'checkpoint'` saves a checkpoint, `'model'` saves a model without any fluff (Saves with ema if ema is enabled). |
 
 If using `local`
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
 | `save_to` | Yes | N/A | Must be `local`. |
-| `file_path` | Yes | N/A | The path to a folder where models will be saved. |
 
 If using `huggingface`
 | Option | Required | Default | Description |

@@ -62,7 +62,7 @@ class BaseLogger:
 
 class ConsoleLogger(BaseLogger):
     def init(self, full_config: BaseModel, extra_config: dict, **kwargs) -> None:
-        pass
+        print("Logging to console")
 
     def log(self, log, **kwargs) -> None:
         print(log)
@@ -124,6 +124,7 @@ class WandbLogger(BaseLogger):
             init_object['id'] = self.run_id
 
         self.wandb.init(**init_object)
+        print(f"Logging to wandb run {self.wandb.run.path}-{self.wandb.run.name}")
 
     def log(self, log, **kwargs) -> None:
         if self.verbose:
@@ -295,11 +296,14 @@ class LocalSaver(BaseSaver):
 
     def init(self, logger: BaseLogger, **kwargs) -> None:
         # Makes sure the directory exists to be saved to
+        print(f"Saving {self.save_type} locally")
         if not self.data_path.exists():
             self.data_path.mkdir(parents=True)
 
     def save_file(self, local_path: str, save_path: str, **kwargs) -> None:
         # Copy the file to save_path
+        save_path_file_name = Path(save_path).name
+        print(f"Saving {save_path_file_name} {self.save_type} to local path {save_path}")
         shutil.copy(local_path, save_path)
 
 class WandbSaver(BaseSaver):
@@ -318,10 +322,13 @@ class WandbSaver(BaseSaver):
             assert self.wandb.run is not None, 'You must be using the wandb logger if you are saving to wandb and have not set `wandb_run_path`'
             self.run = self.wandb.run
         # TODO: Now actually check if upload is possible
+        print(f"Saving to wandb run {self.run.path}-{self.run.name}")
 
     def save_file(self, local_path: Path, save_path: str, **kwargs) -> None:
         # In order to log something in the correct place in wandb, we need to have the same file structure here
-        save_path = Path(self.base_path) / save_path
+        save_path_file_name = Path(save_path).name
+        print(f"Saving {save_path_file_name} {self.save_type} to wandb run {self.run.path}-{self.run.name}")
+        save_path = Path(self.data_path) / save_path
         save_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(local_path, save_path)
         self.run.save(str(save_path), base_path = str(self.data_path), policy='now')
@@ -346,9 +353,12 @@ class HuggingfaceSaver(BaseSaver):
                 token = f.read().strip()
             self.hub.HfApi.set_access_token(token)
             identity = self.hub.whoami()
+        print(f"Saving to huggingface repo {self.huggingface_repo}")
 
     def save_file(self, local_path: Path, save_path: str, **kwargs) -> None:
         # Saving to huggingface is easy, we just need to upload the file with the correct name
+        save_path_file_name = Path(save_path).name
+        print(f"Saving {save_path_file_name} {self.save_type} to huggingface repo {self.huggingface_repo}")
         self.hub.upload_file(
             path_or_fileobj=str(local_path),
             path_in_repo=str(save_path),
@@ -436,17 +446,18 @@ class Tracker:
         shutil.copy(current_config_path, self.data_path / config_name)
         for saver in self.savers:
             remote_path = Path(saver.save_meta_to) / config_name
-            saver.save_config(current_config_path, str(remote_path))
+            saver.save_file(current_config_path, str(remote_path))
 
-    def _save_state_dict(self, trainer: Union[DiffusionPriorTrainer, DecoderTrainer], file_path: str, **kwargs) -> Path:
+    def _save_state_dict(self, trainer: Union[DiffusionPriorTrainer, DecoderTrainer], save_type: str, file_path: str, **kwargs) -> Path:
         """
         Gets the state dict to be saved and writes it to file_path.
         If save_type is 'checkpoint', we save the entire trainer state dict.
         If save_type is 'model', we save only the model state dict.
         """
-        if self.save_type == 'checkpoint':
+        assert save_type in ['checkpoint', 'model']
+        if save_type == 'checkpoint':
             trainer.save(file_path, overwrite=True, **kwargs)
-        elif self.save_type == 'model':
+        elif save_type == 'model':
             if isinstance(trainer, DiffusionPriorTrainer):
                 prior = trainer.ema_diffusion_prior.ema_model if trainer.use_ema else trainer.diffusion_prior
                 state_dict = trainer.unwrap_model(prior).state_dict()
@@ -471,23 +482,24 @@ class Tracker:
             return
         # Save the checkpoint and model to data_path
         checkpoint_path = self.data_path / 'checkpoint.pth'
-        self._save_state_dict(trainer, checkpoint_path, **kwargs)
+        self._save_state_dict(trainer, 'checkpoint', checkpoint_path, **kwargs)
         model_path = self.data_path / 'model.pth'
-        self._save_state_dict(trainer, model_path, **kwargs)
+        self._save_state_dict(trainer, 'model', model_path, **kwargs)
+        print("Saved cached models")
         # Call the save methods on the savers
         for saver in self.savers:
             local_path = checkpoint_path if saver.save_type == 'checkpoint' else model_path
             if saver.saving_latest and is_latest:
                 latest_checkpoint_path = saver.save_latest_to.format(**kwargs)
                 try:
-                    saver.save(local_path, latest_checkpoint_path, is_latest=True, **kwargs)
+                    saver.save_file(local_path, latest_checkpoint_path, is_latest=True, **kwargs)
                 except Exception as e:
                     self.logger.log_error(f'Error saving checkpoint: {e}', **kwargs)
                     print(f'Error saving checkpoint: {e}')
             if saver.saving_best and is_best:
                 best_checkpoint_path = saver.save_best_to.format(**kwargs)
                 try:
-                    saver.save(local_path, best_checkpoint_path, is_best=True, **kwargs)
+                    saver.save_file(local_path, best_checkpoint_path, is_best=True, **kwargs)
                 except Exception as e:
                     self.logger.log_error(f'Error saving checkpoint: {e}', **kwargs)
                     print(f'Error saving checkpoint: {e}')
