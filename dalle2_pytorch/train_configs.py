@@ -216,6 +216,7 @@ class UnetConfig(BaseModel):
     cond_on_text_encodings: bool = None
     cond_dim: int = None
     channels: int = 3
+    self_attn: ListOrTuple(int)
     attn_dim_head: int = 32
     attn_heads: int = 16
 
