@@ -1799,7 +1799,7 @@ class Decoder(nn.Module):
         image_sizes = None,                         # for cascading ddpm, image size at each stage
         random_crop_sizes = None,                   # whether to random crop the image at that stage in the cascade (super resoluting convolutions at the end may be able to generalize on smaller crops)
         lowres_downsample_first = True,             # cascading ddpm - resizes to lower resolution, then to next conditional resolution + blur
-        blur_sigma = (0.1, 0.2),                    # cascading ddpm - blur sigma
+        blur_sigma = 0.6,                           # cascading ddpm - blur sigma
         blur_kernel_size = 3,                       # cascading ddpm - blur kernel size
         clip_denoised = True,
         clip_x_start = True,
