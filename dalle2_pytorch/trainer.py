@@ -505,12 +505,7 @@ class DecoderTrainer(nn.Module):
 
         self.accelerator.save(save_obj, str(path))
 
-    def load(self, path, only_model = False, strict = True):
-        path = Path(path)
-        assert path.exists()
-
-        loaded_obj = torch.load(str(path), map_location = 'cpu')
-
+    def load_state_dict(self, loaded_obj, only_model = False, strict = True):
         if version.parse(__version__) != version.parse(loaded_obj['version']):
             self.accelerator.print(f'loading saved decoder at version {loaded_obj["version"]}, but current package version is {__version__}')
 
@@ -529,6 +524,14 @@ class DecoderTrainer(nn.Module):
         if self.use_ema:
             assert 'ema' in loaded_obj
             self.ema_unets.load_state_dict(loaded_obj['ema'], strict = strict)
+
+    def load(self, path, only_model = False, strict = True):
+        path = Path(path)
+        assert path.exists()
+
+        loaded_obj = torch.load(str(path), map_location = 'cpu')
+
+        self.load_state_dict(loaded_obj, only_model = only_model, strict = strict)
 
         return loaded_obj
 
