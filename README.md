@@ -1113,15 +1113,6 @@ Once built, images will be saved to the same directory the command is invoked
 ```
 
 ```bibtex
-@inproceedings{Tu2022MaxViTMV,
-    title   = {MaxViT: Multi-Axis Vision Transformer},
-    author  = {Zhengzhong Tu and Hossein Talebi and Han Zhang and Feng Yang and Peyman Milanfar and Alan Conrad Bovik and Yinxiao Li},
-    year    = {2022},
-    url     = {https://arxiv.org/abs/2204.01697}
-}
-```
-
-```bibtex
 @article{Yu2021VectorquantizedIM,
     title   = {Vector-quantized Image Modeling with Improved VQGAN},
     author  = {Jiahui Yu and Xin Li and Jing Yu Koh and Han Zhang and Ruoming Pang and James Qin and Alexander Ku and Yuanzhong Xu and Jason Baldridge and Yonghui Wu},
