@@ -346,17 +346,17 @@ class TrainDecoderConfig(BaseModel):
         img_emb_url = data_config.img_embeddings_url
         text_emb_url = data_config.text_embeddings_url
 
-        if using_text_encodings:
+        if using_text_embeddings:
             # Then we need some way to get the embeddings
             assert using_clip or exists(text_emb_url), 'If text conditioning, either clip or text_embeddings_url must be provided'
 
         if using_clip:
-            if using_text_encodings:
+            if using_text_embeddings:
                 assert not exists(text_emb_url) or not exists(img_emb_url), 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'
             else:
                 assert not exists(img_emb_url), 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'
 
         if text_emb_url:
-            assert using_text_encodings, "Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason."
+            assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason."
 
         return values
