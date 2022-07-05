@@ -490,14 +490,15 @@ class NoiseScheduler(nn.Module):
 # diffusion prior
 
 class LayerNorm(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim, eps = 1e-5):
         super().__init__()
-        self.gamma = nn.Parameter(torch.ones(dim))
-        self.register_buffer("beta", torch.zeros(dim))
+        self.eps = eps
+        self.g = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
-        return F.layer_norm(x, x.shape[-1:], self.gamma, self.beta)
-
+        var = torch.var(x, dim = -1, unbiased = False, keepdim = True)
+        mean = torch.mean(x, dim = -1, keepdim = True)
+        return (x - mean) * (var + self.eps).rsqrt() * self.g
 
 class ChanLayerNorm(nn.Module):
     def __init__(self, dim, eps = 1e-5):
@@ -508,8 +509,7 @@ class ChanLayerNorm(nn.Module):
     def forward(self, x):
         var = torch.var(x, dim = 1, unbiased = False, keepdim = True)
         mean = torch.mean(x, dim = 1, keepdim = True)
-        return (x - mean) / (var + self.eps).sqrt() * self.g
-
+        return (x - mean) * (var + self.eps).rsqrt() * self.g
 
 class Residual(nn.Module):
     def __init__(self, fn):
