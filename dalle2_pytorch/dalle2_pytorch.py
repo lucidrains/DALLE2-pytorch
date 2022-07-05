@@ -629,10 +629,13 @@ class Attention(nn.Module):
         heads = 8,
         dropout = 0.,
         causal = False,
-        rotary_emb = None
+        rotary_emb = None,
+        pb_relax_alpha = 32 ** 2
     ):
         super().__init__()
-        self.scale = dim_head ** -0.5
+        self.pb_relax_alpha = pb_relax_alpha
+        self.scale = dim_head ** -0.5 * (pb_relax_alpha ** -1)
+
         self.heads = heads
         inner_dim = dim_head * heads
 
@@ -695,6 +698,9 @@ class Attention(nn.Module):
             sim = sim.masked_fill(causal_mask, max_neg_value)
 
         # attention
+
+        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
+        sim = sim * self.pb_relax_alpha
 
         attn = sim.softmax(dim = -1, dtype = torch.float32)
         attn = self.dropout(attn)
@@ -1210,10 +1216,12 @@ class CrossAttention(nn.Module):
         dim_head = 64,
         heads = 8,
         dropout = 0.,
-        norm_context = False
+        norm_context = False,
+        pb_relax_alpha = 32 ** 2
     ):
         super().__init__()
-        self.scale = dim_head ** -0.5
+        self.pb_relax_alpha = pb_relax_alpha
+        self.scale = dim_head ** -0.5 * (pb_relax_alpha ** -1)
         self.heads = heads
         inner_dim = dim_head * heads
 
@@ -1258,6 +1266,9 @@ class CrossAttention(nn.Module):
             mask = F.pad(mask, (1, 0), value = True)
             mask = rearrange(mask, 'b j -> b 1 1 j')
             sim = sim.masked_fill(~mask, max_neg_value)
+
+        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
+        sim = sim * self.pb_relax_alpha
 
         attn = sim.softmax(dim = -1, dtype = torch.float32)
 
