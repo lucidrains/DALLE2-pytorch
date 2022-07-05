@@ -37,6 +37,7 @@ setup(
     'packaging',
     'pillow',
     'pydantic',
+    'pytorch-warmup',
     'resize-right>=0.0.2',
     'rotary-embedding-torch',
     'torch>=1.10',
