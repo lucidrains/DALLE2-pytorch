@@ -20,7 +20,7 @@ As of 5/23/22, it is no longer SOTA. SOTA will be <a href="https://github.com/lu
 
 - Decoder is now verified working for unconditional generation on my experimental setup for Oxford flowers. 2 researchers have also confirmed Decoder is working for them.
 
-<img src="./samples/oxford.png" width="600px" />
+<img src="./samples/oxford.png" width="450px" />
 
 *ongoing at 21k steps*
 
@@ -33,7 +33,7 @@ As of 5/23/22, it is no longer SOTA. SOTA will be <a href="https://github.com/lu
 - LAION is training prior models. Checkpoints are available on <a href="https://huggingface.co/zenglishuci/conditioned-prior">🤗huggingface</a> and the training statistics are available on <a href="https://wandb.ai/nousr_laion/conditioned-prior/reports/LAION-DALLE2-PyTorch-Prior--VmlldzoyMDI2OTIx">🐝WANDB</a>.
 - Decoder - <a href="https://wandb.ai/veldrovive/dalle2_train_decoder/runs/jkrtg0so?workspace=user-veldrovive">In-progress test run</a> 🚧
 - Decoder - <a href="https://wandb.ai/veldrovive/dalle2_train_decoder/runs/3d5rytsa?workspace=">Another test run with sparse attention</a>
-- DALL-E 2 🚧
+- DALL-E 2 🚧 - <a href="https://github.com/LAION-AI/dalle2-laion">DALL-E 2 Laion repository</a>
 
 ## Appreciation
 
