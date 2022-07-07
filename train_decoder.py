@@ -289,7 +289,7 @@ def train(
     sample = 0
     samples_seen = 0
     val_sample = 0
-    step = lambda: int(trainer.step.item())
+    step = lambda: int(trainer.steps[0].item())
 
     if tracker.can_recall:
         start_epoch, validation_losses, next_task, recalled_sample, samples_seen = recall_trainer(tracker, trainer)

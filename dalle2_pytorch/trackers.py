@@ -325,6 +325,10 @@ class LocalSaver(BaseSaver):
     def save_file(self, local_path: str, save_path: str, **kwargs) -> None:
         # Copy the file to save_path
         save_path_file_name = Path(save_path).name
+        # Make sure parent directory exists
+        save_path_parent = Path(save_path).parent
+        if not save_path_parent.exists():
+            save_path_parent.mkdir(parents=True)
         print(f"Saving {save_path_file_name} {self.save_type} to local path {save_path}")
         shutil.copy(local_path, save_path)
 
@@ -406,11 +410,7 @@ class Tracker:
     def __init__(self, data_path: Optional[str] = DEFAULT_DATA_PATH, overwrite_data_path: bool = False, dummy_mode: bool = False):
         self.data_path = Path(data_path)
         if not dummy_mode:
-            if overwrite_data_path:
-                if self.data_path.exists():
-                    shutil.rmtree(self.data_path)
-                self.data_path.mkdir(parents=True)
-            else:
+            if not overwrite_data_path:
                 assert not self.data_path.exists(), f'Data path {self.data_path} already exists. Set overwrite_data_path to True to overwrite.'
                 if not self.data_path.exists():
                     self.data_path.mkdir(parents=True)
@@ -433,12 +433,16 @@ class Tracker:
                     auto_resume_dict = json.load(f)
                 # Check if the logger is of the same type as the autoresume save
                 if auto_resume_dict['logger_type'] != self.logger.__class__.__name__:
-                    raise Exception(f'The logger type in the auto_resume file is {auto_resume_dict["logger_type"]} but the current logger is {self.logger.__class__.__name__}. Either use the original logger type or set `auto_resume` to `False`.')
+                    raise Exception(f'The logger type in the auto_resume file is {auto_resume_dict["logger_type"]} but the current logger is {self.logger.__class__.__name__}. Either use the original logger type, set `auto_resume` to `False`, or delete your existing tracker-data folder.')
                 # Then we are ready to override the logger with the autoresume save
                 self.logger.__dict__["resume"] = True
+                print(f"Upading {self.logger.__dict__} with {auto_resume_dict}")
                 self.logger.__dict__.update(auto_resume_dict)
+
                 return True
         else:
+            if self.logger.auto_resume:
+                print("Auto_resume is enabled but no auto_resume.json file exists. Assuming this is the first run.")
             return False
 
     def _save_auto_resume(self):
@@ -454,6 +458,7 @@ class Tracker:
         self.did_auto_resume = self._load_auto_resume()
         if self.did_auto_resume:
             print(f'\n\nWARNING: RUN HAS BEEN AUTO-RESUMED WITH THE LOGGER TYPE {self.logger.__class__.__name__}.\nIf this was not your intention, stop this run and set `auto_resume` to `False` in the config.\n\n')
+            print(f"New logger config: {self.logger.__dict__}")
         
         assert self.logger is not None, '`logger` must be set before `init` is called'
         if self.dummy_mode:
