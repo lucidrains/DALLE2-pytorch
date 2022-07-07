@@ -20,7 +20,7 @@ decoder = Decoder(checkpoint="best.pth") # A decoder trained on CLIP Image embed
 
 # Retrieve prompt from user and encode with CLIP
 prompt = "A corgi wearing sunglasses"
-tokenzied_text = tokenize(prompt)
+tokenized_text = tokenize(prompt)
 text_embedding = clip_model.encode_text(tokenized_text)
 
 # Now, pass the text embedding to the decoder
@@ -40,7 +40,7 @@ decoder = Decoder(checkpoint="decoder.pth") # A decoder trained on CLIP Image em
 
 # Retrieve prompt from user and encode with a prior
 prompt = "A corgi wearing sunglasses"
-tokenzied_text = tokenize(prompt)
+tokenized_text = tokenize(prompt)
 text_embedding = prior.sample(tokenized_text) # <-- now we get an embedding in the same space as images!
 
 # Now, pass the predicted image embedding to the decoder
@@ -53,7 +53,7 @@ With the prior we are able to successfully generate embeddings *within* CLIP's i
 >
 > *"Why don't you just train the decoder on clip text embeddings instead of image embeddings?"*
 >
-> OpenAI covers this topic in their [DALLE-2 paper](https://arxiv.org/abs/2204.06125). The TLDR is *"it doesn't work as well as decoders trained on image embedidngs"*...also...its just an example :smile:
+> OpenAI covers this topic in their [DALLE-2 paper](https://arxiv.org/abs/2204.06125). The TL;DR is *"it doesn't work as well as decoders trained on image embeddings"*...also...its just an example :smile:
 
 ## Usage
 
@@ -139,7 +139,7 @@ Training the prior is a relatively straightforward process thanks to the Trainer
 
 ## Dataset
 
-To train the prior, it is highly recommended to use precomputed embeddings for the images. To obtain these for a custom dataset, you can leverage [img2datset](https://github.com/rom1504/img2dataset) to pull images from a list of URLs and [clip_retrieval](https://github.com/rom1504/clip-retrieval#clip-inference) for genertating the actual embeddings that can be used in the prior's dataloader.
+To train the prior, it is highly recommended to use precomputed embeddings for the images. To obtain these for a custom dataset, you can leverage [img2datset](https://github.com/rom1504/img2dataset) to pull images from a list of URLs and [clip_retrieval](https://github.com/rom1504/clip-retrieval#clip-inference) for generating the actual embeddings that can be used in the prior's dataloader.
 
 ## Configuration
 
@@ -154,19 +154,19 @@ If you would like to train in a distributed manner we have opted to leverage hug
 There are a variety of metrics available to you when training the prior. You can read a brief description of each in the table below:
 | Metric                              | Description                                                                                                                                                                                                                                                  | Comments                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Online Model Validation             | The validation loss associated with your online model.                                                                                                                                                                                                       | Ideally validation loss will be as low as possible. Using L2 loss, values as low as `0.1` and lower are possible after around 1 Billlion sampels seen.                                                                                                                                                                                                |
+| Online Model Validation             | The validation loss associated with your online model.                                                                                                                                                                                                       | Ideally validation loss will be as low as possible. Using L2 loss, values as low as `0.1` and lower are possible after around 1 Billion samples seen.                                                                                                                                                                                                |
 | EMA Validation                      | This metric measures the validation loss associated with your EMA model.                                                                                                                                                                                     | This will likely lag behind your "online" model's validation loss, but should outperform in the long-term.                                                                                                                                                                                                                                              |
-| Baseline Similarity                 | Baseline similarity refers to the similarity between your datset's prompts and associated image embeddings. This will serve as a guide for your prior's performance in cosine similarity.                                                                    | Generally `0.3` is considered a good cosinesimilarity for caption similarity.                                                                                                                                                                                                                                                                         |
-| Similarity With Original Image      | This metric will measure the cosine similarity between your prior's predicted image embedding and the actual image that the caption was associated with. This is useful for determining wether your prior is generating images with the right contents.      | Values around `0.75`+ are obtainable. This metric should improve rapidly in the early stages of training and plateau with diminishing increases over time. If it takes hundreds of millions of samples to reach above `0.5`/`0.6` similarity--then you likely are suffering from some kind of trianing error or inefficiency (i.e. not using EMA) |
+| Baseline Similarity                 | Baseline similarity refers to the similarity between your dataset's prompts and associated image embeddings. This will serve as a guide for your prior's performance in cosine similarity.                                                                    | Generally `0.3` is considered a good cosine similarity for caption similarity.                                                                                                                                                                                                                                                                         |
+| Similarity With Original Image      | This metric will measure the cosine similarity between your prior's predicted image embedding and the actual image that the caption was associated with. This is useful for determining wether your prior is generating images with the right contents.      | Values around `0.75`+ are obtainable. This metric should improve rapidly in the early stages of training and plateau with diminishing increases over time. If it takes hundreds of millions of samples to reach above `0.5`/`0.6` similarity--then you likely are suffering from some kind of training error or inefficiency (i.e. not using EMA) |
 | Difference From Baseline Similarity | Sometimes its useful to visualize a metric in another light. This metric will show you how your prior's predicted image embeddings match up with the baseline similarity measured in your dataset.                                                           | This value should float around `0.0` with some room for variation. After a billion samples seen, values are within `0.01`+/- of `0.0`. If this climbs to high, (~>`0.02`) then this may be a sign that your model is overfitting somehow.                                                                                                       |
-| Similarity With Text                | This metric is your bread and butter cosine similarity between the predicted image embedding and the original caption given to the prior. Monitoring this metric will be on of your main focuses and is probably the second most improtant behind your loss. | As mentioned, this value should be close to baseline similarity. We have observed early rapid increase with diminishing returns as the prior learns to generate valid image embeddings. If this value increases too far beyond the baseline similarity--it could be an indication that your model is overfitting.                                       |
-| Similarity With Unrelated Caption   | This metric will attempt to exposed an overfit prior by feeding it arbitrary prompts (from your datset) and then measure the similarity of this predicted embedding with some other image.                                                                   | Early on we found that a poorly trained/modeled prior could effectively fool CLIP into believing that the cosine similarity between two images were high (when in fact the caption and image were completely unrelated). With this in mind--a low value is ideal, anything below `0.1` is probably safe.                                              |
+| Similarity With Text                | This metric is your bread and butter cosine similarity between the predicted image embedding and the original caption given to the prior. Monitoring this metric will be on of your main focuses and is probably the second most important behind your loss. | As mentioned, this value should be close to baseline similarity. We have observed early rapid increase with diminishing returns as the prior learns to generate valid image embeddings. If this value increases too far beyond the baseline similarity--it could be an indication that your model is overfitting.                                       |
+| Similarity With Unrelated Caption   | This metric will attempt to exposed an overfit prior by feeding it arbitrary prompts (from your dataset) and then measure the similarity of this predicted embedding with some other image.                                                                   | Early on we found that a poorly trained/modeled prior could effectively fool CLIP into believing that the cosine similarity between two images were high (when in fact the caption and image were completely unrelated). With this in mind--a low value is ideal, anything below `0.1` is probably safe.                                              |
 
 ## Launching the script
 
 Now that you’ve done all the prep it’s time for the easy part! 🚀
 
-To actually launch the script, you will either use `accelerate launch train_diffusion_prior.py --config_path <path to your config>` to launch with distributed training & huggingface accelerate or `python train_diffusion_prior.py` if you would like to train on your gpu/cpu without hugginface accelerate.
+To actually launch the script, you will either use `accelerate launch train_diffusion_prior.py --config_path <path to your config>` to launch with distributed training & huggingface accelerate or `python train_diffusion_prior.py` if you would like to train on your gpu/cpu without huggingface accelerate.
 
 ## Checkpointing
 
