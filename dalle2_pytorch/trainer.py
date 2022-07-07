@@ -192,6 +192,7 @@ class DiffusionPriorTrainer(nn.Module):
             self.device = diffusion_prior_device
         else:
             self.device = accelerator.device if exists(accelerator) else device
+            diffusion_prior.to(self.device)
 
         # save model
 
