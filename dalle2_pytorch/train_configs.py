@@ -47,6 +47,8 @@ class TrainSplitConfig(BaseModel):
 
 class TrackerLogConfig(BaseModel):
     log_type: str = 'console'
+    resume: bool = False  # For logs that are saved to unique locations, resume a previous run
+    auto_resume: bool = False  # If the process crashes and restarts, resume from the run that crashed
     verbose: bool = False
 
     class Config:
@@ -59,6 +61,7 @@ class TrackerLogConfig(BaseModel):
 
 class TrackerLoadConfig(BaseModel):
     load_from: Optional[str] = None
+    only_auto_resume: bool = False  # Only attempt to load if the logger is auto-resuming
 
     class Config:
         extra = "allow"
