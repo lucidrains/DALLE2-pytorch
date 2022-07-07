@@ -1930,10 +1930,6 @@ class Decoder(nn.Module):
             self.unets.append(one_unet)
             self.vaes.append(one_vae.copy_for_eval())
 
-        # determine from unets whether conditioning on text encoding is needed
-
-        self.condition_on_text_encodings = any([unet.cond_on_text_encodings for unet in self.unets])
-
         # create noise schedulers per unet
 
         if not exists(beta_schedule):
@@ -2011,6 +2007,10 @@ class Decoder(nn.Module):
     @property
     def device(self):
         return self._dummy.device
+
+    @property
+    def condition_on_text_encodings(self):
+        return any([unet.cond_on_text_encodings for unet in self.unets])
 
     def get_unet(self, unet_number):
         assert 0 < unet_number <= len(self.unets)
