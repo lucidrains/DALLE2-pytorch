@@ -990,34 +990,7 @@ dataset = ImageEmbeddingDataset(
 
 #### `train_diffusion_prior.py`
 
-This script allows training the DiffusionPrior on pre-computed text and image embeddings. The working example below elucidates this process.
-Please note that the script internally passes text_embed and image_embed to the DiffusionPrior, unlike the example below.
-
-#### Usage
-
-```bash
-$ python train_diffusion_prior.py
-```
-
-The most significant parameters for the script are as follows:
-
-- `image-embed-url`, default = `"https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/"`
-
-- `text-embed-url`, default = `"https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/"`
-
-- `image-embed-dim`, default = `768` - 768 corresponds to the ViT iL/14 embedding size,change it to what your chosen ViT generates
-
-- `learning-rate`, default = `1.1e-4`
-
-- `weight-decay`,  default = `6.02e-2`
-
-- `max-grad-norm`, default = `0.5`
-
-- `batch-size`, default = `10 ** 4`
-
-- `num-epochs`, default = `5`
-
-- `clip`, default = `None` # Signals the prior to use pre-computed embeddings
+For detailed information on training the diffusion prior, please refer to the [dedicated readme](prior.md)
 
 ## CLI (wip)
 
