@@ -1,0 +1,102 @@
+{
+    "decoder": {
+        "unets": [
+            {
+                "dim": 16,
+                "image_embed_dim": 768,
+                "cond_dim": 16,
+                "channels": 3,
+                "dim_mults": [1, 2, 4, 8],
+                "attn_dim_head": 16,
+                "attn_heads": 4,
+		"self_attn": [false, true, true, true]
+            }
+        ],
+        "clip": {
+            "make": "openai",
+            "model": "ViT-L/14"
+        },
+
+	"timesteps": 10,
+        "image_sizes": [64],
+        "channels": 3,
+        "loss_type": "l2",
+        "beta_schedule": ["cosine"],
+        "learned_variance": true
+    },
+    "data": {
+        "webdataset_base_url": "test_data/{}.tar",
+        "num_workers": 4,
+        "batch_size": 4,
+        "start_shard": 0,
+        "end_shard": 9,
+        "shard_width": 1,
+        "index_width": 1,
+        "splits": {
+            "train": 0.75,
+            "val": 0.15,
+            "test": 0.1
+        },
+        "shuffle_train": false,
+        "resample_train": true,
+        "preprocessing": {
+            "RandomResizedCrop": {
+                "size": [64, 64],
+                "scale": [0.75, 1.0],
+                "ratio": [1.0, 1.0]
+            },
+            "ToTensor": true
+        }
+    },
+    "train": {
+        "epochs": 1,
+        "lr": 1e-16,
+        "wd": 0.01,
+        "max_grad_norm": 0.5,
+        "save_every_n_samples": 100,
+        "n_sample_images": 1,
+        "device": "cpu",
+        "epoch_samples": 50,
+        "validation_samples": 5,
+        "use_ema": true,
+        "ema_beta": 0.99,
+        "amp": false,
+        "save_all": false,
+        "save_latest": true,
+        "save_best": true,
+        "unet_training_mask": [true]
+    },
+    "evaluate": {
+        "n_evaluation_samples": 2,
+        "FID": {
+            "feature": 64
+        },
+        "IS": {
+            "feature": 64,
+            "splits": 10
+        },
+        "KID": {
+            "feature": 64,
+            "subset_size": 2
+        },
+        "LPIPS": {
+            "net_type": "vgg",
+            "reduction": "mean"
+        }
+    },
+    "tracker": {
+        "overwrite_data_path": true,
+
+	"log": {
+            "log_type": "console"
+	},
+
+        "load": {
+            "load_from": null
+        },
+
+       "save": [{
+            "save_to": "local"
+        }]
+    }
+}

@@ -136,3 +136,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+.tracker_data
+*.pth
