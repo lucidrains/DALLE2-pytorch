@@ -420,30 +420,29 @@ class Tracker:
         self.dummy_mode = dummy_mode
 
     def _load_auto_resume(self) -> bool:
-        # First, we check if data_path / auto_resume.json exists
-        if self.auto_resume_path.exists():
-            # First, we check if the logger has autoresume enabled. If not, we remove the autoresume file and move on
-            if not self.logger.auto_resume:
-                print(f'Removing auto_resume.json because auto_resume is not enabled in the config')
-                self.auto_resume_path.unlink()
-                return False
-            else:
-                # Otherwise we read the json into a dictionary will will override parts of logger.__dict__
-                with open(self.auto_resume_path, 'r') as f:
-                    auto_resume_dict = json.load(f)
-                # Check if the logger is of the same type as the autoresume save
-                if auto_resume_dict['logger_type'] != self.logger.__class__.__name__:
-                    raise Exception(f'The logger type in the auto_resume file is {auto_resume_dict["logger_type"]} but the current logger is {self.logger.__class__.__name__}. Either use the original logger type, set `auto_resume` to `False`, or delete your existing tracker-data folder.')
-                # Then we are ready to override the logger with the autoresume save
-                self.logger.__dict__["resume"] = True
-                print(f"Upading {self.logger.__dict__} with {auto_resume_dict}")
-                self.logger.__dict__.update(auto_resume_dict)
-
-                return True
-        else:
+        # If the file does not exist, we return False. If autoresume is enabled we print a warning so that the user can know that this is the first run.
+        if not self.auto_resume_path.exists():
             if self.logger.auto_resume:
                 print("Auto_resume is enabled but no auto_resume.json file exists. Assuming this is the first run.")
             return False
+
+        # Now we know that the autoresume file exists, but if we are not auto resuming we should remove it so that we don't accidentally load it next time
+        if not self.logger.auto_resume:
+            print(f'Removing auto_resume.json because auto_resume is not enabled in the config')
+            self.auto_resume_path.unlink()
+            return False
+
+        # Otherwise we read the json into a dictionary will will override parts of logger.__dict__
+        with open(self.auto_resume_path, 'r') as f:
+            auto_resume_dict = json.load(f)
+        # Check if the logger is of the same type as the autoresume save
+        if auto_resume_dict["logger_type"] != self.logger.__class__.__name__:
+            raise Exception(f'The logger type in the auto_resume file is {auto_resume_dict["logger_type"]} but the current logger is {self.logger.__class__.__name__}. Either use the original logger type, set `auto_resume` to `False`, or delete your existing tracker-data folder.')
+        # Then we are ready to override the logger with the autoresume save
+        self.logger.__dict__["resume"] = True
+        print(f"Updating {self.logger.__dict__} with {auto_resume_dict}")
+        self.logger.__dict__.update(auto_resume_dict)
+        return True
 
     def _save_auto_resume(self):
         # Gets the autoresume dict from the logger and adds "logger_type" to it then saves it to the auto_resume file
