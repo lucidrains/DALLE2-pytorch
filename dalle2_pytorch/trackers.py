@@ -66,7 +66,7 @@ class BaseLogger:
 
     def get_resume_data(self, **kwargs) -> dict:
         """
-        Sets the config arguments that along with { "resume": True } will be used to resume training.
+        Sets tracker attributes that along with { "resume": True } will be used to resume training.
         It is assumed that after init is called this data will be complete.
         If the logger does not have any resume functionality, it should return an empty dict.
         """
@@ -164,9 +164,9 @@ class WandbLogger(BaseLogger):
     def get_resume_data(self, **kwargs) -> dict:
         # In order to resume, we need wandb_entity, wandb_project, and wandb_run_id
         return {
-            "wanb_entity": self.entity,
-            "wandb_project": self.project,
-            "wandb_run_id": self.wandb.run.id
+            "entity": self.entity,
+            "project": self.project,
+            "run_id": self.wandb.run.id
         }
 
 logger_type_map = {
