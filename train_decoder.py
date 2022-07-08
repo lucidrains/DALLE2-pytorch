@@ -289,9 +289,9 @@ def train(
     sample = 0
     samples_seen = 0
     val_sample = 0
-    step = lambda: int(trainer.step.item())
+    step = lambda: int(trainer.num_steps_taken(unet_number=1))
 
-    if tracker.loader is not None:
+    if tracker.can_recall:
         start_epoch, validation_losses, next_task, recalled_sample, samples_seen = recall_trainer(tracker, trainer)
         if next_task == 'train':
             sample = recalled_sample

@@ -20,7 +20,7 @@
     },
     "data": {
         "webdataset_base_url": "pipe:s3cmd get s3://bucket/path/{}.tar -",
-        "embeddings_url": "s3://bucket/embeddings/path/",
+        "img_embeddings_url": "s3://bucket/img_embeddings/path/",
         "num_workers": 4,
         "batch_size": 64,
         "start_shard": 0,

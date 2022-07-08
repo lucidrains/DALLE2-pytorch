@@ -1,5 +1,6 @@
 import urllib.request
 import os
+import json
 from pathlib import Path
 import shutil
 from itertools import zip_longest
@@ -37,14 +38,17 @@ class BaseLogger:
         data_path (str): A file path for storing temporary data.
         verbose (bool): Whether of not to always print logs to the console.
     """
-    def __init__(self, data_path: str, verbose: bool = False, **kwargs):
+    def __init__(self, data_path: str, resume: bool = False, auto_resume: bool = False, verbose: bool = False, **kwargs):
         self.data_path = Path(data_path)
+        self.resume = resume
+        self.auto_resume = auto_resume
         self.verbose = verbose
 
     def init(self, full_config: BaseModel, extra_config: dict, **kwargs) -> None:
         """
         Initializes the logger.
         Errors if the logger is invalid.
+        full_config is the config file dict while extra_config is anything else from the script that is not defined the config file.
         """
         raise NotImplementedError
 
@@ -58,6 +62,14 @@ class BaseLogger:
         raise NotImplementedError
 
     def log_error(self, error_string, **kwargs) -> None:
+        raise NotImplementedError
+
+    def get_resume_data(self, **kwargs) -> dict:
+        """
+        Sets tracker attributes that along with { "resume": True } will be used to resume training.
+        It is assumed that after init is called this data will be complete.
+        If the logger does not have any resume functionality, it should return an empty dict.
+        """
         raise NotImplementedError
 
 class ConsoleLogger(BaseLogger):
@@ -76,6 +88,9 @@ class ConsoleLogger(BaseLogger):
     def log_error(self, error_string, **kwargs) -> None:
         print(error_string)
 
+    def get_resume_data(self, **kwargs) -> dict:
+        return {}
+
 class WandbLogger(BaseLogger):
     """
     Logs to a wandb run.
@@ -85,7 +100,6 @@ class WandbLogger(BaseLogger):
         wandb_project (str): The wandb project to log to.
         wandb_run_id (str): The wandb run id to resume.
         wandb_run_name (str): The wandb run name to use.
-        wandb_resume (bool): Whether to resume a wandb run.
     """
     def __init__(self,
         data_path: str,
@@ -93,7 +107,6 @@ class WandbLogger(BaseLogger):
         wandb_project: str,
         wandb_run_id: Optional[str] = None,
         wandb_run_name: Optional[str] = None,
-        wandb_resume: bool = False,
         **kwargs
     ):
         super().__init__(data_path, **kwargs)
@@ -101,7 +114,6 @@ class WandbLogger(BaseLogger):
         self.project = wandb_project
         self.run_id = wandb_run_id
         self.run_name = wandb_run_name
-        self.resume = wandb_resume
 
     def init(self, full_config: BaseModel, extra_config: dict, **kwargs) -> None:
         assert self.entity is not None, "wandb_entity must be specified for wandb logger"
@@ -149,6 +161,14 @@ class WandbLogger(BaseLogger):
             print(error_string)
         self.wandb.log({"error": error_string, **kwargs}, step=step)
 
+    def get_resume_data(self, **kwargs) -> dict:
+        # In order to resume, we need wandb_entity, wandb_project, and wandb_run_id
+        return {
+            "entity": self.entity,
+            "project": self.project,
+            "run_id": self.wandb.run.id
+        }
+
 logger_type_map = {
     'console': ConsoleLogger,
     'wandb': WandbLogger,
@@ -168,8 +188,9 @@ class BaseLoader:
     Parameters:
         data_path (str): A file path for storing temporary data.
     """
-    def __init__(self, data_path: str, **kwargs):
+    def __init__(self, data_path: str, only_auto_resume: bool = False, **kwargs):
         self.data_path = Path(data_path)
+        self.only_auto_resume = only_auto_resume
 
     def init(self, logger: BaseLogger, **kwargs) -> None:
         raise NotImplementedError
@@ -304,6 +325,10 @@ class LocalSaver(BaseSaver):
     def save_file(self, local_path: str, save_path: str, **kwargs) -> None:
         # Copy the file to save_path
         save_path_file_name = Path(save_path).name
+        # Make sure parent directory exists
+        save_path_parent = Path(save_path).parent
+        if not save_path_parent.exists():
+            save_path_parent.mkdir(parents=True)
         print(f"Saving {save_path_file_name} {self.save_type} to local path {save_path}")
         shutil.copy(local_path, save_path)
 
@@ -385,11 +410,7 @@ class Tracker:
     def __init__(self, data_path: Optional[str] = DEFAULT_DATA_PATH, overwrite_data_path: bool = False, dummy_mode: bool = False):
         self.data_path = Path(data_path)
         if not dummy_mode:
-            if overwrite_data_path:
-                if self.data_path.exists():
-                    shutil.rmtree(self.data_path)
-                self.data_path.mkdir(parents=True)
-            else:
+            if not overwrite_data_path:
                 assert not self.data_path.exists(), f'Data path {self.data_path} already exists. Set overwrite_data_path to True to overwrite.'
                 if not self.data_path.exists():
                     self.data_path.mkdir(parents=True)
@@ -398,7 +419,46 @@ class Tracker:
         self.savers: List[BaseSaver]= []
         self.dummy_mode = dummy_mode
 
+    def _load_auto_resume(self) -> bool:
+        # If the file does not exist, we return False. If autoresume is enabled we print a warning so that the user can know that this is the first run.
+        if not self.auto_resume_path.exists():
+            if self.logger.auto_resume:
+                print("Auto_resume is enabled but no auto_resume.json file exists. Assuming this is the first run.")
+            return False
+
+        # Now we know that the autoresume file exists, but if we are not auto resuming we should remove it so that we don't accidentally load it next time
+        if not self.logger.auto_resume:
+            print(f'Removing auto_resume.json because auto_resume is not enabled in the config')
+            self.auto_resume_path.unlink()
+            return False
+
+        # Otherwise we read the json into a dictionary will will override parts of logger.__dict__
+        with open(self.auto_resume_path, 'r') as f:
+            auto_resume_dict = json.load(f)
+        # Check if the logger is of the same type as the autoresume save
+        if auto_resume_dict["logger_type"] != self.logger.__class__.__name__:
+            raise Exception(f'The logger type in the auto_resume file is {auto_resume_dict["logger_type"]} but the current logger is {self.logger.__class__.__name__}. Either use the original logger type, set `auto_resume` to `False`, or delete your existing tracker-data folder.')
+        # Then we are ready to override the logger with the autoresume save
+        self.logger.__dict__["resume"] = True
+        print(f"Updating {self.logger.__dict__} with {auto_resume_dict}")
+        self.logger.__dict__.update(auto_resume_dict)
+        return True
+
+    def _save_auto_resume(self):
+        # Gets the autoresume dict from the logger and adds "logger_type" to it then saves it to the auto_resume file
+        auto_resume_dict = self.logger.get_resume_data()
+        auto_resume_dict['logger_type'] = self.logger.__class__.__name__
+        with open(self.auto_resume_path, 'w') as f:
+            json.dump(auto_resume_dict, f)
+
     def init(self, full_config: BaseModel, extra_config: dict):
+        self.auto_resume_path = self.data_path / 'auto_resume.json'
+        # Check for resuming the run
+        self.did_auto_resume = self._load_auto_resume()
+        if self.did_auto_resume:
+            print(f'\n\nWARNING: RUN HAS BEEN AUTO-RESUMED WITH THE LOGGER TYPE {self.logger.__class__.__name__}.\nIf this was not your intention, stop this run and set `auto_resume` to `False` in the config.\n\n')
+            print(f"New logger config: {self.logger.__dict__}")
+        
         assert self.logger is not None, '`logger` must be set before `init` is called'
         if self.dummy_mode:
             # The only thing we need is a loader
@@ -406,11 +466,16 @@ class Tracker:
                 self.loader.init(self.logger)
             return
         assert len(self.savers) > 0, '`savers` must be set before `init` is called'
+
         self.logger.init(full_config, extra_config)
         if self.loader is not None:
             self.loader.init(self.logger)
         for saver in self.savers:
             saver.init(self.logger)
+
+        if self.logger.auto_resume:
+            # Then we need to save the autoresume file. It is assumed after logger.init is called that the logger is ready to be saved.
+            self._save_auto_resume()
 
     def add_logger(self, logger: BaseLogger):
         self.logger = logger
@@ -503,11 +568,16 @@ class Tracker:
                     self.logger.log_error(f'Error saving checkpoint: {e}', **kwargs)
                     print(f'Error saving checkpoint: {e}')
     
+    @property
+    def can_recall(self):
+        # Defines whether a recall can be performed.
+        return self.loader is not None and (not self.loader.only_auto_resume or self.did_auto_resume)
+    
     def recall(self):
-        if self.loader is not None:
+        if self.can_recall:
             return self.loader.recall()
         else:
-            raise ValueError('No loader specified')
+            raise ValueError('Tried to recall, but no loader was set or auto-resume was not performed.')
 
 
     

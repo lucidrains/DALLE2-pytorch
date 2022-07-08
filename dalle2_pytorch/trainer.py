@@ -509,7 +509,6 @@ class DecoderTrainer(nn.Module):
         self.register_buffer('steps', torch.tensor([0] * self.num_unets))
 
         decoder, *optimizers = list(self.accelerator.prepare(decoder, *optimizers))
-        schedulers = list(self.accelerator.prepare(*schedulers))
 
         self.decoder = decoder
 

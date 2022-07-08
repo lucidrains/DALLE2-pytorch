@@ -30,6 +30,7 @@ Defines the configuration options for the decoder model. The unets defined above
 | `loss_type` | No | `l2` | The loss function. Options are `l1`, `huber`, or `l2`. |
 | `beta_schedule` | No | `cosine` | The noising schedule. Options are `cosine`, `linear`, `quadratic`, `jsd`, or `sigmoid`. |
 | `learned_variance` | No | `True` | Whether to learn the variance. |
+| `clip` | No | `None` | The clip model to use if embeddings are being generated on the fly. Takes keys `make` and `model` with defaults `openai` and `ViT-L/14`. |
 
 Any parameter from the `Decoder` constructor can also be given here.
 
@@ -39,7 +40,8 @@ Settings for creation of the dataloaders.
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
 | `webdataset_base_url` | Yes | N/A | The url of a shard in the webdataset with the shard replaced with `{}`[^1]. |
-| `embeddings_url` | No | N/A | The url of the folder containing embeddings shards. Not required if embeddings are in webdataset. |
+| `img_embeddings_url` | No | `None` | The url of the folder containing image embeddings shards. Not required if embeddings are in webdataset or clip is being used. |
+| `text_embeddings_url` | No | `None` | The url of the folder containing text embeddings shards. Not required if embeddings are in webdataset or clip is being used. |
 | `num_workers` | No | `4` | The number of workers used in the dataloader. |
 | `batch_size` | No | `64` | The batch size. |
 | `start_shard` | No | `0` | Defines the start of the shard range the dataset will recall. |
@@ -106,6 +108,13 @@ Tracking is split up into three sections:
 
 **Logging:**
 
+All loggers have the following keys:
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `log_type` | Yes | N/A | The type of logger class to use. |
+| `resume` | No | `False` | For loggers that have the option to resume an old run, resume it using maually input parameters. |
+| `auto_resume` | No | `False` | If true, the logger will attempt to resume an old run using parameters from that previous run. |
+
 If using `console` there is no further configuration than setting `log_type` to `console`.
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
@@ -119,9 +128,14 @@ If using `wandb`
 | `wandb_project` | Yes | N/A | The wandb project save the run to. |
 | `wandb_run_name` | No | `None` | The wandb run name. |
 | `wandb_run_id` | No | `None` | The wandb run id. Used if resuming an old run. |
-| `wandb_resume` | No | `False` | Whether to resume an old run. |
 
 **Loading:**
+
+All loaders have the following keys:
+| Option | Required | Default | Description |
+| ------ | -------- | ------- | ----------- |
+| `load_from` | Yes | N/A | The type of loader class to use. |
+| `only_auto_resume` | No | `False` | If true, the loader will only load the model if the run is being auto resumed. |
 
 If using `local`
 | Option | Required | Default | Description |
