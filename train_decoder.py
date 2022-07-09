@@ -274,6 +274,7 @@ def train(
     trainer = DecoderTrainer(
         decoder=decoder,
         accelerator=accelerator,
+        dataloaders=dataloaders,
         **kwargs
     )
 
@@ -284,7 +285,6 @@ def train(
     sample = 0
     samples_seen = 0
     val_sample = 0
-    step = lambda: int(trainer.num_steps_taken(unet_number=1))
 
     if tracker.can_recall:
         start_epoch, validation_losses, next_task, recalled_sample, samples_seen = recall_trainer(tracker, trainer)
@@ -299,6 +299,8 @@ def train(
     if not exists(unet_training_mask):
         # Then the unet mask should be true for all unets in the decoder
         unet_training_mask = [True] * trainer.num_unets
+    first_training_unet = min(index for index, mask in enumerate(unet_training_mask) if mask)
+    step = lambda: int(trainer.num_steps_taken(unet_number=first_training_unet+1))
     assert len(unet_training_mask) == trainer.num_unets, f"The unet training mask should be the same length as the number of unets in the decoder. Got {len(unet_training_mask)} and {trainer.num_unets}"
 
     accelerator.print(print_ribbon("Generating Example Data", repeat=40))
@@ -321,7 +323,7 @@ def train(
         last_snapshot = sample
 
         if next_task == 'train':
-            for i, (img, emb, txt) in enumerate(dataloaders["train"]):
+            for i, (img, emb, txt) in enumerate(trainer.train_loader):
                 # We want to count the total number of samples across all processes
                 sample_length_tensor[0] = len(img)
                 all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.
@@ -414,7 +416,7 @@ def train(
             timer = Timer()
             accelerator.wait_for_everyone()
             i = 0
-            for i, (img, emb, txt) in enumerate(dataloaders["val"]):
+            for i, (img, emb, txt) in enumerate(trainer.val_loader):  # Use the accelerate prepared loader
                 val_sample_length_tensor[0] = len(img)
                 all_samples = accelerator.gather(val_sample_length_tensor)
                 total_samples = all_samples.sum().item()
@@ -519,6 +521,20 @@ def initialize_training(config: TrainDecoderConfig, config_path):
     # Set up accelerator for configurable distributed training
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters)
     accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
+
+    if accelerator.num_processes > 1:
+        # We are using distributed training and want to immediately ensure all can connect
+        accelerator.print("Waiting for all processes to connect...")
+        accelerator.wait_for_everyone()
+        accelerator.print("All processes online and connected")
+
+    # If we are in deepspeed fp16 mode, we must ensure learned variance is off
+    if accelerator.mixed_precision == "fp16" and accelerator.distributed_type == accelerate_dataclasses.DistributedType.DEEPSPEED and config.decoder.learned_variance:
+        raise ValueError("DeepSpeed fp16 mode does not support learned variance")
+
+    if accelerator.process_index != accelerator.local_process_index and accelerator.distributed_type == accelerate_dataclasses.DistributedType.DEEPSPEED:
+        # This is an invalid configuration until we figure out how to handle this
+        raise ValueError("DeepSpeed does not support multi-node distributed training")
     
     # Set up data
     all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))
