@@ -41,7 +41,7 @@
         "resample_train": true,
         "preprocessing": {
             "RandomResizedCrop": {
-                "size": [64, 64],
+                "size": [224, 224],
                 "scale": [0.75, 1.0],
                 "ratio": [1.0, 1.0]
             },
