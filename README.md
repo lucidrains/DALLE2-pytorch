@@ -355,7 +355,8 @@ prior_network = DiffusionPriorNetwork(
 diffusion_prior = DiffusionPrior(
     net = prior_network,
     clip = clip,
-    timesteps = 100,
+    timesteps = 1000,
+    sample_timesteps = 64,
     cond_drop_prob = 0.2
 ).cuda()
 
