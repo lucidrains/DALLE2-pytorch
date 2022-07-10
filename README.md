@@ -583,6 +583,7 @@ unet1 = Unet(
     cond_dim = 128,
     channels = 3,
     dim_mults=(1, 2, 4, 8),
+    text_embed_dim = 512,
     cond_on_text_encodings = True  # set to True for any unets that need to be conditioned on text encodings (ex. first unet in cascade)
 ).cuda()
 
@@ -598,7 +599,8 @@ decoder = Decoder(
     unet = (unet1, unet2),
     image_sizes = (128, 256),
     clip = clip,
-    timesteps = 100,
+    timesteps = 1000,
+    sample_timesteps = (250, 27),
     image_cond_drop_prob = 0.1,
     text_cond_drop_prob = 0.5
 ).cuda()
