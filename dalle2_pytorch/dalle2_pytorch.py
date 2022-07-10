@@ -1061,9 +1061,9 @@ class DiffusionPrior(nn.Module):
             c2 = ((1 - alpha_next) - torch.square(c1)).sqrt()
             noise = torch.randn_like(image_embed) if time_next > 0 else 0.
 
-            img = x_start * alpha_next.sqrt() + \
-                  c1 * noise + \
-                  c2 * pred_noise
+            image_embed = x_start * alpha_next.sqrt() + \
+                          c1 * noise + \
+                          c2 * pred_noise
 
         return image_embed
 
