@@ -1059,10 +1059,10 @@ class DiffusionPrior(nn.Module):
 
             c1 = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
             c2 = ((1 - alpha_next) - torch.square(c1)).sqrt()
-            new_noise = torch.randn_like(image_embed)
+            noise = torch.randn_like(image_embed) if time_next > 0 else 0.
 
             img = x_start * alpha_next.sqrt() + \
-                  c1 * new_noise + \
+                  c1 * noise + \
                   c2 * pred_noise
 
         return image_embed
@@ -2275,9 +2275,10 @@ class Decoder(nn.Module):
 
             c1 = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
             c2 = ((1 - alpha_next) - torch.square(c1)).sqrt()
+            noise = torch.randn_like(img) if time_next > 0 else 0.
 
             img = x_start * alpha_next.sqrt() + \
-                  c1 * torch.randn_like(img) + \
+                  c1 * noise + \
                   c2 * pred_noise
 
         img = self.unnormalize_img(img)
