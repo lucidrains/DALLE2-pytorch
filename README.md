@@ -45,6 +45,7 @@ This library would not have gotten to this working state without the help of
 - <a href="https://github.com/rom1504">Romain</a> for the pull request reviews and project management
 - <a href="https://github.com/Ciaohe">He Cao</a> and <a href="https://github.com/xiankgx">xiankgx</a> for the Q&A and for identifying of critical bugs
 - <a href="https://github.com/marunine">Marunine</a> for identifying issues with resizing of the low resolution conditioner, when training the upsampler, in addition to various other bug fixes
+- <a href="https://github.com/malumadev">MalumaDev</a> for proposing the use of pixel shuffle upsampler for fixing checkboard artifacts
 - <a href="https://github.com/crowsonkb">Katherine</a> for her advice
 - <a href="https://stability.ai/">Stability AI</a> for the generous sponsorship
 - <a href="https://huggingface.co">🤗 Huggingface</a> and in particular <a href="https://github.com/sgugger">Sylvain</a> for the <a href="https://github.com/huggingface/accelerate">Accelerate</a> library
