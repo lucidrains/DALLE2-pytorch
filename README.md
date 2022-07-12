@@ -421,7 +421,7 @@ For the layperson, no worries, training will all be automated into a CLI tool, a
 
 ## Training on Preprocessed CLIP Embeddings
 
-It is likely, when scaling up, that you would first preprocess your images and text into corresponding embeddings before training the prior network. You can do so easily by simply passing in `image_embed`, `text_embed`, and optionally `text_encodings` and `text_mask`
+It is likely, when scaling up, that you would first preprocess your images and text into corresponding embeddings before training the prior network. You can do so easily by simply passing in `image_embed`, `text_embed`, and optionally `text_encodings`
 
 Working example below
 
