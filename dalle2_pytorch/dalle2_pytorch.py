@@ -806,6 +806,7 @@ class DiffusionPriorNetwork(nn.Module):
         num_time_embeds = 1,
         num_image_embeds = 1,
         num_text_embeds = 1,
+        attend_all_text_encodings = True,
         **kwargs
     ):
         super().__init__()
@@ -831,6 +832,8 @@ class DiffusionPriorNetwork(nn.Module):
         self.learned_query = nn.Parameter(torch.randn(dim))
         self.causal_transformer = CausalTransformer(dim = dim, **kwargs)
 
+        self.attend_all_text_encodings = attend_all_text_encodings
+
     def forward_with_cond_scale(
         self,
         *args,
@@ -852,7 +855,6 @@ class DiffusionPriorNetwork(nn.Module):
         *,
         text_embed,
         text_encodings = None,
-        mask = None,
         cond_drop_prob = 0.
     ):
         batch, dim, device, dtype = *image_embed.shape, image_embed.device, image_embed.dtype
@@ -871,7 +873,10 @@ class DiffusionPriorNetwork(nn.Module):
         if not exists(text_encodings):
             text_encodings = torch.empty((batch, 0, dim), device = device, dtype = dtype)
 
-        mask = torch.any(text_encodings != 0., dim = -1)
+        if self.attend_all_text_encodings:
+            mask = torch.ones((batch, text_encodings.shape[-2]), device = device, dtype = torch.bool)
+        else:
+            mask = torch.any(text_encodings != 0., dim = -1)
 
         # classifier free guidance
 
