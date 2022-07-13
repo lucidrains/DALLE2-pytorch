@@ -760,6 +760,7 @@ class CausalTransformer(nn.Module):
         dim_head = 64,
         heads = 8,
         ff_mult = 4,
+        norm_in = False,
         norm_out = True,
         attn_dropout = 0.,
         ff_dropout = 0.,
@@ -768,6 +769,8 @@ class CausalTransformer(nn.Module):
         rotary_emb = True
     ):
         super().__init__()
+        self.init_norm = LayerNorm(dim) if norm_in else nn.Identity() # from latest BLOOM model and Yandex's YaLM
+
         self.rel_pos_bias = RelPosBias(heads = heads)
 
         rotary_emb = RotaryEmbedding(dim = min(32, dim_head)) if rotary_emb else None
@@ -784,6 +787,8 @@ class CausalTransformer(nn.Module):
 
     def forward(self, x):
         n, device = x.shape[1], x.device
+
+        x = self.init_norm(x)
 
         attn_bias = self.rel_pos_bias(n, n + 1, device = device)
 

@@ -137,6 +137,7 @@ class DiffusionPriorNetworkConfig(BaseModel):
     dim_head: int = 64
     heads: int = 8
     ff_mult: int = 4
+    norm_in: bool = False
     norm_out: bool = True
     attn_dropout: float = 0.
     ff_dropout: float = 0.
