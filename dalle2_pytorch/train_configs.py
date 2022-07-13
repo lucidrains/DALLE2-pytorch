@@ -129,11 +129,11 @@ class AdapterConfig(BaseModel):
 class DiffusionPriorNetworkConfig(BaseModel):
     dim: int
     depth: int
+    max_text_len: int = None
     num_timesteps: int = None
     num_time_embeds: int = 1
     num_image_embeds: int = 1
     num_text_embeds: int = 1
-    attend_all_text_encodings: bool = True
     dim_head: int = 64
     heads: int = 8
     ff_mult: int = 4
