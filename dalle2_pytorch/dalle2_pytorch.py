@@ -2328,6 +2328,9 @@ class Decoder(nn.Module):
 
         img = torch.randn(shape, device = device)
 
+        if not is_latent_diffusion:
+            lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)
+
         for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
             alpha = alphas[time]
             alpha_next = alphas[time_next]
