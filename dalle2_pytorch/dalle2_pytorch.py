@@ -1731,7 +1731,10 @@ class Unet(nn.Module):
             ]))
 
         self.final_resnet_block = ResnetBlock(dim * 2, dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group)
-        self.to_out = nn.Conv2d(dim, self.channels_out, kernel_size = final_conv_kernel_size, padding = final_conv_kernel_size // 2)
+
+        out_dim_in = dim + (channels if lowres_cond else 0)
+
+        self.to_out = nn.Conv2d(out_dim_in, self.channels_out, kernel_size = final_conv_kernel_size, padding = final_conv_kernel_size // 2)
 
         zero_init_(self.to_out) # since both OpenAI and @crowsonkb are doing it
 
@@ -1951,6 +1954,10 @@ class Unet(nn.Module):
         x = torch.cat((x, r), dim = 1)
 
         x = self.final_resnet_block(x, t)
+
+        if exists(lowres_cond_img):
+            x = torch.cat((x, lowres_cond_img), dim = 1)
+
         return self.to_out(x)
 
 class LowresConditioner(nn.Module):
