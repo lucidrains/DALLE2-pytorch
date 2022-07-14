@@ -1926,7 +1926,7 @@ class Unet(nn.Module):
                 hiddens.append(x)
 
             x = attn(x)
-            hiddens.append(x)
+            hiddens.append(x.contiguous())
 
             if exists(post_downsample):
                 x = post_downsample(x)
