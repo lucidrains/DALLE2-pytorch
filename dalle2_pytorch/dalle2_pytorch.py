@@ -2172,6 +2172,7 @@ class Decoder(nn.Module):
         # random crop sizes (for super-resoluting unets at the end of cascade?)
 
         self.random_crop_sizes = cast_tuple(random_crop_sizes, len(image_sizes))
+        assert not exists(self.random_crop_sizes[0]), 'you would not need to randomly crop the image for the base unet'
 
         # predict x0 config
 
