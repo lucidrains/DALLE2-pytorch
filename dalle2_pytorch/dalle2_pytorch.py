@@ -1550,6 +1550,7 @@ class Unet(nn.Module):
         init_conv_kernel_size = 7,
         resnet_groups = 8,
         num_resnet_blocks = 2,
+        init_cross_embed = True,
         init_cross_embed_kernel_sizes = (3, 7, 15),
         cross_embed_downsample = False,
         cross_embed_downsample_kernel_sizes = (2, 4),
@@ -1578,7 +1579,7 @@ class Unet(nn.Module):
         init_channels = channels if not lowres_cond else channels * 2 # in cascading diffusion, one concats the low resolution image, blurred, for conditioning the higher resolution synthesis
         init_dim = default(init_dim, dim)
 
-        self.init_conv = CrossEmbedLayer(init_channels, dim_out = init_dim, kernel_sizes = init_cross_embed_kernel_sizes, stride = 1)
+        self.init_conv = CrossEmbedLayer(init_channels, dim_out = init_dim, kernel_sizes = init_cross_embed_kernel_sizes, stride = 1) if init_cross_embed else nn.Conv2d(init_channels, init_dim, init_conv_kernel_size, padding = init_conv_kernel_size // 2)
 
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))

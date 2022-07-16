@@ -225,6 +225,7 @@ class UnetConfig(BaseModel):
     self_attn: ListOrTuple(int)
     attn_dim_head: int = 32
     attn_heads: int = 16
+    init_cross_embed: bool = True
 
     class Config:
         extra = "allow"
