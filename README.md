@@ -1048,11 +1048,10 @@ Once built, images will be saved to the same directory the command is invoked
 - [x] bring in skip-layer excitations (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training (doesnt work well)
 - [x] test out grid attention in cascading ddpm locally, decide whether to keep or remove https://arxiv.org/abs/2204.01697 (keeping, seems to be fine)
 - [x] allow for unet to be able to condition non-cross attention style as well
-- [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
-- [ ] speed up inference, read up on papers (ddim or diffusion-gan, etc)
-- [ ] figure out if possible to augment with external memory, as described in https://arxiv.org/abs/2204.11824
-- [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
+- [x] speed up inference, read up on papers (ddim)
 - [ ] add inpainting ability using resampler from repaint paper https://arxiv.org/abs/2201.09865
+- [ ] become an expert with unets, cleanup unet code, make it fully configurable, port all learnings over to https://github.com/lucidrains/x-unet (test out unet² in ddpm repo) - consider https://github.com/lucidrains/uformer-pytorch attention-based unet
+- [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 
 ## Citations
 
