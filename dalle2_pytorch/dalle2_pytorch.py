@@ -1542,10 +1542,10 @@ class Unet(nn.Module):
         self_attn = False,
         attn_dim_head = 32,
         attn_heads = 16,
-        lowres_cond = False, # for cascading diffusion - https://cascaded-diffusion.github.io/
-        lowres_noise_cond = False, # for conditioning on low resolution noising, based on Imagen
+        lowres_cond = False,             # for cascading diffusion - https://cascaded-diffusion.github.io/
+        lowres_noise_cond = False,       # for conditioning on low resolution noising, based on Imagen
         sparse_attn = False,
-        attend_at_middle = True, # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
+        attend_at_middle = True,         # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
         cond_on_text_encodings = False,
         max_text_len = 256,
         cond_on_image_embeds = False,
@@ -2100,7 +2100,7 @@ class Decoder(nn.Module):
         image_sizes = None,                         # for cascading ddpm, image size at each stage
         random_crop_sizes = None,                   # whether to random crop the image at that stage in the cascade (super resoluting convolutions at the end may be able to generalize on smaller crops)
         use_noise_for_lowres_cond = False,          # whether to use Imagen-like noising for low resolution conditioning  
-        use_blur_for_lowres_cond = True,                # whether to use the blur conditioning used in the original cascading ddpm paper, as well as DALL-E2
+        use_blur_for_lowres_cond = True,            # whether to use the blur conditioning used in the original cascading ddpm paper, as well as DALL-E2
         lowres_downsample_first = True,             # cascading ddpm - resizes to lower resolution, then to next conditional resolution + blur
         blur_prob = 0.5,                            # cascading ddpm - when training, the gaussian blur is only applied 50% of the time
         blur_sigma = 0.6,                           # cascading ddpm - blur sigma
