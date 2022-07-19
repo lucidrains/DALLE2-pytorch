@@ -1067,25 +1067,11 @@ dataset = ImageEmbeddingDataset(
 )
 ```
 
-### Scripts (wip)
+### Scripts
 
 #### `train_diffusion_prior.py`
 
 For detailed information on training the diffusion prior, please refer to the [dedicated readme](prior.md)
-
-## CLI (wip)
-
-```bash
-$ dream 'sharing a sunset at the summit of mount everest with my dog'
-```
-
-Once built, images will be saved to the same directory the command is invoked
-
-<a href="https://github.com/lucidrains/big-sleep">template</a>
-
-## Training CLI (wip)
-
-<a href="https://github.com/lucidrains/stylegan2-pytorch">template</a>
 
 ## Todo
 
