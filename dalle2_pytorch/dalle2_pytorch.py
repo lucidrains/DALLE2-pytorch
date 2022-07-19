@@ -2115,7 +2115,7 @@ class Decoder(nn.Module):
         unconditional = False,                      # set to True for generating images without conditioning
         auto_normalize_img = True,                  # whether to take care of normalizing the image from [0, 1] to [-1, 1] and back automatically - you can turn this off if you want to pass in the [-1, 1] ranged image yourself from the dataloader
         use_dynamic_thres = False,                  # from the Imagen paper
-        dynamic_thres_percentile = 0.9,
+        dynamic_thres_percentile = 0.95,
         p2_loss_weight_gamma = 0.,                  # p2 loss weight, from https://arxiv.org/abs/2204.00227 - 0 is equivalent to weight of 1 across time - 1. is recommended
         p2_loss_weight_k = 1,
         ddim_sampling_eta = 1.                      # can be set to 0. for deterministic sampling afaict
