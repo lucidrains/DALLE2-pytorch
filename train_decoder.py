@@ -513,6 +513,7 @@ def create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_
     }
     tracker: Tracker = tracker_config.create(config, accelerator_config, dummy_mode=dummy)
     tracker.save_config(config_path, config_name='decoder_config.json')
+    tracker.add_save_metadata(state_dict_key='config', metadata=config.dict())
     return tracker
     
 def initialize_training(config: TrainDecoderConfig, config_path):
