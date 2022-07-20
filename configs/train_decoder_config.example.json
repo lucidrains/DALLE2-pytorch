@@ -56,9 +56,6 @@
         "use_ema": true,
         "ema_beta": 0.99,
         "amp": false,
-        "save_all": false,
-        "save_latest": true,
-        "save_best": true,
         "unet_training_mask": [true]
     },
     "evaluate": {
@@ -96,14 +93,15 @@
         },
 
         "save": [{
-            "save_to": "wandb"
+            "save_to": "wandb",
+            "save_latest_to": "latest.pth"
         }, {
             "save_to": "huggingface",
             "huggingface_repo": "Veldrovive/test_model",
 
-            "save_all": true,
-            "save_latest": true,
-            "save_best": true,
+            "save_latest_to": "path/to/model_dir/latest.pth",
+            "save_best_to": "path/to/model_dir/best.pth",
+            "save_meta_to": "path/to/directory/for/assorted/files",
 
             "save_type": "model"
         }]

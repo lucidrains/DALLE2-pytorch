@@ -61,9 +61,6 @@
         "use_ema": true,
         "ema_beta": 0.99,
         "amp": false,
-        "save_all": false,
-        "save_latest": true,
-        "save_best": true,
         "unet_training_mask": [true]
     },
     "evaluate": {
@@ -96,7 +93,8 @@
         },
 
        "save": [{
-            "save_to": "local"
+            "save_to": "local",
+            "save_latest_to": "latest.pth"
         }]
     }
 }

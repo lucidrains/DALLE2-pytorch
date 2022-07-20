@@ -74,9 +74,6 @@ Settings for controlling the training hyperparameters.
 | `validation_samples` | No | `None` | The number of samples to use for validation. None mean the entire validation set. |
 | `use_ema` | No | `True` | Whether to use exponential moving average models for sampling. |
 | `ema_beta` | No | `0.99` | The ema coefficient. |
-| `save_all` | No | `False` | If True, preserves a checkpoint for every epoch. |
-| `save_latest` | No | `True` | If True, overwrites the `latest.pth` every time the model is saved. |
-| `save_best` | No | `True` | If True, overwrites the `best.pth` every time the model has a lower validation loss than all previous models. |
 | `unet_training_mask` | No | `None` | A boolean array of the same length as the number of unets. If false, the unet is frozen. A value of `None` trains all unets. |
 
 **<ins>Evaluate</ins>:**
@@ -163,9 +160,10 @@ All save locations have these configuration options
 | Option | Required | Default | Description |
 | ------ | -------- | ------- | ----------- |
 | `save_to` | Yes | N/A | Must be `local`, `huggingface`, or `wandb`. |
-| `save_latest_to` | No | `latest.pth` | Sets the relative path to save the latest model to. |
-| `save_best_to` | No | `best.pth` | Sets the relative path to save the best model to every time the model has a lower validation loss than all previous models. |
-| `save_type` | No | `'checkpoint'` | The type of save. `'checkpoint'` saves a checkpoint, `'model'` saves a model without any fluff (Saves with ema if ema is enabled). |
+| `save_latest_to` | No | `None` | Sets the relative path to save the latest model to. |
+| `save_best_to` | No | `None` | Sets the relative path to save the best model to every time the model has a lower validation loss than all previous models. |
+| `save_meta_to` | No | `None` | The path to save metadata files in. This includes the config files used to start the training. |
+| `save_type` | No | `checkpoint` | The type of save. `checkpoint` saves a checkpoint, `model` saves a model without any fluff (Saves with ema if ema is enabled). |
 
 If using `local`
 | Option | Required | Default | Description |
@@ -177,7 +175,6 @@ If using `huggingface`
 | ------ | -------- | ------- | ----------- |
 | `save_to` | Yes | N/A | Must be `huggingface`. |
 | `huggingface_repo` | Yes | N/A | The huggingface repository to save to. |
-| `huggingface_base_path` | Yes | N/A | The base path that checkpoints will be saved under. |
 | `token_path` | No | `None` | If logging in with the huggingface cli is not possible, point to a token file instead. |
 
 If using `wandb`
