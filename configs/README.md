@@ -69,6 +69,7 @@ Settings for controlling the training hyperparameters.
 | `wd` | No | `0.01` | The weight decay. |
 | `max_grad_norm`| No | `0.5` | The grad norm clipping. |
 | `save_every_n_samples` | No | `100000` | Samples will be generated and a checkpoint will be saved every `save_every_n_samples` samples. |
+| `cond_scale` | No | `1.0` | Conditioning scale to use for sampling. Can also be an array of values, one for each unet. |
 | `device` | No | `cuda:0` | The device to train on. |
 | `epoch_samples` | No | `None` | Limits the number of samples iterated through in each epoch. This must be set if resampling. None means no limit. |
 | `validation_samples` | No | `None` | The number of samples to use for validation. None mean the entire validation set. |

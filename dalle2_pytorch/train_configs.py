@@ -306,9 +306,11 @@ class DecoderTrainConfig(BaseModel):
     max_grad_norm: SingularOrIterable(float) = 0.5
     save_every_n_samples: int = 100000
     n_sample_images: int = 6                       # The number of example images to produce when sampling the train and test dataset
+    cond_scale: Union[float, List[float]] = 1.0
     device: str = 'cuda:0'
     epoch_samples: int = None                      # Limits the number of samples per epoch. None means no limit. Required if resample_train is true as otherwise the number of samples per epoch is infinite.
     validation_samples: int = None                 # Same as above but for validation.
+    save_immediately: bool = False
     use_ema: bool = True
     ema_beta: float = 0.999
     amp: bool = False
