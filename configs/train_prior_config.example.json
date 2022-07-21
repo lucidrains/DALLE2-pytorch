@@ -1,18 +1,14 @@
 {
     "prior": {
         "clip": {
-            "make": "x-clip",
-            "model": "ViT-L/14",
-            "base_model_kwargs": {
-                "dim_text": 768,
-                "dim_image": 768,
-                "dim_latent": 768
-            }
+            "make": "openai",
+            "model": "ViT-L/14"
         },
         "net": {
             "dim": 768,
             "depth": 12,
             "num_timesteps": 1000,
+            "max_text_len": 77,
             "num_time_embeds": 1,
             "num_image_embeds": 1,
             "num_text_embeds": 1,
@@ -20,8 +16,8 @@
             "heads": 12,
             "ff_mult": 4,
             "norm_out": true,
-            "attn_dropout": 0.0,
-            "ff_dropout": 0.0,
+            "attn_dropout": 0.05,
+            "ff_dropout": 0.05,
             "final_proj": true,
             "normformer": true,
             "rotary_emb": true
@@ -30,6 +26,7 @@
         "image_size": 224,
         "image_channels": 3,
         "timesteps": 1000,
+        "sample_timesteps": 64,
         "cond_drop_prob": 0.1,
         "loss_type": "l2",
         "predict_x_start": true,
@@ -37,34 +34,48 @@
         "condition_on_text_encodings": true
     },
     "data": {
-        "image_url": "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/img_emb/",
-        "text_url": "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/text_emb/",
-        "meta_url": "https://mystic.the-eye.eu/public/AI/cah/laion5b/embeddings/laion2B-en/laion2B-en-metadata/",
-        "batch_size": 256,
+        "batch_size": 128,
+        "num_data_points": 100000,
+        "eval_every_seconds": 1600,
+        "image_url": "<path to your images>",
+        "meta_url": "<path to your metadata>",
         "splits": {
-            "train": 0.9,
-            "val": 1e-7,
-            "test": 0.0999999
+            "train": 0.8,
+            "val":  0.1,
+            "test": 0.1
         }
     },
     "train": {
-        "epochs": 1,
+        "epochs": 5,
         "lr": 1.1e-4,
         "wd": 6.02e-2,
         "max_grad_norm": 0.5,
         "use_ema": true,
+        "ema_beta": 0.9999,
+        "ema_update_after_step": 50,
+        "warmup_steps": 50,
         "amp": false,
-        "save_every": 10000
-    },
-    "load": {
-        "source": null,
-        "resume": false
+        "save_every_seconds": 3600,
+        "eval_timesteps": [64, 1000],
+        "random_seed": 84513
     },
     "tracker": {
-        "tracker_type": "wandb",
-        "data_path": "./prior_checkpoints",
-        "wandb_entity": "laion",
-        "wandb_project": "diffusion-prior",
-        "verbose": true
+        "data_path": ".prior",
+        "overwrite_data_path": true,
+        "log": {
+            "log_type": "wandb",
+            "wandb_entity": "<your wandb username>",
+            "wandb_project": "prior_debugging",
+            "wandb_resume": false,
+            "verbose": true
+        },
+        "save": [
+            {
+                "save_to": "local",
+                "save_type": "checkpoint",
+                "save_latest_to": ".prior/latest_checkpoint.pth",
+                "save_best_to": ".prior/best_checkpoint.pth"
+            }
+        ]
     }
 }

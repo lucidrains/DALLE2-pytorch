@@ -67,6 +67,15 @@ class PriorEmbeddingDataset(IterableDataset):
     def __str__(self):
         return f"<PriorEmbeddingDataset: start: {self.start}, stop: {self.stop}, len: {self.__len__()}>"
 
+    def set_start(self, start):
+        """
+        Adjust the starting point within the reader, useful for resuming an epoch
+        """
+        self.start = start
+
+    def get_start(self):
+        return self.start
+
     def get_sample(self):
         """
         pre-proocess data from either reader into a common format

@@ -528,12 +528,8 @@ class Tracker:
         elif save_type == 'model':
             if isinstance(trainer, DiffusionPriorTrainer):
                 prior = trainer.ema_diffusion_prior.ema_model if trainer.use_ema else trainer.diffusion_prior
-                prior: DiffusionPrior = trainer.unwrap_model(prior)
-                # Remove CLIP if it is part of the model
-                original_clip = prior.clip
-                prior.clip = None
-                model_state_dict = prior.state_dict()
-                prior.clip = original_clip
+                state_dict = trainer.accelerator.unwrap_model(prior).state_dict()
+                torch.save(state_dict, file_path)
             elif isinstance(trainer, DecoderTrainer):
                 decoder: Decoder = trainer.accelerator.unwrap_model(trainer.decoder)
                 # Remove CLIP if it is part of the model
