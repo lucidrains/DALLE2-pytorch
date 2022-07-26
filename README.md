@@ -1113,6 +1113,7 @@ For detailed information on training the diffusion prior, please refer to the [d
 - [x] speed up inference, read up on papers (ddim)
 - [x] add inpainting ability using resampler from repaint paper https://arxiv.org/abs/2201.09865
 - [x] add the final combination of upsample feature maps, used in unet squared, seems to have an effect in local experiments
+- [ ] consider elucidated dalle2 https://arxiv.org/abs/2206.00364
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 
 ## Citations
