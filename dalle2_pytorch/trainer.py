@@ -300,7 +300,7 @@ class DiffusionPriorTrainer(nn.Module):
 
         # all processes need to load checkpoint. no restriction here
         if isinstance(path_or_state, str):
-            path = Path(path)
+            path = Path(path_or_state)
             assert path.exists()
             loaded_obj = torch.load(str(path), map_location=self.device)
 
