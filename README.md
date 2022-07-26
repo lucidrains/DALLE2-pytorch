@@ -1112,7 +1112,7 @@ For detailed information on training the diffusion prior, please refer to the [d
 - [x] allow for unet to be able to condition non-cross attention style as well
 - [x] speed up inference, read up on papers (ddim)
 - [x] add inpainting ability using resampler from repaint paper https://arxiv.org/abs/2201.09865
-- [ ] try out the nested unet from https://arxiv.org/abs/2005.09007 after hearing several positive testimonies from researchers, for segmentation anyhow
+- [x] add the final combination of upsample feature maps, used in unet squared, seems to have an effect in local experiments
 - [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2
 
 ## Citations
