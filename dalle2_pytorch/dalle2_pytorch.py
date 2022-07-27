@@ -1503,6 +1503,7 @@ class LinearAttention(nn.Module):
         k = k.softmax(dim = -2)
 
         q = q * self.scale
+        v = v / (x * y)
 
         context = einsum('b n d, b n e -> b d e', k, v)
         out = einsum('b n d, b d e -> b n e', q, context)
