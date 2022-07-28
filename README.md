@@ -371,6 +371,7 @@ loss.backward()
 unet1 = Unet(
     dim = 128,
     image_embed_dim = 512,
+    text_embed_dim = 512,
     cond_dim = 128,
     channels = 3,
     dim_mults=(1, 2, 4, 8),

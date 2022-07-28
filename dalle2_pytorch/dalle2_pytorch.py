@@ -2938,7 +2938,7 @@ class DALLE2(nn.Module):
         image_embed = self.prior.sample(text, num_samples_per_batch = self.prior_num_samples, cond_scale = prior_cond_scale)
 
         text_cond = text if self.decoder_need_text_cond else None
-        images = self.decoder.sample(image_embed, text = text_cond, cond_scale = cond_scale)
+        images = self.decoder.sample(image_embed = image_embed, text = text_cond, cond_scale = cond_scale)
 
         if return_pil_images:
             images = list(map(self.to_pil, images.unbind(dim = 0)))
