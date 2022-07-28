@@ -396,7 +396,7 @@ decoder = Decoder(
 ).cuda()
 
 for unet_number in (1, 2):
-    loss = decoder(images, unet_number = unet_number) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much
+    loss = decoder(images, text = text, unet_number = unet_number) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much
     loss.backward()
 
 # do above for many steps
@@ -861,25 +861,23 @@ unet1 = Unet(
     text_embed_dim = 512,
     cond_dim = 128,
     channels = 3,
-    dim_mults=(1, 2, 4, 8)
+    dim_mults=(1, 2, 4, 8),
+    cond_on_text_encodings = True,
 ).cuda()
 
 unet2 = Unet(
     dim = 16,
     image_embed_dim = 512,
-    text_embed_dim = 512,
     cond_dim = 128,
     channels = 3,
     dim_mults = (1, 2, 4, 8, 16),
-    cond_on_text_encodings = True
 ).cuda()
 
 decoder = Decoder(
     unet = (unet1, unet2),
     image_sizes = (128, 256),
     clip = clip,
-    timesteps = 1000,
-    condition_on_text_encodings = True
+    timesteps = 1000
 ).cuda()
 
 decoder_trainer = DecoderTrainer(
@@ -904,8 +902,8 @@ for unet_number in (1, 2):
 # after much training
 # you can sample from the exponentially moving averaged unets as so
 
-mock_image_embed = torch.randn(4, 512).cuda()
-images = decoder_trainer.sample(mock_image_embed, text = text) # (4, 3, 256, 256)
+mock_image_embed = torch.randn(32, 512).cuda()
+images = decoder_trainer.sample(image_embed = mock_image_embed, text = text) # (4, 3, 256, 256)
 ```
 
 ### Diffusion Prior Training

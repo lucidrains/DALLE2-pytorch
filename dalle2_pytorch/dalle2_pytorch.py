@@ -1831,7 +1831,7 @@ class Unet(nn.Module):
             channels == self.channels and \
             cond_on_image_embeds == self.cond_on_image_embeds and \
             cond_on_text_encodings == self.cond_on_text_encodings and \
-            cond_on_lowres_noise == self.cond_on_lowres_noise and \
+            lowres_noise_cond == self.lowres_noise_cond and \
             channels_out == self.channels_out:
             return self
 

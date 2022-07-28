@@ -174,7 +174,7 @@ class DiffusionPriorTrainer(nn.Module):
     def __init__(
         self,
         diffusion_prior,
-        accelerator,
+        accelerator = None,
         use_ema = True,
         lr = 3e-4,
         wd = 1e-2,
@@ -186,8 +186,12 @@ class DiffusionPriorTrainer(nn.Module):
     ):
         super().__init__()
         assert isinstance(diffusion_prior, DiffusionPrior)
-        assert isinstance(accelerator, Accelerator)
+
         ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
+        accelerator_kwargs, kwargs = groupby_prefix_and_trim('accelerator_', kwargs)
+
+        if not exists(accelerator):
+            accelerator = Accelerator(**accelerator_kwargs)
 
         # assign some helpful member vars
 
