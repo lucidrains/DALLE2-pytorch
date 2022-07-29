@@ -547,34 +547,40 @@ class NoiseScheduler(nn.Module):
 # diffusion prior
 
 class LayerNorm(nn.Module):
-    def __init__(self, dim, eps = 1e-5, stable = False):
+    def __init__(self, dim, eps = 1e-5, fp16_eps = 1e-3, stable = False):
         super().__init__()
         self.eps = eps
+        self.fp16_eps = fp16_eps
         self.stable = stable
         self.g = nn.Parameter(torch.ones(dim))
 
     def forward(self, x):
+        eps = self.eps if x.dtype == torch.float32 else self.fp16_eps
+
         if self.stable:
             x = x / x.amax(dim = -1, keepdim = True).detach()
 
         var = torch.var(x, dim = -1, unbiased = False, keepdim = True)
         mean = torch.mean(x, dim = -1, keepdim = True)
-        return (x - mean) * (var + self.eps).rsqrt() * self.g
+        return (x - mean) * (var + eps).rsqrt() * self.g
 
 class ChanLayerNorm(nn.Module):
-    def __init__(self, dim, eps = 1e-5, stable = False):
+    def __init__(self, dim, eps = 1e-5, fp16_eps = 1e-3, stable = False):
         super().__init__()
         self.eps = eps
+        self.fp16_eps = fp16_eps
         self.stable = stable
         self.g = nn.Parameter(torch.ones(1, dim, 1, 1))
 
     def forward(self, x):
+        eps = self.eps if x.dtype == torch.float32 else self.fp16_eps
+
         if self.stable:
             x = x / x.amax(dim = 1, keepdim = True).detach()
 
         var = torch.var(x, dim = 1, unbiased = False, keepdim = True)
         mean = torch.mean(x, dim = 1, keepdim = True)
-        return (x - mean) * (var + self.eps).rsqrt() * self.g
+        return (x - mean) * (var + eps).rsqrt() * self.g
 
 class Residual(nn.Module):
     def __init__(self, fn):
