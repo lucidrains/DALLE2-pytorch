@@ -1357,7 +1357,8 @@ class ResnetBlock(nn.Module):
         *,
         cond_dim = None,
         time_cond_dim = None,
-        groups = 8
+        groups = 8,
+        cosine_sim_cross_attn = False
     ):
         super().__init__()
 
@@ -1377,7 +1378,8 @@ class ResnetBlock(nn.Module):
                 'b (h w) c',
                 CrossAttention(
                     dim = dim_out,
-                    context_dim = cond_dim
+                    context_dim = cond_dim,
+                    cosine_sim = cosine_sim_cross_attn
                 )
             )
 
@@ -1412,11 +1414,12 @@ class CrossAttention(nn.Module):
         heads = 8,
         dropout = 0.,
         norm_context = False,
-        pb_relax_alpha = 32 ** 2
+        cosine_sim = False,
+        cosine_sim_scale = 16
     ):
         super().__init__()
-        self.pb_relax_alpha = pb_relax_alpha
-        self.scale = dim_head ** -0.5 * (pb_relax_alpha ** -1)
+        self.cosine_sim = cosine_sim
+        self.scale = cosine_sim_scale if cosine_sim else (dim_head ** -0.5)
         self.heads = heads
         inner_dim = dim_head * heads
 
@@ -1452,7 +1455,10 @@ class CrossAttention(nn.Module):
         k = torch.cat((nk, k), dim = -2)
         v = torch.cat((nv, v), dim = -2)
 
-        q = q * self.scale
+        if self.cosine_sim:
+            q, k = map(l2norm, (q, k))
+
+        q, k = map(lambda t: t * math.sqrt(self.scale), (q, k))
 
         sim = einsum('b h i d, b h j d -> b h i j', q, k)
         max_neg_value = -torch.finfo(sim.dtype).max
@@ -1461,9 +1467,6 @@ class CrossAttention(nn.Module):
             mask = F.pad(mask, (1, 0), value = True)
             mask = rearrange(mask, 'b j -> b 1 1 j')
             sim = sim.masked_fill(~mask, max_neg_value)
-
-        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
-        sim = sim * self.pb_relax_alpha
 
         attn = sim.softmax(dim = -1)
 
@@ -1494,6 +1497,7 @@ class LinearAttention(nn.Module):
 
     def forward(self, fmap):
         h, x, y = self.heads, *fmap.shape[-2:]
+        seq_len = x * y
 
         fmap = self.norm(fmap)
         q, k, v = self.to_qkv(fmap).chunk(3, dim = 1)
@@ -1503,7 +1507,9 @@ class LinearAttention(nn.Module):
         k = k.softmax(dim = -2)
 
         q = q * self.scale
-        v = v / (x * y)
+        v = l2norm(v)
+
+        k, v = map(lambda t: t / math.sqrt(seq_len), (k, v))
 
         context = einsum('b n d, b n e -> b d e', k, v)
         out = einsum('b n d, b d e -> b n e', q, context)
@@ -1591,6 +1597,7 @@ class Unet(nn.Module):
         lowres_cond = False,             # for cascading diffusion - https://cascaded-diffusion.github.io/
         lowres_noise_cond = False,       # for conditioning on low resolution noising, based on Imagen
         sparse_attn = False,
+        cosine_sim_cross_attn = False,
         attend_at_middle = True,         # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
         cond_on_text_encodings = False,
         max_text_len = 256,
@@ -1734,9 +1741,13 @@ class Unet(nn.Module):
 
         upsample_klass = NearestUpsample if not pixel_shuffle_upsample else PixelShuffleUpsample
 
+        # prepare resnet klass
+
+        resnet_block = partial(ResnetBlock, cosine_sim_cross_attn = cosine_sim_cross_attn)
+
         # give memory efficient unet an initial resnet block
 
-        self.init_resnet_block = ResnetBlock(init_dim, init_dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group) if memory_efficient else None
+        self.init_resnet_block = resnet_block(init_dim, init_dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group) if memory_efficient else None
 
         # layers
 
@@ -1763,17 +1774,17 @@ class Unet(nn.Module):
 
             self.downs.append(nn.ModuleList([
                 downsample_klass(dim_in, dim_out = dim_out) if memory_efficient else None,
-                ResnetBlock(dim_layer, dim_layer, time_cond_dim = time_cond_dim, groups = groups),
-                nn.ModuleList([ResnetBlock(dim_layer, dim_layer, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups) for _ in range(layer_num_resnet_blocks)]),
+                resnet_block(dim_layer, dim_layer, time_cond_dim = time_cond_dim, groups = groups),
+                nn.ModuleList([resnet_block(dim_layer, dim_layer, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups) for _ in range(layer_num_resnet_blocks)]),
                 attention,
                 downsample_klass(dim_layer, dim_out = dim_out) if not is_last and not memory_efficient else nn.Conv2d(dim_layer, dim_out, 1)
             ]))
 
         mid_dim = dims[-1]
 
-        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
+        self.mid_block1 = resnet_block(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
         self.mid_attn = create_self_attn(mid_dim)
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
+        self.mid_block2 = resnet_block(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])
 
         for ind, ((dim_in, dim_out), groups, layer_num_resnet_blocks, layer_self_attn) in enumerate(zip(reversed(in_out), reversed(resnet_groups), reversed(num_resnet_blocks), reversed(self_attn))):
             is_last = ind >= (len(in_out) - 1)
@@ -1790,8 +1801,8 @@ class Unet(nn.Module):
             upsample_combiner_dims.append(dim_out)
 
             self.ups.append(nn.ModuleList([
-                ResnetBlock(dim_out + skip_connect_dim, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
-                nn.ModuleList([ResnetBlock(dim_out + skip_connect_dim, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups)  for _ in range(layer_num_resnet_blocks)]),
+                resnet_block(dim_out + skip_connect_dim, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),
+                nn.ModuleList([resnet_block(dim_out + skip_connect_dim, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups)  for _ in range(layer_num_resnet_blocks)]),
                 attention,
                 upsample_klass(dim_out, dim_in) if not is_last or memory_efficient else nn.Identity()
             ]))
@@ -1807,7 +1818,7 @@ class Unet(nn.Module):
 
         # a final resnet block
 
-        self.final_resnet_block = ResnetBlock(self.upsample_combiner.dim_out + dim, dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group)
+        self.final_resnet_block = resnet_block(self.upsample_combiner.dim_out + dim, dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group)
 
         out_dim_in = dim + (channels if lowres_cond else 0)
 
