@@ -1490,7 +1490,8 @@ class LinearAttention(nn.Module):
         self,
         dim,
         dim_head = 32,
-        heads = 8
+        heads = 8,
+        **kwargs
     ):
         super().__init__()
         self.scale = dim_head ** -0.5
