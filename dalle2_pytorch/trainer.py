@@ -519,7 +519,7 @@ class DecoderTrainer(nn.Module):
             clip = decoder.clip
             clip.to(precision_type)
 
-        decoder, *optimizers = list(self.accelerator.prepare(decoder, *optimizers))
+        decoder, train_dataloader, *optimizers = list(self.accelerator.prepare(decoder, dataloaders['train'], *optimizers))
 
         self.decoder = decoder
 

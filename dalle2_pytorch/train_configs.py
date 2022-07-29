@@ -241,7 +241,7 @@ class DecoderConfig(BaseModel):
     clip: Optional[AdapterConfig]   # The clip model to use if embeddings are not provided
     channels: int = 3
     timesteps: int = 1000
-    sample_timesteps: Optional[SingularOrIterable[int]] = None
+    sample_timesteps: Optional[SingularOrIterable[Optional[int]]] = None
     loss_type: str = 'l2'
     beta_schedule: ListOrTuple[str] = None  # None means all cosine
     learned_variance: SingularOrIterable[bool] = True
