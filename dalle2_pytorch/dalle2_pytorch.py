@@ -701,11 +701,12 @@ class Attention(nn.Module):
         dropout = 0.,
         causal = False,
         rotary_emb = None,
-        pb_relax_alpha = 128
+        cosine_sim = True,
+        cosine_sim_scale = 16
     ):
         super().__init__()
-        self.pb_relax_alpha = pb_relax_alpha
-        self.scale = dim_head ** -0.5 * (pb_relax_alpha ** -1)
+        self.scale = cosine_sim_scale if cosine_sim else (dim_head ** -0.5)
+        self.cosine_sim = cosine_sim
 
         self.heads = heads
         inner_dim = dim_head * heads
@@ -745,6 +746,13 @@ class Attention(nn.Module):
         k = torch.cat((nk, k), dim = -2)
         v = torch.cat((nv, v), dim = -2)
 
+        # whether to use cosine sim
+
+        if self.cosine_sim:
+            q, k = map(l2norm, (q, k))
+
+        q, k = map(lambda t: t * math.sqrt(self.scale), (q, k))
+
         # calculate query / key similarities
 
         sim = einsum('b h i d, b j d -> b h i j', q, k)
@@ -769,9 +777,6 @@ class Attention(nn.Module):
             sim = sim.masked_fill(causal_mask, max_neg_value)
 
         # attention
-
-        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
-        sim = sim * self.pb_relax_alpha
 
         attn = sim.softmax(dim = -1)
         attn = self.dropout(attn)
@@ -1604,6 +1609,7 @@ class Unet(nn.Module):
         lowres_noise_cond = False,       # for conditioning on low resolution noising, based on Imagen
         sparse_attn = False,
         cosine_sim_cross_attn = False,
+        cosine_sim_self_attn = False,
         attend_at_middle = True,         # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
         cond_on_text_encodings = False,
         max_text_len = 256,
@@ -1724,7 +1730,7 @@ class Unet(nn.Module):
 
         # attention related params
 
-        attn_kwargs = dict(heads = attn_heads, dim_head = attn_dim_head)
+        attn_kwargs = dict(heads = attn_heads, dim_head = attn_dim_head, cosine_sim = cosine_sim_self_attn)
 
         self_attn = cast_tuple(self_attn, num_stages)
 
