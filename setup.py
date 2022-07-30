@@ -26,7 +26,7 @@ setup(
   install_requires=[
     'accelerate',
     'click',
-    'clip-anytorch',
+    'clip-anytorch>=2.4.0',
     'coca-pytorch>=0.0.5',
     'ema-pytorch>=0.0.7',
     'einops>=0.4',
