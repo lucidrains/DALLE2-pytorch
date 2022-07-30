@@ -627,6 +627,18 @@ images = dalle2(
 # save your image (in this example, of size 256x256)
 ```
 
+Alternatively, you can also use <a href="https://github.com/mlfoundations/open_clip">Open Clip</a>
+
+```bash
+$ pip install open-clip-torch
+```
+
+```python
+from dalle2_pytorch import OpenClipAdapter
+
+clip = OpenClipAdapter()
+```
+
 Now you'll just have to worry about training the Prior and the Decoder!
 
 ## Inpainting
