@@ -1700,7 +1700,7 @@ class Unet(nn.Module):
         attn_heads = 16,
         lowres_cond = False,             # for cascading diffusion - https://cascaded-diffusion.github.io/
         lowres_noise_cond = False,       # for conditioning on low resolution noising, based on Imagen
-        self_cond = False,
+        self_cond = False,               # set this to True to use the self-conditioning technique from - https://arxiv.org/abs/2208.04202
         sparse_attn = False,
         cosine_sim_cross_attn = False,
         cosine_sim_self_attn = False,
