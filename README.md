@@ -1253,4 +1253,15 @@ For detailed information on training the diffusion prior, please refer to the [d
 }
 ```
 
+```bibtex
+@misc{chen2022analog,
+    title   = {Analog Bits: Generating Discrete Data using Diffusion Models with Self-Conditioning},
+    author  = {Ting Chen and Ruixiang Zhang and Geoffrey Hinton},
+    year    = {2022},
+    eprint  = {2208.04202},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CV}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
