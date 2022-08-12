@@ -1004,9 +1004,9 @@ class DiffusionPriorNetwork(nn.Module):
 
         # setup self conditioning
 
-        self_cond = None
         if self.self_cond:
-            self_cond = default(self_cond, lambda: torch.zeros(batch, 1, self.dim, device = device, dtype = dtype))
+            self_cond = default(self_cond, lambda: torch.zeros(batch, self.dim, device = device, dtype = dtype))
+            self_cond = rearrange(self_cond, 'b d -> b 1 d')
 
         # in section 2.2, last paragraph
         # "... consisting of encoded text, CLIP text embedding, diffusion timestep embedding, noised CLIP image embedding, final embedding for prediction"
