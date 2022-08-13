@@ -1279,9 +1279,12 @@ class DiffusionPrior(nn.Module):
         is_ddim = timesteps < self.noise_scheduler.num_timesteps
 
         if not is_ddim:
-            return self.p_sample_loop_ddpm(*args, **kwargs)
+            normalized_image_embed = self.p_sample_loop_ddpm(*args, **kwargs)
+        else:
+            normalized_image_embed = self.p_sample_loop_ddim(*args, **kwargs, timesteps = timesteps)
 
-        return self.p_sample_loop_ddim(*args, **kwargs, timesteps = timesteps)
+        image_embed = normalized_image_embed / self.image_embed_scale
+        return image_embed
 
     def p_losses(self, image_embed, times, text_cond, noise = None):
         noise = default(noise, lambda: torch.randn_like(image_embed))
@@ -1349,8 +1352,6 @@ class DiffusionPrior(nn.Module):
         image_embeds = self.p_sample_loop((batch_size, image_embed_dim), text_cond = text_cond, cond_scale = cond_scale, timesteps = timesteps)
 
         # retrieve original unscaled image embed
-
-        image_embeds /= self.image_embed_scale
 
         text_embeds = text_cond['text_embed']
 
