@@ -1264,4 +1264,14 @@ For detailed information on training the diffusion prior, please refer to the [d
 }
 ```
 
+```bibtex
+@article{Qiao2019WeightS,
+    title   = {Weight Standardization},
+    author  = {Siyuan Qiao and Huiyu Wang and Chenxi Liu and Wei Shen and Alan Loddon Yuille},
+    journal = {ArXiv},
+    year    = {2019},
+    volume  = {abs/1903.10520}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
