@@ -49,6 +49,7 @@ This library would not have gotten to this working state without the help of
 - <a href="https://github.com/crowsonkb">Katherine</a> for her advice
 - <a href="https://stability.ai/">Stability AI</a> for the generous sponsorship
 - <a href="https://huggingface.co">🤗 Huggingface</a> and in particular <a href="https://github.com/sgugger">Sylvain</a> for the <a href="https://github.com/huggingface/accelerate">Accelerate</a> library
+- <a href="https://github.com/arogozhnikov">Alex</a> for <a href="https://github.com/arogozhnikov/einops">einops</a>, indispensable tool for tensor manipulation
 
 ... and many others. Thank you! 🙏
 
