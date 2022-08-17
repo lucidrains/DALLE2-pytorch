@@ -1275,4 +1275,14 @@ For detailed information on training the diffusion prior, please refer to the [d
 }
 ```
 
+```bibtex
+@inproceedings{rogozhnikov2022einops,
+    title   = {Einops: Clear and Reliable Tensor Manipulations with Einstein-like Notation},
+    author  = {Alex Rogozhnikov},
+    booktitle = {International Conference on Learning Representations},
+    year    = {2022},
+    url     = {https://openreview.net/forum?id=oapKSVM2bcj}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>
