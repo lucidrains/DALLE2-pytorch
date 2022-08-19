@@ -250,9 +250,15 @@ class XClipAdapter(BaseClipAdapter):
         text = text[..., :self.max_text_len]
         text_mask = text != 0
         encoder_output = self.clip.text_transformer(text)
-        text_cls, text_encodings = encoder_output[:, 0], encoder_output[:, 1:]
+
+        encoder_output_is_cls = encoder_output.ndim == 3
+
+        text_cls, text_encodings = (encoder_output[:, 0], encoder_output[:, 1:]) if encoder_output_is_cls else (encoder_output, None)
         text_embed = self.clip.to_text_latent(text_cls)
-        text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)
+
+        if exists(text_encodings):
+            text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)
+
         return EmbeddedText(l2norm(text_embed), text_encodings)
 
     @torch.no_grad()
