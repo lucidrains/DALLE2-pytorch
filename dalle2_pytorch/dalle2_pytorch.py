@@ -879,6 +879,8 @@ class Attention(nn.Module):
         # attention
 
         attn = sim.softmax(dim = -1, dtype = torch.float32)
+        attn = attn.type(sim.dtype)
+
         attn = self.dropout(attn)
 
         # aggregate values
@@ -1637,6 +1639,7 @@ class CrossAttention(nn.Module):
             sim = sim.masked_fill(~mask, max_neg_value)
 
         attn = sim.softmax(dim = -1, dtype = torch.float32)
+        attn = attn.type(sim.dtype)
 
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
