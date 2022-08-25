@@ -1285,4 +1285,14 @@ For detailed information on training the diffusion prior, please refer to the [d
 }
 ```
 
+```bibtex
+@article{Sunkara2022NoMS,
+    title   = {No More Strided Convolutions or Pooling: A New CNN Building Block for Low-Resolution Images and Small Objects},
+    author  = {Raja Sunkara and Tie Luo},
+    journal = {ArXiv},
+    year    = {2022},
+    volume  = {abs/2208.03641}
+}
+```
+
 *Creating noise from data is easy; creating data from noise is generative modeling.* - <a href="https://arxiv.org/abs/2011.13456">Yang Song's paper</a>

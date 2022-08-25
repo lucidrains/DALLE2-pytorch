@@ -1479,9 +1479,14 @@ class PixelShuffleUpsample(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-def Downsample(dim, *, dim_out = None):
+def Downsample(dim, dim_out = None):
+    # https://arxiv.org/abs/2208.03641 shows this is the most optimal way to downsample
+    # named SP-conv in the paper, but basically a pixel unshuffle
     dim_out = default(dim_out, dim)
-    return nn.Conv2d(dim, dim_out, 4, 2, 1)
+    return nn.Sequential(
+        Rearrange('b c (h s1) (w s2) -> b (c s1 s2) h w', s1 = 2, s2 = 2),
+        nn.Conv2d(dim * 4, dim_out, 1)
+    )
 
 class WeightStandardizedConv2d(nn.Conv2d):
     """
