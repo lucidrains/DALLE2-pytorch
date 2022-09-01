@@ -1070,7 +1070,7 @@ class DiffusionPriorNetwork(nn.Module):
 
         null_text_embeds = self.null_text_embeds.to(text_embed.dtype)
 
-        text_embeds = torch.where(
+        text_embed = torch.where(
             text_keep_mask,
             text_embed,
             null_text_embeds
