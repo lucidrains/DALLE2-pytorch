@@ -1281,18 +1281,27 @@ class DiffusionPrior(nn.Module):
 
             pred = self.net.forward_with_cond_scale(image_embed, time_cond, self_cond = self_cond, cond_scale = cond_scale, **text_cond)
 
+            # derive x0
+
             if self.predict_x_start:
                 x_start = pred
-                pred_noise = self.noise_scheduler.predict_noise_from_start(image_embed, t = time_cond, x0 = pred)
             else:
-                x_start = self.noise_scheduler.predict_start_from_noise(image_embed, t = time_cond, noise = pred)
-                pred_noise = pred
+                x_start = self.noise_scheduler.predict_start_from_noise(image_embed, t = time_cond, noise = pred_noise)
+
+            # clip x0 before maybe predicting noise
 
             if not self.predict_x_start:
                 x_start.clamp_(-1., 1.)
 
             if self.predict_x_start and self.sampling_clamp_l2norm:
                 x_start = self.l2norm_clamp_embed(x_start)
+
+            # predict noise
+
+            if self.predict_x_start:
+                pred_noise = self.noise_scheduler.predict_noise_from_start(image_embed, t = time_cond, x0 = x_start)
+            else:
+                pred_noise = pred
 
             if time_next < 0:
                 image_embed = x_start
@@ -2897,15 +2906,24 @@ class Decoder(nn.Module):
 
                 pred, _ = self.parse_unet_output(learned_variance, unet_output)
 
+                # predict x0
+
                 if predict_x_start:
                     x_start = pred
-                    pred_noise = noise_scheduler.predict_noise_from_start(img, t = time_cond, x0 = pred)
                 else:
                     x_start = noise_scheduler.predict_start_from_noise(img, t = time_cond, noise = pred)
-                    pred_noise = pred
+
+                # maybe clip x0
 
                 if clip_denoised:
                     x_start = self.dynamic_threshold(x_start)
+
+                # predict noise
+
+                if predict_x_start:
+                    pred_noise = noise_scheduler.predict_noise_from_start(img, t = time_cond, x0 = pred)
+                else:
+                    pred_noise = pred
 
                 c1 = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
                 c2 = ((1 - alpha_next) - torch.square(c1)).sqrt()
