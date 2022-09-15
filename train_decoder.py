@@ -229,8 +229,8 @@ def evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=Non
         metrics["KID_std"] = kid_std.item()
     if exists(LPIPS):
         # Convert from [0, 1] to [-1, 1]
-        renorm_real_images = real_images.mul(2).sub(1)
-        renorm_generated_images = generated_images.mul(2).sub(1)
+        renorm_real_images = real_images.mul(2).sub(1).clamp(-1,1)
+        renorm_generated_images = generated_images.mul(2).sub(1).clamp(-1,1)
         lpips = LearnedPerceptualImagePatchSimilarity(**LPIPS, dist_sync_fn=null_sync)
         lpips.to(device=device)
         lpips.update(renorm_real_images, renorm_generated_images)
