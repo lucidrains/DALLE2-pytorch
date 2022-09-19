@@ -634,10 +634,12 @@ Alternatively, you can also use <a href="https://github.com/mlfoundations/open_c
 $ pip install open-clip-torch
 ```
 
+Ex. using the <a href="https://laion.ai/blog/large-openclip/">SOTA Open Clip</a> model trained by <a href="https://github.com/rom1504">Romain</a>
+
 ```python
 from dalle2_pytorch import OpenClipAdapter
 
-clip = OpenClipAdapter()
+clip = OpenClipAdapter('ViT-H/14')
 ```
 
 Now you'll just have to worry about training the Prior and the Decoder!
