@@ -406,7 +406,10 @@ class OpenClipAdapter(BaseClipAdapter):
 
     @property
     def image_size(self):
-        return self.clip.visual.image_size
+        image_size = self.clip.visual.image_size
+        if isinstance(image_size, tuple):
+            return max(image_size)
+        return image_size
 
     @property
     def image_channels(self):
