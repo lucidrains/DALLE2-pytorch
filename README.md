@@ -1068,7 +1068,7 @@ dataloader = create_image_embedding_dataloader(
 )
 for img, emb in dataloader:
     print(img.shape)  # torch.Size([32, 3, 256, 256])
-    print(emb.shape)  # torch.Size([32, 512])
+    print(emb["img"].shape)  # torch.Size([32, 512])
     # Train decoder only as shown above
 
 # Or create a dataset without a loader so you can configure it manually
