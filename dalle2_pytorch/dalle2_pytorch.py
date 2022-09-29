@@ -314,7 +314,10 @@ class OpenAIClipAdapter(BaseClipAdapter):
         self.eos_id = 49407 # for handling 0 being also '!'
 
         text_attention_final = self.find_layer('ln_final')
+
+        self.dim_latent_ = text_attention_final.weight.shape[0]
         self.handle = text_attention_final.register_forward_hook(self._hook)
+
         self.clip_normalize = preprocess.transforms[-1]
         self.cleared = False
 
@@ -333,7 +336,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
 
     @property
     def dim_latent(self):
-        return 512
+        return self.dim_latent_
 
     @property
     def image_size(self):
