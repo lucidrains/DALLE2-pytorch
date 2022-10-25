@@ -307,6 +307,7 @@ class DecoderTrainConfig(BaseModel):
     wd: SingularOrIterable[float] = 0.01
     warmup_steps: Optional[SingularOrIterable[int]] = None
     find_unused_parameters: bool = True
+    static_graph: bool = True
     max_grad_norm: SingularOrIterable[float] = 0.5
     save_every_n_samples: int = 100000
     n_sample_images: int = 6                       # The number of example images to produce when sampling the train and test dataset

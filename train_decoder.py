@@ -556,7 +556,7 @@ def initialize_training(config: TrainDecoderConfig, config_path):
     torch.manual_seed(config.seed)
 
     # Set up accelerator for configurable distributed training
-    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters)
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters, static_graph=config.train.static_graph)
     init_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=60*60))
     accelerator = Accelerator(kwargs_handlers=[ddp_kwargs, init_kwargs])
 
