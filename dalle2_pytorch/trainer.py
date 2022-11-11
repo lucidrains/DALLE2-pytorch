@@ -236,7 +236,7 @@ class DiffusionPriorTrainer(nn.Module):
         )
 
         if exists(cosine_decay_max_steps):
-            self.scheduler = CosineAnnealingLR(optimizer, T_max = cosine_decay_max_steps)
+            self.scheduler = CosineAnnealingLR(self.optimizer, T_max = cosine_decay_max_steps)
         else:
             self.scheduler = LambdaLR(self.optimizer, lr_lambda = lambda _: 1.0)
         
