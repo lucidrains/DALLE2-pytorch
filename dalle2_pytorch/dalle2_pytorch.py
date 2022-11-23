@@ -1320,7 +1320,7 @@ class DiffusionPrior(nn.Module):
             elif self.predict_x_start:
                 x_start = pred
             else:
-                x_start = self.noise_scheduler.predict_start_from_noise(image_embed, t = time_cond, noise = pred_noise)
+                x_start = self.noise_scheduler.predict_start_from_noise(image_embed, t = time_cond, noise = pred)
 
             # clip x0 before maybe predicting noise
 
