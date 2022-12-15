@@ -360,6 +360,7 @@ class OpenAIClipAdapter(BaseClipAdapter):
         is_eos_id = (text == self.eos_id)
         text_mask_excluding_eos = is_eos_id.cumsum(dim = -1) == 0
         text_mask = F.pad(text_mask_excluding_eos, (1, -1), value = True)
+        text_mask = text_mask & (text != 0)
         assert not self.cleared
 
         text_embed = self.clip.encode_text(text)
@@ -434,6 +435,7 @@ class OpenClipAdapter(BaseClipAdapter):
         is_eos_id = (text == self.eos_id)
         text_mask_excluding_eos = is_eos_id.cumsum(dim = -1) == 0
         text_mask = F.pad(text_mask_excluding_eos, (1, -1), value = True)
+        text_mask = text_mask & (text != 0)
         assert not self.cleared
 
         text_embed = self.clip.encode_text(text)
