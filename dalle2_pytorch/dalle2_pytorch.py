@@ -2496,7 +2496,7 @@ class Decoder(nn.Module):
         dynamic_thres_percentile = 0.95,
         p2_loss_weight_gamma = 0.,                  # p2 loss weight, from https://arxiv.org/abs/2204.00227 - 0 is equivalent to weight of 1 across time - 1. is recommended
         p2_loss_weight_k = 1,
-        ddim_sampling_eta = 1.                      # can be set to 0. for deterministic sampling afaict
+        ddim_sampling_eta = 0.                      # can be set to 0. for deterministic sampling afaict
     ):
         super().__init__()
 
