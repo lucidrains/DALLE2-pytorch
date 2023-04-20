@@ -30,7 +30,7 @@ setup(
     'clip-anytorch>=2.5.2',
     'coca-pytorch>=0.0.5',
     'ema-pytorch>=0.0.7',
-    'einops>=0.6',
+    'einops>=0.6.1',
     'embedding-reader',
     'kornia>=0.5.4',
     'numpy',
