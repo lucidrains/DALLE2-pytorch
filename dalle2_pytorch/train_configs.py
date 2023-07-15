@@ -1,6 +1,6 @@
 import json
 from torchvision import transforms as T
-from pydantic import BaseModel, validator, root_validator
+from pydantic import BaseModel, validator, model_validator
 from typing import List, Optional, Union, Tuple, Dict, Any, TypeVar
 
 from x_clip import CLIP as XCLIP
@@ -38,9 +38,9 @@ class TrainSplitConfig(BaseModel):
     val: float = 0.15
     test: float = 0.1
 
-    @root_validator
-    def validate_all(cls, fields):
-        actual_sum = sum([*fields.values()])
+    @model_validator(mode = 'after')
+    def validate_all(self):
+        actual_sum = sum([*dict(self).values()])
         if actual_sum != 1.:
             raise ValueError(f'{fields.keys()} must sum to 1.0. Found: {actual_sum}')
         return fields
@@ -58,6 +58,7 @@ class TrackerLogConfig(BaseModel):
     def create(self, data_path: str):
         kwargs = self.dict()
         return create_logger(self.log_type, data_path, **kwargs)
+
 
 class TrackerLoadConfig(BaseModel):
     load_from: Optional[str] = None
@@ -348,7 +349,7 @@ class TrainDecoderConfig(BaseModel):
             config = json.load(f)
         return cls(**config)
     
-    @root_validator
+    @model_validator(mode = 'after')
     def check_has_embeddings(cls, values):
         # Makes sure that enough information is provided to get the embeddings specified for training
         data_config, decoder_config = values.get('data'), values.get('decoder')

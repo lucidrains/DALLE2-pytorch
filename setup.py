@@ -36,7 +36,7 @@ setup(
     'numpy',
     'packaging',
     'pillow',
-    'pydantic',
+    'pydantic>=2',
     'pytorch-warmup',
     'resize-right>=0.0.2',
     'rotary-embedding-torch',
