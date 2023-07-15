@@ -577,6 +577,7 @@ def initialize_training(config: TrainDecoderConfig, config_path):
     shards_per_process = len(all_shards) // world_size
     assert shards_per_process > 0, "Not enough shards to split evenly"
     my_shards = all_shards[rank * shards_per_process: (rank + 1) * shards_per_process]
+
     dataloaders = create_dataloaders (
         available_shards=my_shards,
         img_preproc = config.data.img_preproc,

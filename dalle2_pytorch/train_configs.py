@@ -1,6 +1,6 @@
 import json
 from torchvision import transforms as T
-from pydantic import BaseModel, validator, root_validator
+from pydantic import BaseModel, validator, model_validator
 from typing import List, Optional, Union, Tuple, Dict, Any, TypeVar
 
 from x_clip import CLIP as XCLIP
@@ -38,12 +38,12 @@ class TrainSplitConfig(BaseModel):
     val: float = 0.15
     test: float = 0.1
 
-    @root_validator
-    def validate_all(cls, fields):
-        actual_sum = sum([*fields.values()])
+    @model_validator(mode = 'after')
+    def validate_all(self, m):
+        actual_sum = sum([*dict(self).values()])
         if actual_sum != 1.:
-            raise ValueError(f'{fields.keys()} must sum to 1.0. Found: {actual_sum}')
-        return fields
+            raise ValueError(f'{dict(self).keys()} must sum to 1.0. Found: {actual_sum}')
+        return self
 
 class TrackerLogConfig(BaseModel):
     log_type: str = 'console'
@@ -58,6 +58,7 @@ class TrackerLogConfig(BaseModel):
     def create(self, data_path: str):
         kwargs = self.dict()
         return create_logger(self.log_type, data_path, **kwargs)
+
 
 class TrackerLoadConfig(BaseModel):
     load_from: Optional[str] = None
@@ -277,9 +278,9 @@ class DecoderConfig(BaseModel):
         extra = "allow"
 
 class DecoderDataConfig(BaseModel):
-    webdataset_base_url: str               # path to a webdataset with jpg images
-    img_embeddings_url: Optional[str]      # path to .npy files with embeddings
-    text_embeddings_url: Optional[str]     # path to .npy files with embeddings
+    webdataset_base_url: str                     # path to a webdataset with jpg images
+    img_embeddings_url: Optional[str] = None     # path to .npy files with embeddings
+    text_embeddings_url: Optional[str] = None    # path to .npy files with embeddings
     num_workers: int = 4
     batch_size: int = 64
     start_shard: int = 0
@@ -346,11 +347,14 @@ class TrainDecoderConfig(BaseModel):
     def from_json_path(cls, json_path):
         with open(json_path) as f:
             config = json.load(f)
+            print(config)
         return cls(**config)
     
-    @root_validator
-    def check_has_embeddings(cls, values):
+    @model_validator(mode = 'after')
+    def check_has_embeddings(self, m):
         # Makes sure that enough information is provided to get the embeddings specified for training
+        values = dict(self)
+
         data_config, decoder_config = values.get('data'), values.get('decoder')
 
         if not exists(data_config) or not exists(decoder_config):
@@ -375,4 +379,4 @@ class TrainDecoderConfig(BaseModel):
         if text_emb_url:
             assert using_text_embeddings, "Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason."
 
-        return values
+        return m
