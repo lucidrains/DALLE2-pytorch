@@ -90,7 +90,7 @@ class TrackerConfig(BaseModel):
     data_path: str = '.tracker_data'
     overwrite_data_path: bool = False
     log: TrackerLogConfig
-    load: Optional[TrackerLoadConfig]
+    load: Optional[TrackerLoadConfig] = None
     save: Union[List[TrackerSaveConfig], TrackerSaveConfig]
 
     def create(self, full_config: BaseModel, extra_config: dict, dummy_mode: bool = False) -> Tracker:
