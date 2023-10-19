@@ -233,7 +233,7 @@ class UnetConfig(BaseModel):
     cond_on_text_encodings: Optional[bool] = None
     cond_dim: Optional[int] = None
     channels: int = 3
-    self_attn: ListOrTuple[int]
+    self_attn: ListOrTuple[bool]
     attn_dim_head: int = 32
     attn_heads: int = 16
     init_cross_embed: bool = True
@@ -245,7 +245,7 @@ class DecoderConfig(BaseModel):
     unets: ListOrTuple[UnetConfig]
     image_size: Optional[int] = None
     image_sizes: ListOrTuple[int] = None
-    clip: Optional[AdapterConfig]   # The clip model to use if embeddings are not provided
+    clip: Optional[AdapterConfig] = None   # The clip model to use if embeddings are not provided
     channels: int = 3
     timesteps: int = 1000
     sample_timesteps: Optional[SingularOrIterable[Optional[int]]] = None

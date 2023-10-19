@@ -9,7 +9,7 @@
                 "dim_mults": [1, 2, 4, 8],
                 "attn_dim_head": 16,
                 "attn_heads": 4,
-		"self_attn": [false, true, true, true]
+                "self_attn": [false, true, true, true]
             }
         ],
         "clip": {
