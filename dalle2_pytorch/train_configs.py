@@ -233,7 +233,7 @@ class UnetConfig(BaseModel):
     cond_on_text_encodings: Optional[bool] = None
     cond_dim: Optional[int] = None
     channels: int = 3
-    self_attn: ListOrTuple[bool]
+    self_attn: SingularOrIterable[bool] = False
     attn_dim_head: int = 32
     attn_heads: int = 16
     init_cross_embed: bool = True
