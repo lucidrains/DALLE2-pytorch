@@ -511,7 +511,7 @@ def train(
         if next_task == 'eval':
             if exists(evaluate_config):
                 accelerator.print(print_ribbon(f"Starting Evaluation {epoch}", repeat=40))
-                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.dict(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
+                evaluation = evaluate_trainer(trainer, dataloaders["val"], inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.model_dump(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)
                 if is_master:
                     tracker.log(evaluation, step=step())
             next_task = 'sample'
@@ -548,7 +548,7 @@ def create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_
     accelerator.wait_for_everyone()  # If nodes arrive at this point at different times they might try to autoresume the current run which makes no sense and will cause errors
     tracker: Tracker = tracker_config.create(config, accelerator_config, dummy_mode=dummy)
     tracker.save_config(config_path, config_name='decoder_config.json')
-    tracker.add_save_metadata(state_dict_key='config', metadata=config.dict())
+    tracker.add_save_metadata(state_dict_key='config', metadata=config.model_dump())
     return tracker
     
 def initialize_training(config: TrainDecoderConfig, config_path):
@@ -585,7 +585,7 @@ def initialize_training(config: TrainDecoderConfig, config_path):
         val_prop = config.data.splits.val,
         test_prop = config.data.splits.test,
         n_sample_images=config.train.n_sample_images,
-        **config.data.dict(),
+        **config.data.model_dump(),
         rank = rank,
         seed = config.seed,
     )
