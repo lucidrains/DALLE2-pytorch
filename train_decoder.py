@@ -636,7 +636,7 @@ def initialize_training(config: TrainDecoderConfig, config_path):
         inference_device=accelerator.device,
         evaluate_config=config.evaluate,
         condition_on_text_encodings=conditioning_on_text,
-        **config.train.dict(),
+        **config.train.model_dump(),
     )
     
 # Create a simple click command line interface to load the config and start the training
