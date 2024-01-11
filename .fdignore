@@ -1,0 +1,4 @@
+*.tar
+.*
+*.{png,LICENSE,txt}
+docs
