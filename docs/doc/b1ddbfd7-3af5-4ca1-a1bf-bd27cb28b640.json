@@ -1,0 +1,10 @@
+{
+    "summary": "This code is importing modules from the DALLE2-pytorch library, which includes the main DALLE2 class, diffusion prior network, unet, decoder, clip adapters, trainer for the decoder and diffusion prior, and VQGanVAE. The x_clip module also appears to be imported, but its purpose is not explicitly described in this chunk of code.",
+    "details": [
+        {
+            "comment": "This code is importing modules from the DALLE2-pytorch library, which includes the main DALLE2 class, diffusion prior network, unet, decoder, clip adapters, trainer for the decoder and diffusion prior, and VQGanVAE. The x_clip module also appears to be imported, but its purpose is not explicitly described in this chunk of code.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/__init__.py\":0-6",
+            "content": "from dalle2_pytorch.version import __version__\nfrom dalle2_pytorch.dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder\nfrom dalle2_pytorch.dalle2_pytorch import OpenAIClipAdapter, OpenClipAdapter\nfrom dalle2_pytorch.trainer import DecoderTrainer, DiffusionPriorTrainer\nfrom dalle2_pytorch.vqgan_vae import VQGanVAE\nfrom x_clip import CLIP"
+        }
+    ]
+}

@@ -1,0 +1,15 @@
+{
+    "summary": "This code imports libraries, defines functions, and parses command-line arguments for model path, conditioning scale, and input text. It loads a DALL-E2 model, generates an image based on the input text, saves it in PIL format, and returns the saved image.",
+    "details": [
+        {
+            "comment": "This code imports necessary libraries, defines some utility functions and a main function. It also includes a command-line argument parser with options for model path, conditioning scale, and the text input. The assert statement ensures that the specified model file exists before proceeding.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/cli.py\":0-32",
+            "content": "import click\nimport torch\nimport torchvision.transforms as T\nfrom functools import reduce\nfrom pathlib import Path\nfrom dalle2_pytorch import DALLE2, Decoder, DiffusionPrior\ndef safeget(dictionary, keys, default = None):\n    return reduce(lambda d, key: d.get(key, default) if isinstance(d, dict) else default, keys.split('.'), dictionary)\ndef simple_slugify(text, max_length = 255):\n    return text.replace(\"-\", \"_\").replace(\",\", \"\").replace(\" \", \"_\").replace(\"|\", \"--\").strip('-_')[:max_length]\ndef get_pkg_version():\n    from pkg_resources import get_distribution\n    return get_distribution('dalle2_pytorch').version\ndef main():\n    pass\n@click.command()\n@click.option('--model', default = './dalle2.pt', help = 'path to trained DALL-E2 model')\n@click.option('--cond_scale', default = 2, help = 'conditioning scale (classifier free guidance) in decoder')\n@click.argument('text')\ndef dream(\n    model,\n    cond_scale,\n    text\n):\n    model_path = Path(model)\n    full_model_path = str(model_path.resolve())\n    assert model_path.exists(), f'model not found at {full_model_path}'"
+        },
+        {
+            "comment": "This code loads a saved DALL-E2 model from a specified path, checks the version, initializes the prior and decoder components, recreates the model using these components, loads its parameters, generates an image based on input text, converts it to PIL format, saves it with a file name derived from the input text, and returns the saved image.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/cli.py\":33-51",
+            "content": "    loaded = torch.load(str(model_path))\n    version = safeget(loaded, 'version')\n    print(f'loading DALL-E2 from {full_model_path}, saved at version {version} - current package version is {get_pkg_version()}')\n    prior_init_params = safeget(loaded, 'init_params.prior')\n    decoder_init_params = safeget(loaded, 'init_params.decoder')\n    model_params = safeget(loaded, 'model_params')\n    prior = DiffusionPrior(**prior_init_params)\n    decoder = Decoder(**decoder_init_params)\n    dalle2 = DALLE2(prior, decoder)\n    dalle2.load_state_dict(model_params)\n    image = dalle2(text, cond_scale = cond_scale)\n    pil_image = T.ToPILImage()(image)\n    return pil_image.save(f'./{simple_slugify(text)}.png')"
+        }
+    ]
+}
