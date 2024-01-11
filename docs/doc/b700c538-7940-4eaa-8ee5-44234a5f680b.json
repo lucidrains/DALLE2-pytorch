@@ -1,0 +1,10 @@
+{
+    "summary": "This code snippet includes helper functions for time, print, and import operations. It defines a Timer class for measuring elapsed time, a print_ribbon function to format print statements with a banner, and an import_or_print_error function to handle module imports, displaying an error message if necessary and exiting the program.",
+    "details": [
+        {
+            "comment": "This code snippet includes helper functions for time, print, and import operations. It defines a Timer class for measuring elapsed time, a print_ribbon function to format print statements with a banner, and an import_or_print_error function to handle module imports, displaying an error message if necessary and exiting the program.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/utils.py\":0-34",
+            "content": "import time\nimport importlib\n# helper functions\ndef exists(val):\n    return val is not None\n# time helpers\nclass Timer:\n    def __init__(self):\n        self.reset()\n    def reset(self):\n        self.last_time = time.time()\n    def elapsed(self):\n        return time.time() - self.last_time\n# print helpers\ndef print_ribbon(s, symbol = '=', repeat = 40):\n    flank = symbol * repeat\n    return f'{flank} {s} {flank}'\n# import helpers\ndef import_or_print_error(pkg_name, err_str = None):\n    try:\n        return importlib.import_module(pkg_name)\n    except ModuleNotFoundError as e:\n        if exists(err_str):\n            print(err_str)\n        exit()"
+        }
+    ]
+}

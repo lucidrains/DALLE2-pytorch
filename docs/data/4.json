@@ -1,0 +1,552 @@
+{
+    "400": {
+        "file_id": 10,
+        "content": "        for kernel, dim_scale in zip(kernel_sizes, dim_scales):\n            self.convs.append(nn.Conv2d(dim_in, dim_scale, kernel, stride = stride, padding = (kernel - stride) // 2))\n    def forward(self, x):\n        fmaps = tuple(map(lambda conv: conv(x), self.convs))\n        return torch.cat(fmaps, dim = 1)\nclass UpsampleCombiner(nn.Module):\n    def __init__(\n        self,\n        dim,\n        *,\n        enabled = False,\n        dim_ins = tuple(),\n        dim_outs = tuple()\n    ):\n        super().__init__()\n        assert len(dim_ins) == len(dim_outs)\n        self.enabled = enabled\n        if not self.enabled:\n            self.dim_out = dim\n            return\n        self.fmap_convs = nn.ModuleList([Block(dim_in, dim_out) for dim_in, dim_out in zip(dim_ins, dim_outs)])\n        self.dim_out = dim + (sum(dim_outs) if len(dim_outs) > 0 else 0)\n    def forward(self, x, fmaps = None):\n        target_size = x.shape[-1]\n        fmaps = default(fmaps, tuple())\n        if not self.enabled or len(fmaps) == 0 or len(self.fmap_convs) == 0:",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1817-1849"
+    },
+    "401": {
+        "file_id": 10,
+        "content": "The code defines a convolutional network with adjustable kernel sizes and applies an upsampling combiner to combine feature maps. The enabled flag controls whether the upsampling combiner is active, and it can be customized with different input/output dimensions.",
+        "type": "comment"
+    },
+    "402": {
+        "file_id": 10,
+        "content": "            return x\n        fmaps = [resize_image_to(fmap, target_size) for fmap in fmaps]\n        outs = [conv(fmap) for fmap, conv in zip(fmaps, self.fmap_convs)]\n        return torch.cat((x, *outs), dim = 1)\nclass Unet(nn.Module):\n    def __init__(\n        self,\n        dim,\n        *,\n        image_embed_dim = None,\n        text_embed_dim = None,\n        cond_dim = None,\n        num_image_tokens = 4,\n        num_time_tokens = 2,\n        out_dim = None,\n        dim_mults=(1, 2, 4, 8),\n        channels = 3,\n        channels_out = None,\n        self_attn = False,\n        attn_dim_head = 32,\n        attn_heads = 16,\n        lowres_cond = False,             # for cascading diffusion - https://cascaded-diffusion.github.io/\n        lowres_noise_cond = False,       # for conditioning on low resolution noising, based on Imagen\n        self_cond = False,               # set this to True to use the self-conditioning technique from - https://arxiv.org/abs/2208.04202\n        sparse_attn = False,\n        cosine_sim_cross_attn = False,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1850-1877"
+    },
+    "403": {
+        "file_id": 10,
+        "content": "This code defines a Unet model with multiple components including fmaps, convolutions, image and text embeddings, dimensions, conditional parameters, and attention mechanisms. It also includes options for lowres_cond, self_attn, lowres_noise_cond, sparse_attn, and cosine_sim_cross_attn.",
+        "type": "comment"
+    },
+    "404": {
+        "file_id": 10,
+        "content": "        cosine_sim_self_attn = False,\n        attend_at_middle = True,         # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)\n        cond_on_text_encodings = False,\n        max_text_len = 256,\n        cond_on_image_embeds = False,\n        add_image_embeds_to_time = True, # alerted by @mhh0318 to a phrase in the paper - \"Specifically, we modify the architecture described in Nichol et al. (2021) by projecting and adding CLIP embeddings to the existing timestep embedding\"\n        init_dim = None,\n        init_conv_kernel_size = 7,\n        resnet_groups = 8,\n        resnet_weight_standardization = False,\n        num_resnet_blocks = 2,\n        init_cross_embed = True,\n        init_cross_embed_kernel_sizes = (3, 7, 15),\n        cross_embed_downsample = False,\n        cross_embed_downsample_kernel_sizes = (2, 4),\n        memory_efficient = False,\n        scale_skip_connection = False,\n        pixel_shuffle_upsample = True,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1878-1895"
+    },
+    "405": {
+        "file_id": 10,
+        "content": "The code defines various settings for the DALLE2 model, including whether to use cosine similarity self-attention, if a layer of attention should be at the bottleneck, and whether to condition on text or image embeddings. It also includes options for initializing embeddings, resnet blocks, cross embeddings, and more. These settings allow for customization and optimization in the DALLE2 model's architecture.",
+        "type": "comment"
+    },
+    "406": {
+        "file_id": 10,
+        "content": "        final_conv_kernel_size = 1,\n        combine_upsample_fmaps = False, # whether to combine the outputs of all upsample blocks, as in unet squared paper\n        checkpoint_during_training = False,\n        **kwargs\n    ):\n        super().__init__()\n        # save locals to take care of some hyperparameters for cascading DDPM\n        self._locals = locals()\n        del self._locals['self']\n        del self._locals['__class__']\n        # for eventual cascading diffusion\n        self.lowres_cond = lowres_cond\n        # whether to do self conditioning\n        self.self_cond = self_cond\n        # determine dimensions\n        self.channels = channels\n        self.channels_out = default(channels_out, channels)\n         # initial number of channels depends on\n         # (1) low resolution conditioning from cascading ddpm paper, conditioned on previous unet output in the cascade\n         # (2) self conditioning (bit diffusion paper)\n        init_channels = channels * (1 + int(lowres_cond) + int(self_cond))\n        init_dim = default(init_dim, dim)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1896-1927"
+    },
+    "407": {
+        "file_id": 10,
+        "content": "The code initializes a DDPM model with specified parameters such as number of channels, output channels, low resolution conditioning and self-conditioning. It determines the dimensions and initial number of channels based on these inputs and saves the hyperparameters for possible cascading DDPM in the future.",
+        "type": "comment"
+    },
+    "408": {
+        "file_id": 10,
+        "content": "        self.init_conv = CrossEmbedLayer(init_channels, dim_out = init_dim, kernel_sizes = init_cross_embed_kernel_sizes, stride = 1) if init_cross_embed else nn.Conv2d(init_channels, init_dim, init_conv_kernel_size, padding = init_conv_kernel_size // 2)\n        dims = [init_dim, *map(lambda m: dim * m, dim_mults)]\n        in_out = list(zip(dims[:-1], dims[1:]))\n        num_stages = len(in_out)\n        # time, image embeddings, and optional text encoding\n        cond_dim = default(cond_dim, dim)\n        time_cond_dim = dim * 4\n        self.to_time_hiddens = nn.Sequential(\n            SinusoidalPosEmb(dim),\n            nn.Linear(dim, time_cond_dim),\n            nn.GELU()\n        )\n        self.to_time_tokens = nn.Sequential(\n            nn.Linear(time_cond_dim, cond_dim * num_time_tokens),\n            Rearrange('b (r d) -> b r d', r = num_time_tokens)\n        )\n        self.to_time_cond = nn.Sequential(\n            nn.Linear(time_cond_dim, time_cond_dim)\n        )\n        self.image_to_tokens = nn.Sequential(",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1929-1956"
+    },
+    "409": {
+        "file_id": 10,
+        "content": "This code initializes layers for processing time and image inputs. It creates a CrossEmbedLayer or Conv2d layer for the initial input, sets the dimensions for subsequent stages, defines layers to transform time-based data into conditioning tokens, and initializes an image-to-tokens sequence of layers. These layers will be used in a DALL-E 2 model for processing text, image, and time-based inputs for generating images.",
+        "type": "comment"
+    },
+    "410": {
+        "file_id": 10,
+        "content": "            nn.Linear(image_embed_dim, cond_dim * num_image_tokens),\n            Rearrange('b (n d) -> b n d', n = num_image_tokens)\n        ) if cond_on_image_embeds and image_embed_dim != cond_dim else nn.Identity()\n        self.to_image_hiddens = nn.Sequential(\n            nn.Linear(image_embed_dim, time_cond_dim),\n            nn.GELU()\n        ) if cond_on_image_embeds and add_image_embeds_to_time else None\n        self.norm_cond = nn.LayerNorm(cond_dim)\n        self.norm_mid_cond = nn.LayerNorm(cond_dim)\n        # text encoding conditioning (optional)\n        self.text_to_cond = None\n        self.text_embed_dim = None\n        if cond_on_text_encodings:\n            assert exists(text_embed_dim), 'text_embed_dim must be given to the unet if cond_on_text_encodings is True'\n            self.text_to_cond = nn.Linear(text_embed_dim, cond_dim)\n            self.text_embed_dim = text_embed_dim\n        # low resolution noise conditiong, based on Imagen's upsampler training technique\n        self.lowres_noise_cond = lowres_noise_cond",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1957-1981"
+    },
+    "411": {
+        "file_id": 10,
+        "content": "The code defines the architecture of a model. It includes linear layers, layer normalization, GELU activation function, and conditioning options for image embeddings, text encodings, and low resolution noise. These components are used to transform inputs and generate conditions based on optional parameters.",
+        "type": "comment"
+    },
+    "412": {
+        "file_id": 10,
+        "content": "        self.to_lowres_noise_cond = nn.Sequential(\n            SinusoidalPosEmb(dim),\n            nn.Linear(dim, time_cond_dim),\n            nn.GELU(),\n            nn.Linear(time_cond_dim, time_cond_dim)\n        ) if lowres_noise_cond else None\n        # finer control over whether to condition on image embeddings and text encodings\n        # so one can have the latter unets in the cascading DDPMs only focus on super-resoluting\n        self.cond_on_text_encodings = cond_on_text_encodings\n        self.cond_on_image_embeds = cond_on_image_embeds\n        # for classifier free guidance\n        self.null_image_embed = nn.Parameter(torch.randn(1, num_image_tokens, cond_dim))\n        self.null_image_hiddens = nn.Parameter(torch.randn(1, time_cond_dim))\n        self.max_text_len = max_text_len\n        self.null_text_embed = nn.Parameter(torch.randn(1, max_text_len, cond_dim))\n        # whether to scale skip connection, adopted in Imagen\n        self.skip_connect_scale = 1. if not scale_skip_connection else (2 ** -0.5)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1983-2006"
+    },
+    "413": {
+        "file_id": 10,
+        "content": "This code initializes various components of a model. It creates an optional sequential layer for low-res noise conditioning based on a flag, allows fine control over whether to condition on image embeddings and text encodings, and sets up parameters for classifier-free guidance. The skip connection scale is set either to 1 or scaled as per Imagen's approach.",
+        "type": "comment"
+    },
+    "414": {
+        "file_id": 10,
+        "content": "        # attention related params\n        attn_kwargs = dict(heads = attn_heads, dim_head = attn_dim_head, cosine_sim = cosine_sim_self_attn)\n        self_attn = cast_tuple(self_attn, num_stages)\n        create_self_attn = lambda dim: RearrangeToSequence(Residual(Attention(dim, **attn_kwargs)))\n        # resnet block klass\n        resnet_groups = cast_tuple(resnet_groups, num_stages)\n        top_level_resnet_group = first(resnet_groups)\n        num_resnet_blocks = cast_tuple(num_resnet_blocks, num_stages)\n        # downsample klass\n        downsample_klass = Downsample\n        if cross_embed_downsample:\n            downsample_klass = partial(CrossEmbedLayer, kernel_sizes = cross_embed_downsample_kernel_sizes)\n        # upsample klass\n        upsample_klass = NearestUpsample if not pixel_shuffle_upsample else PixelShuffleUpsample\n        # prepare resnet klass\n        resnet_block = partial(ResnetBlock, cosine_sim_cross_attn = cosine_sim_cross_attn, weight_standardization = resnet_weight_standardization)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2008-2035"
+    },
+    "415": {
+        "file_id": 10,
+        "content": "This code initializes various parameters and classes for the DALL-E 2 model. It sets up attention, resnet block, downsampling, and upsampling functions based on user inputs. The code uses partial function applications to customize the resnet blocks and other components according to specific settings.",
+        "type": "comment"
+    },
+    "416": {
+        "file_id": 10,
+        "content": "        # give memory efficient unet an initial resnet block\n        self.init_resnet_block = resnet_block(init_dim, init_dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group) if memory_efficient else None\n        # layers\n        self.downs = nn.ModuleList([])\n        self.ups = nn.ModuleList([])\n        num_resolutions = len(in_out)\n        skip_connect_dims = []          # keeping track of skip connection dimensions\n        upsample_combiner_dims = []     # keeping track of dimensions for final upsample feature map combiner\n        for ind, ((dim_in, dim_out), groups, layer_num_resnet_blocks, layer_self_attn) in enumerate(zip(in_out, resnet_groups, num_resnet_blocks, self_attn)):\n            is_first = ind == 0\n            is_last = ind >= (num_resolutions - 1)\n            layer_cond_dim = cond_dim if not is_first else None\n            dim_layer = dim_out if memory_efficient else dim_in\n            skip_connect_dims.append(dim_layer)\n            attention = nn.Identity()\n            if layer_self_attn:",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2037-2059"
+    },
+    "417": {
+        "file_id": 10,
+        "content": "The code initializes the memory efficient UNet with an initial resnet block, and creates two lists for downsampling and upsampling layers. It also keeps track of skip connection dimensions and dimensions for final upsample feature map combiner. The code iterates over different layer configurations, including whether to use self-attention or not.",
+        "type": "comment"
+    },
+    "418": {
+        "file_id": 10,
+        "content": "                attention = create_self_attn(dim_layer)\n            elif sparse_attn:\n                attention = Residual(LinearAttention(dim_layer, **attn_kwargs))\n            self.downs.append(nn.ModuleList([\n                downsample_klass(dim_in, dim_out = dim_out) if memory_efficient else None,\n                resnet_block(dim_layer, dim_layer, time_cond_dim = time_cond_dim, groups = groups),\n                nn.ModuleList([resnet_block(dim_layer, dim_layer, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups) for _ in range(layer_num_resnet_blocks)]),\n                attention,\n                downsample_klass(dim_layer, dim_out = dim_out) if not is_last and not memory_efficient else nn.Conv2d(dim_layer, dim_out, 1)\n            ]))\n        mid_dim = dims[-1]\n        self.mid_block1 = resnet_block(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])\n        self.mid_attn = create_self_attn(mid_dim)\n        self.mid_block2 = re",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2060-2076"
+    },
+    "419": {
+        "file_id": 10,
+        "content": "This code initializes a module for a neural network. It adds downsampling modules, resnet blocks, attention layers, and convolutional layers based on the given parameters. The last block of the code initializes two additional blocks and an attention layer for further processing.",
+        "type": "comment"
+    },
+    "420": {
+        "file_id": 10,
+        "content": "snet_block(mid_dim, mid_dim, cond_dim = cond_dim, time_cond_dim = time_cond_dim, groups = resnet_groups[-1])\n        for ind, ((dim_in, dim_out), groups, layer_num_resnet_blocks, layer_self_attn) in enumerate(zip(reversed(in_out), reversed(resnet_groups), reversed(num_resnet_blocks), reversed(self_attn))):\n            is_last = ind >= (len(in_out) - 1)\n            layer_cond_dim = cond_dim if not is_last else None\n            skip_connect_dim = skip_connect_dims.pop()\n            attention = nn.Identity()\n            if layer_self_attn:\n                attention = create_self_attn(dim_out)\n            elif sparse_attn:\n                attention = Residual(LinearAttention(dim_out, **attn_kwargs))\n            upsample_combiner_dims.append(dim_out)\n            self.ups.append(nn.ModuleList([\n                resnet_block(dim_out + skip_connect_dim, dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups),\n                nn.ModuleList([resnet_block(dim_out + skip_connect_dim,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2076-2094"
+    },
+    "421": {
+        "file_id": 10,
+        "content": "The code is defining a ResNet-based architecture with optional self-attention layers. It iterates through the input and output dimensions, groups, number of resnet blocks, and self-attention usage to create a series of resnet blocks, optionally including an identity or linear attention layer after each block.",
+        "type": "comment"
+    },
+    "422": {
+        "file_id": 10,
+        "content": " dim_out, cond_dim = layer_cond_dim, time_cond_dim = time_cond_dim, groups = groups)  for _ in range(layer_num_resnet_blocks)]),\n                attention,\n                upsample_klass(dim_out, dim_in) if not is_last or memory_efficient else nn.Identity()\n            ]))\n        # whether to combine outputs from all upsample blocks for final resnet block\n        self.upsample_combiner = UpsampleCombiner(\n            dim = dim,\n            enabled = combine_upsample_fmaps,\n            dim_ins = upsample_combiner_dims,\n            dim_outs = (dim,) * len(upsample_combiner_dims)\n        )\n        # a final resnet block\n        self.final_resnet_block = resnet_block(self.upsample_combiner.dim_out + dim, dim, time_cond_dim = time_cond_dim, groups = top_level_resnet_group)\n        out_dim_in = dim + (channels if lowres_cond else 0)\n        self.to_out = nn.Conv2d(out_dim_in, self.channels_out, kernel_size = final_conv_kernel_size, padding = final_conv_kernel_size // 2)\n        zero_init_(self.to_out) # since both OpenAI and @crowsonkb are doing it",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2094-2116"
+    },
+    "423": {
+        "file_id": 10,
+        "content": "This code defines a DALL·E 2 model architecture. It includes multiple resnet blocks, an upsampling sequence, and a final convolution layer. The number of resnet blocks is determined by the `layer_num_resnet_blocks` parameter. The upsample sequence combines outputs from all upsample blocks if `combine_upsample_fmaps` is set to True. The final resnet block takes in the combined output and the model's channels, with time conditioning (`time_cond_dim`) and top-level resnet grouping (`top_level_resnet_group`). Finally, a convolution layer converts the output to the desired channel size (`channels_out`). The `zero_init_` function initializes the final convolution layer with zero values.",
+        "type": "comment"
+    },
+    "424": {
+        "file_id": 10,
+        "content": "        # whether to checkpoint during training\n        self.checkpoint_during_training = checkpoint_during_training\n    # if the current settings for the unet are not correct\n    # for cascading DDPM, then reinit the unet with the right settings\n    def cast_model_parameters(\n        self,\n        *,\n        lowres_cond,\n        lowres_noise_cond,\n        channels,\n        channels_out,\n        cond_on_image_embeds,\n        cond_on_text_encodings,\n    ):\n        if lowres_cond == self.lowres_cond and \\\n            channels == self.channels and \\\n            cond_on_image_embeds == self.cond_on_image_embeds and \\\n            cond_on_text_encodings == self.cond_on_text_encodings and \\\n            lowres_noise_cond == self.lowres_noise_cond and \\\n            channels_out == self.channels_out:\n            return self\n        updated_kwargs = dict(\n            lowres_cond = lowres_cond,\n            channels = channels,\n            channels_out = channels_out,\n            cond_on_image_embeds = cond_on_image_embeds,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2118-2146"
+    },
+    "425": {
+        "file_id": 10,
+        "content": "This code function checks if the current unet model parameters are correct for cascading DDPM. If not, it reinitializes the unet with the new settings. The parameters being checked include lowres_cond, channels, cond_on_image_embeds, and cond_on_text_encodings.",
+        "type": "comment"
+    },
+    "426": {
+        "file_id": 10,
+        "content": "            cond_on_text_encodings = cond_on_text_encodings,\n            lowres_noise_cond = lowres_noise_cond\n        )\n        return self.__class__(**{**self._locals, **updated_kwargs})\n    def forward_with_cond_scale(\n        self,\n        *args,\n        cond_scale = 1.,\n        **kwargs\n    ):\n        logits = self.forward(*args, **kwargs)\n        if cond_scale == 1:\n            return logits\n        null_logits = self.forward(*args, text_cond_drop_prob = 1., image_cond_drop_prob = 1., **kwargs)\n        return null_logits + (logits - null_logits) * cond_scale\n    def forward(\n        self,\n        x,\n        time,\n        *,\n        image_embed,\n        lowres_cond_img = None,\n        lowres_noise_level = None,\n        text_encodings = None,\n        image_cond_drop_prob = 0.,\n        text_cond_drop_prob = 0.,\n        blur_sigma = None,\n        blur_kernel_size = None,\n        disable_checkpoint = False,\n        self_cond = None\n    ):\n        batch_size, device = x.shape[0], x.device\n        # add low resolution conditioning, if present",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2147-2185"
+    },
+    "427": {
+        "file_id": 10,
+        "content": "This code defines a class with forward, forward_with_cond_scale methods that take various parameters and perform image processing operations. The forward method calculates logits based on input images, time, image embeddings, and other optional parameters. The forward_with_cond_scale method applies conditional scaling to the logits calculated by the forward method.",
+        "type": "comment"
+    },
+    "428": {
+        "file_id": 10,
+        "content": "        assert not (self.lowres_cond and not exists(lowres_cond_img)), 'low resolution conditioning image must be present'\n        # concat self conditioning, if needed\n        if self.self_cond:\n            self_cond = default(self_cond, lambda: torch.zeros_like(x))\n            x = torch.cat((x, self_cond), dim = 1)\n        # concat low resolution conditioning\n        if exists(lowres_cond_img):\n            x = torch.cat((x, lowres_cond_img), dim = 1)\n        # initial convolution\n        x = self.init_conv(x)\n        r = x.clone() # final residual\n        # time conditioning\n        time = time.type_as(x)\n        time_hiddens = self.to_time_hiddens(time)\n        time_tokens = self.to_time_tokens(time_hiddens)\n        t = self.to_time_cond(time_hiddens)\n        # low res noise conditioning (similar to time above)\n        if exists(lowres_noise_level):\n            assert exists(self.to_lowres_noise_cond), 'lowres_noise_cond must be set to True on instantiation of the unet in order to conditiong on lowres noise'",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2187-2216"
+    },
+    "429": {
+        "file_id": 10,
+        "content": "The code checks if low resolution conditioning image exists and appends it to the input. It then concatenates self-conditioning, initializes a convolution, clones the input for residual calculations, performs time conditioning, and applies low resolution noise conditioning (if enabled).",
+        "type": "comment"
+    },
+    "430": {
+        "file_id": 10,
+        "content": "            lowres_noise_level = lowres_noise_level.type_as(x)\n            t = t + self.to_lowres_noise_cond(lowres_noise_level)\n        # conditional dropout\n        image_keep_mask = prob_mask_like((batch_size,), 1 - image_cond_drop_prob, device = device)\n        text_keep_mask = prob_mask_like((batch_size,), 1 - text_cond_drop_prob, device = device)\n        text_keep_mask = rearrange(text_keep_mask, 'b -> b 1 1')\n        # image embedding to be summed to time embedding\n        # discovered by @mhh0318 in the paper\n        if exists(image_embed) and exists(self.to_image_hiddens):\n            image_hiddens = self.to_image_hiddens(image_embed)\n            image_keep_mask_hidden = rearrange(image_keep_mask, 'b -> b 1')\n            null_image_hiddens = self.null_image_hiddens.to(image_hiddens.dtype)\n            image_hiddens = torch.where(\n                image_keep_mask_hidden,\n                image_hiddens,\n                null_image_hiddens\n            )\n            t = t + image_hiddens\n        # mask out image embedding depending on condition dropout",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2217-2243"
+    },
+    "431": {
+        "file_id": 10,
+        "content": "This code performs conditional dropout by maintaining image and text masks, checks if an image embedding exists, applies a conditional dropout to the image embedding based on the masks, and adds it to the time embedding.",
+        "type": "comment"
+    },
+    "432": {
+        "file_id": 10,
+        "content": "        # for classifier free guidance\n        image_tokens = None\n        if self.cond_on_image_embeds:\n            image_keep_mask_embed = rearrange(image_keep_mask, 'b -> b 1 1')\n            image_tokens = self.image_to_tokens(image_embed)\n            null_image_embed = self.null_image_embed.to(image_tokens.dtype) # for some reason pytorch AMP not working\n            image_tokens = torch.where(\n                image_keep_mask_embed,\n                image_tokens,\n                null_image_embed\n            )\n        # take care of text encodings (optional)\n        text_tokens = None\n        if exists(text_encodings) and self.cond_on_text_encodings:\n            assert text_encodings.shape[0] == batch_size, f'the text encodings being passed into the unet does not have the proper batch size - text encoding shape {text_encodings.shape} - required batch size is {batch_size}'\n            assert self.text_embed_dim == text_encodings.shape[-1], f'the text encodings you are passing in have a dimension of {text_encodings.shape[-1]}, but the unet was created with text_embed_dim of {self.text_embed_dim}.'",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2244-2265"
+    },
+    "433": {
+        "file_id": 10,
+        "content": "This code chunk is setting up the input for a classifier-free guidance model. It checks if the image and text encodings are provided, and if so, prepares them for the model's input. If both the image embeddings and text encodings are present, it applies conditional guidance by masking the image tokens with the image_keep_mask and nullifying where needed. It asserts that the text encodings match the batch size and the expected embedding dimension of the model.",
+        "type": "comment"
+    },
+    "434": {
+        "file_id": 10,
+        "content": "            text_mask = torch.any(text_encodings != 0., dim = -1)\n            text_tokens = self.text_to_cond(text_encodings)\n            text_tokens = text_tokens[:, :self.max_text_len]\n            text_mask = text_mask[:, :self.max_text_len]\n            text_tokens_len = text_tokens.shape[1]\n            remainder = self.max_text_len - text_tokens_len\n            if remainder > 0:\n                text_tokens = F.pad(text_tokens, (0, 0, 0, remainder))\n                text_mask = F.pad(text_mask, (0, remainder), value = False)\n            text_mask = rearrange(text_mask, 'b n -> b n 1')\n            assert text_mask.shape[0] == text_keep_mask.shape[0], f'text_mask has shape of {text_mask.shape} while text_keep_mask has shape {text_keep_mask.shape}. text encoding is of shape {text_encodings.shape}'\n            text_keep_mask = text_mask & text_keep_mask\n            null_text_embed = self.null_text_embed.to(text_tokens.dtype) # for some reason pytorch AMP not working\n            text_tokens = torch.where(",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2267-2288"
+    },
+    "435": {
+        "file_id": 10,
+        "content": "This code snippet is preparing text_tokens for the model by applying padding and ensuring correct shape. It creates a binary mask (text_mask) from the non-zero elements in text_encodings to indicate which tokens are present, then applies this mask to both text_tokens and text_keep_mask. The code also checks if there's remaining space in the max_text_len and pads text_tokens accordingly. Lastly, it asserts that the shapes of text_mask and text_keep_mask match before combining them using a logical AND operation.",
+        "type": "comment"
+    },
+    "436": {
+        "file_id": 10,
+        "content": "                text_keep_mask,\n                text_tokens,\n                null_text_embed\n            )\n        # main conditioning tokens (c)\n        c = time_tokens\n        if exists(image_tokens):\n            c = torch.cat((c, image_tokens), dim = -2)\n        # text and image conditioning tokens (mid_c)\n        # to save on compute, only do cross attention based conditioning on the inner most layers of the Unet\n        mid_c = c if not exists(text_tokens) else torch.cat((c, text_tokens), dim = -2)\n        # normalize conditioning tokens\n        c = self.norm_cond(c)\n        mid_c = self.norm_mid_cond(mid_c)\n        # gradient checkpointing\n        can_checkpoint = self.training and self.checkpoint_during_training and not disable_checkpoint\n        apply_checkpoint_fn = make_checkpointable if can_checkpoint else identity\n        # make checkpointable modules\n        init_resnet_block, mid_block1, mid_attn, mid_block2, final_resnet_block = [maybe(apply_checkpoint_fn)(module) for module in (self.init_resnet_block, self.mid_block1, self.mid_attn, self.mid_block2, self.final_resnet_block)]",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2289-2318"
+    },
+    "437": {
+        "file_id": 10,
+        "content": "This code snippet is part of the DALLE2-pytorch model, responsible for handling conditioning tokens (main and auxiliary) for image and text inputs. The code normalizes these tokens using `self.norm_cond` and `self.norm_mid_cond`, applies gradient checkpointing, and makes certain modules (e.g., `self.init_resnet_block`) checkpointable based on training parameters. This helps to optimize the model's computation during inference and improve its performance.",
+        "type": "comment"
+    },
+    "438": {
+        "file_id": 10,
+        "content": "        can_checkpoint_cond = lambda m: isinstance(m, ResnetBlock)\n        downs, ups = [maybe(apply_checkpoint_fn)(m, condition = can_checkpoint_cond) for m in (self.downs, self.ups)]\n        # initial resnet block\n        if exists(init_resnet_block):\n            x = init_resnet_block(x, t)\n        # go through the layers of the unet, down and up\n        down_hiddens = []\n        up_hiddens = []\n        for pre_downsample, init_block, resnet_blocks, attn, post_downsample in downs:\n            if exists(pre_downsample):\n                x = pre_downsample(x)\n            x = init_block(x, t, c)\n            for resnet_block in resnet_blocks:\n                x = resnet_block(x, t, c)\n                down_hiddens.append(x.contiguous())\n            x = attn(x)\n            down_hiddens.append(x.contiguous())\n            if exists(post_downsample):\n                x = post_downsample(x)\n        x = mid_block1(x, t, mid_c)\n        if exists(mid_attn):\n            x = mid_attn(x)\n        x = mid_block2(x, t, mid_c)\n ",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2320-2356"
+    },
+    "439": {
+        "file_id": 10,
+        "content": "This code initializes a U-Net model by iterating over its components. It applies pre-downsample, initial block, and resnet blocks to the input x. Then, it adds hidden representations of down and up stages into separate lists. After that, it passes x through an attention module and potentially post-downsample. Finally, it processes x with two more blocks, possibly applies mid-attention, and returns the final result.",
+        "type": "comment"
+    },
+    "440": {
+        "file_id": 10,
+        "content": "       connect_skip = lambda fmap: torch.cat((fmap, down_hiddens.pop() * self.skip_connect_scale), dim = 1)\n        for init_block, resnet_blocks, attn, upsample in ups:\n            x = connect_skip(x)\n            x = init_block(x, t, c)\n            for resnet_block in resnet_blocks:\n                x = connect_skip(x)\n                x = resnet_block(x, t, c)\n            x = attn(x)\n            up_hiddens.append(x.contiguous())\n            x = upsample(x)\n        x = self.upsample_combiner(x, up_hiddens)\n        x = torch.cat((x, r), dim = 1)\n        x = final_resnet_block(x, t)\n        if exists(lowres_cond_img):\n            x = torch.cat((x, lowres_cond_img), dim = 1)\n        return self.to_out(x)\nclass LowresConditioner(nn.Module):\n    def __init__(\n        self,\n        downsample_first = True,\n        use_blur = True,\n        blur_prob = 0.5,\n        blur_sigma = 0.6,\n        blur_kernel_size = 3,\n        use_noise = False,\n        input_image_range = None,\n        normalize_img_fn = identity,\n        unnormalize_img_fn = identity",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2356-2393"
+    },
+    "441": {
+        "file_id": 10,
+        "content": "This code defines a class for processing input images, which consists of an upscaling network and a low-resolution conditioner. The upscaling network takes in a low-resolution image and upscales it using skip connections and residual blocks. The low-resolution conditioner can optionally take a low-resolution version of the input image as additional input. The final output is passed through an activation function before being returned.",
+        "type": "comment"
+    },
+    "442": {
+        "file_id": 10,
+        "content": "    ):\n        super().__init__()\n        self.downsample_first = downsample_first\n        self.input_image_range = input_image_range\n        self.use_blur = use_blur\n        self.blur_prob = blur_prob\n        self.blur_sigma = blur_sigma\n        self.blur_kernel_size = blur_kernel_size\n        self.use_noise = use_noise\n        self.normalize_img = normalize_img_fn\n        self.unnormalize_img = unnormalize_img_fn\n        self.noise_scheduler = NoiseScheduler(beta_schedule = 'linear', timesteps = 1000, loss_type = 'l2') if use_noise else None\n    def noise_image(self, cond_fmap, noise_levels = None):\n        assert exists(self.noise_scheduler)\n        batch = cond_fmap.shape[0]\n        cond_fmap = self.normalize_img(cond_fmap)\n        random_noise_levels = default(noise_levels, lambda: self.noise_scheduler.sample_random_times(batch))\n        cond_fmap = self.noise_scheduler.q_sample(cond_fmap, t = random_noise_levels, noise = torch.randn_like(cond_fmap))\n        cond_fmap = self.unnormalize_img(cond_fmap)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2394-2418"
+    },
+    "443": {
+        "file_id": 10,
+        "content": "This code initializes an object with various parameters, including downsampling, image range, and noise-related options. It also includes methods for generating noise images based on the given parameters. The class utilizes normalization and denormalization functions as well as a NoiseScheduler instance to apply noise to the input condition maps.",
+        "type": "comment"
+    },
+    "444": {
+        "file_id": 10,
+        "content": "        return cond_fmap, random_noise_levels\n    def forward(\n        self,\n        cond_fmap,\n        *,\n        target_image_size,\n        downsample_image_size = None,\n        should_blur = True,\n        blur_sigma = None,\n        blur_kernel_size = None\n    ):\n        if self.downsample_first and exists(downsample_image_size):\n            cond_fmap = resize_image_to(cond_fmap, downsample_image_size, clamp_range = self.input_image_range, nearest = True)\n        # blur is only applied 50% of the time\n        # section 3.1 in https://arxiv.org/abs/2106.15282\n        if self.use_blur and should_blur and random.random() < self.blur_prob:\n            # when training, blur the low resolution conditional image\n            blur_sigma = default(blur_sigma, self.blur_sigma)\n            blur_kernel_size = default(blur_kernel_size, self.blur_kernel_size)\n            # allow for drawing a random sigma between lo and hi float values\n            if isinstance(blur_sigma, tuple):\n                blur_sigma = tuple(map(float, blur_sigma))",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2419-2447"
+    },
+    "445": {
+        "file_id": 10,
+        "content": "This function takes a conditional feature map and optional parameters to resize, blur, and downsample the image. The code checks if downsampling is needed first, then decides whether to apply blurring based on a probability setting. Blur sigma and kernel size are also set based on default values or user input.",
+        "type": "comment"
+    },
+    "446": {
+        "file_id": 10,
+        "content": "                blur_sigma = random.uniform(*blur_sigma)\n            # allow for drawing a random kernel size between lo and hi int values\n            if isinstance(blur_kernel_size, tuple):\n                blur_kernel_size = tuple(map(int, blur_kernel_size))\n                kernel_size_lo, kernel_size_hi = blur_kernel_size\n                blur_kernel_size = random.randrange(kernel_size_lo, kernel_size_hi + 1)\n            cond_fmap = gaussian_blur2d(cond_fmap, cast_tuple(blur_kernel_size, 2), cast_tuple(blur_sigma, 2))\n        # resize to target image size\n        cond_fmap = resize_image_to(cond_fmap, target_image_size, clamp_range = self.input_image_range, nearest = True)\n        # noise conditioning, as done in Imagen\n        # as a replacement for the BSR noising, and potentially replace blurring for first stage too\n        random_noise_levels = None\n        if self.use_noise:\n            cond_fmap, random_noise_levels = self.noise_image(cond_fmap)\n        # return conditioning feature map, as well as the augmentation noise levels",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2448-2471"
+    },
+    "447": {
+        "file_id": 10,
+        "content": "This code performs image conditioning by applying Gaussian blur and noise addition, then resizes the image to a target size. The blurring and noise addition are optional depending on the use_noise flag, and the final result is returned along with any applied random noise levels.",
+        "type": "comment"
+    },
+    "448": {
+        "file_id": 10,
+        "content": "        return cond_fmap, random_noise_levels\nclass Decoder(nn.Module):\n    def __init__(\n        self,\n        unet,\n        *,\n        clip = None,\n        image_size = None,\n        channels = 3,\n        vae = tuple(),\n        timesteps = 1000,\n        sample_timesteps = None,\n        image_cond_drop_prob = 0.1,\n        text_cond_drop_prob = 0.5,\n        loss_type = 'l2',\n        beta_schedule = None,\n        predict_x_start = False,\n        predict_v = False,\n        predict_x_start_for_latent_diffusion = False,\n        image_sizes = None,                         # for cascading ddpm, image size at each stage\n        random_crop_sizes = None,                   # whether to random crop the image at that stage in the cascade (super resoluting convolutions at the end may be able to generalize on smaller crops)\n        use_noise_for_lowres_cond = False,          # whether to use Imagen-like noising for low resolution conditioning  \n        use_blur_for_lowres_cond = True,            # whether to use the blur conditioning used in the original cascading ddpm paper, as well as DALL-E2",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2473-2496"
+    },
+    "449": {
+        "file_id": 10,
+        "content": "The code defines a Decoder class that takes various parameters like unet, clip, image_size, channels, vae, timesteps, sample_timesteps, image_cond_drop_prob, text_cond_drop_prob, loss_type, beta_schedule, predict_x_start, predict_v, predict_x_start_for_latent_diffusion, image_sizes, random_crop_sizes, use_noise_for_lowres_cond, and use_blur_for_lowres_cond. It returns cond_fmap and random_noise_levels.",
+        "type": "comment"
+    },
+    "450": {
+        "file_id": 10,
+        "content": "        lowres_downsample_first = True,             # cascading ddpm - resizes to lower resolution, then to next conditional resolution + blur\n        blur_prob = 0.5,                            # cascading ddpm - when training, the gaussian blur is only applied 50% of the time\n        blur_sigma = 0.6,                           # cascading ddpm - blur sigma\n        blur_kernel_size = 3,                       # cascading ddpm - blur kernel size\n        lowres_noise_sample_level = 0.2,            # in imagen paper, they use a 0.2 noise level at sample time for low resolution conditioning\n        clip_denoised = True,\n        clip_x_start = True,\n        clip_adapter_overrides = dict(),\n        learned_variance = True,\n        learned_variance_constrain_frac = False,\n        vb_loss_weight = 0.001,\n        unconditional = False,                      # set to True for generating images without conditioning\n        auto_normalize_img = True,                  # whether to take care of normalizing the i",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2497-2509"
+    },
+    "451": {
+        "file_id": 10,
+        "content": "This code snippet is responsible for configuring the settings for a denoising diffusion probabilistic model (DDPM) in the DALLE2-pytorch project. The settings include cascading DDPM parameters, noise level at sample time, clip options, learned variance configuration, and unconditional image generation toggles.",
+        "type": "comment"
+    },
+    "452": {
+        "file_id": 10,
+        "content": "mage from [0, 1] to [-1, 1] and back automatically - you can turn this off if you want to pass in the [-1, 1] ranged image yourself from the dataloader\n        use_dynamic_thres = False,                  # from the Imagen paper\n        dynamic_thres_percentile = 0.95,\n        p2_loss_weight_gamma = 0.,                  # p2 loss weight, from https://arxiv.org/abs/2204.00227 - 0 is equivalent to weight of 1 across time - 1. is recommended\n        p2_loss_weight_k = 1,\n        ddim_sampling_eta = 0.                      # can be set to 0. for deterministic sampling afaict\n    ):\n        super().__init__()\n        # clip\n        self.clip = None\n        if exists(clip):\n            assert not unconditional, 'clip must not be given if doing unconditional image training'\n            assert channels == clip.image_channels, f'channels of image ({channels}) should be equal to the channels that CLIP accepts ({clip.image_channels})'\n            if isinstance(clip, CLIP):\n                clip = XClipAdapter(clip, **clip_adapter_overrides)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2509-2526"
+    },
+    "453": {
+        "file_id": 10,
+        "content": "The code initializes an object with various parameters such as use_dynamic_thres, dynamic_thres_percentile, p2_loss_weight_gamma, p2_loss_weight_k, ddim_sampling_eta, and clip. It also checks if the 'clip' parameter is given and performs necessary assertions. If 'clip' exists and unconditional image training is not being done, it ensures the channels match with CLIP's accepted channels. It also uses XClipAdapter for compatibility with additional overrides.",
+        "type": "comment"
+    },
+    "454": {
+        "file_id": 10,
+        "content": "            elif isinstance(clip, CoCa):\n                clip = CoCaAdapter(clip, **clip_adapter_overrides)\n            freeze_model_and_make_eval_(clip)\n            assert isinstance(clip, BaseClipAdapter)\n            self.clip = clip\n        # determine image size, with image_size and image_sizes taking precedence\n        if exists(image_size) or exists(image_sizes):\n            assert exists(image_size) ^ exists(image_sizes), 'only one of image_size or image_sizes must be given'\n            image_size = default(image_size, lambda: image_sizes[-1])\n        elif exists(clip):\n            image_size = clip.image_size\n        else:\n            raise Error('either image_size, image_sizes, or clip must be given to decoder')\n        # channels\n        self.channels = channels\n        # normalize and unnormalize image functions\n        self.normalize_img = normalize_neg_one_to_one if auto_normalize_img else identity\n        self.unnormalize_img = unnormalize_zero_to_one if auto_normalize_img else identity\n        # verify conditioning method",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2527-2555"
+    },
+    "455": {
+        "file_id": 10,
+        "content": "The code checks the input 'clip' type and applies the CoCaAdapter if it's an instance of CoCa. It then freezes the model for evaluation, ensures 'clip' is a BaseClipAdapter instance, and assigns it to self.clip. The image_size is determined from either 'image_size', 'image_sizes', or 'clip'. It sets the 'channels', 'normalize_img', and 'unnormalize_img' based on given parameters.",
+        "type": "comment"
+    },
+    "456": {
+        "file_id": 10,
+        "content": "        unets = cast_tuple(unet)\n        num_unets = len(unets)\n        self.num_unets = num_unets\n        self.unconditional = unconditional\n        # automatically take care of ensuring that first unet is unconditional\n        # while the rest of the unets are conditioned on the low resolution image produced by previous unet\n        vaes = pad_tuple_to_length(cast_tuple(vae), len(unets), fillvalue = NullVQGanVAE(channels = self.channels))\n        # whether to use learned variance, defaults to True for the first unet in the cascade, as in paper\n        learned_variance = pad_tuple_to_length(cast_tuple(learned_variance), len(unets), fillvalue = False)\n        self.learned_variance = learned_variance\n        self.learned_variance_constrain_frac = learned_variance_constrain_frac # whether to constrain the output of the network (the interpolation fraction) from 0 to 1\n        self.vb_loss_weight = vb_loss_weight\n        # default and validate conditioning parameters\n        use_noise_for_lowres_cond = cast_tuple(use_noise_for_lowres_cond, num_unets - 1, validate = False)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2557-2577"
+    },
+    "457": {
+        "file_id": 10,
+        "content": "This code initializes the U-Nets and VAEs for a DALL-E 2 model. It sets the number of unets, whether they are unconditional or conditioned on previous unets, and their learned variance. It also sets default parameters for conditioning with noise and constrains the output of the network from 0 to 1.",
+        "type": "comment"
+    },
+    "458": {
+        "file_id": 10,
+        "content": "        use_blur_for_lowres_cond = cast_tuple(use_blur_for_lowres_cond, num_unets - 1, validate = False)\n        if len(use_noise_for_lowres_cond) < num_unets:\n            use_noise_for_lowres_cond = (False, *use_noise_for_lowres_cond)\n        if len(use_blur_for_lowres_cond) < num_unets:\n            use_blur_for_lowres_cond = (False, *use_blur_for_lowres_cond)\n        assert not use_noise_for_lowres_cond[0], 'first unet will never need low res noise conditioning'\n        assert not use_blur_for_lowres_cond[0], 'first unet will never need low res blur conditioning'\n        assert num_unets == 1 or all((use_noise or use_blur) for use_noise, use_blur in zip(use_noise_for_lowres_cond[1:], use_blur_for_lowres_cond[1:]))\n        # construct unets and vaes\n        self.unets = nn.ModuleList([])\n        self.vaes = nn.ModuleList([])\n        for ind, (one_unet, one_vae, one_unet_learned_var, lowres_noise_cond) in enumerate(zip(unets, vaes, learned_variance, use_noise_for_lowres_cond)):\n            assert isinstance(one_unet, Unet)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2578-2597"
+    },
+    "459": {
+        "file_id": 10,
+        "content": "This code is setting up Unets and Vaes for a model. It ensures that the lists of noise conditions and blur conditions are long enough to correspond to each Unet, adds the Unets and Vaes to module lists, and asserts that at least one Unet will not need low res noise or blur conditioning.",
+        "type": "comment"
+    },
+    "460": {
+        "file_id": 10,
+        "content": "            assert isinstance(one_vae, (VQGanVAE, NullVQGanVAE))\n            is_first = ind == 0\n            latent_dim = one_vae.encoded_dim if exists(one_vae) else None\n            unet_channels = default(latent_dim, self.channels)\n            unet_channels_out = unet_channels * (1 if not one_unet_learned_var else 2)\n            one_unet = one_unet.cast_model_parameters(\n                lowres_cond = not is_first,\n                lowres_noise_cond = lowres_noise_cond,\n                cond_on_image_embeds = not unconditional and is_first,\n                cond_on_text_encodings = not unconditional and one_unet.cond_on_text_encodings,\n                channels = unet_channels,\n                channels_out = unet_channels_out\n            )\n            self.unets.append(one_unet)\n            self.vaes.append(one_vae.copy_for_eval())\n        # sampling timesteps, defaults to non-ddim with full timesteps sampling\n        self.sample_timesteps = cast_tuple(sample_timesteps, num_unets)\n        self.ddim_sampling_eta = ddim_sampling_eta",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2598-2621"
+    },
+    "461": {
+        "file_id": 10,
+        "content": "This code block appends a new VAE instance to the list of VAEs and a copied evaluation version of that VAE to the VAEs list. The code also sets the sampling timesteps and ddim_sampling_eta based on the input parameters.",
+        "type": "comment"
+    },
+    "462": {
+        "file_id": 10,
+        "content": "        # create noise schedulers per unet\n        if not exists(beta_schedule):\n            beta_schedule = ('cosine', *(('cosine',) * max(num_unets - 2, 0)), *(('linear',) * int(num_unets > 1)))\n        beta_schedule = cast_tuple(beta_schedule, num_unets)\n        p2_loss_weight_gamma = cast_tuple(p2_loss_weight_gamma, num_unets)\n        self.noise_schedulers = nn.ModuleList([])\n        for ind, (unet_beta_schedule, unet_p2_loss_weight_gamma, sample_timesteps) in enumerate(zip(beta_schedule, p2_loss_weight_gamma, self.sample_timesteps)):\n            assert not exists(sample_timesteps) or sample_timesteps <= timesteps, f'sampling timesteps {sample_timesteps} must be less than or equal to the number of training timesteps {timesteps} for unet {ind + 1}'\n            noise_scheduler = NoiseScheduler(\n                beta_schedule = unet_beta_schedule,\n                timesteps = timesteps,\n                loss_type = loss_type,\n                p2_loss_weight_gamma = unet_p2_loss_weight_gamma,\n                p2_loss_weight_k = p2_loss_weight_k",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2623-2641"
+    },
+    "463": {
+        "file_id": 10,
+        "content": "This code creates noise schedulers for each unet, based on the provided beta schedule and loss weight gamma. It asserts that sampling timesteps must be less than or equal to the number of training timesteps, and initializes a NoiseScheduler object with the specified parameters for each unet.",
+        "type": "comment"
+    },
+    "464": {
+        "file_id": 10,
+        "content": "            )\n            self.noise_schedulers.append(noise_scheduler)\n        # unet image sizes\n        image_sizes = default(image_sizes, (image_size,))\n        image_sizes = tuple(sorted(set(image_sizes)))\n        assert self.num_unets == len(image_sizes), f'you did not supply the correct number of u-nets ({self.num_unets}) for resolutions {image_sizes}'\n        self.image_sizes = image_sizes\n        self.sample_channels = cast_tuple(self.channels, len(image_sizes))\n        # random crop sizes (for super-resoluting unets at the end of cascade?)\n        self.random_crop_sizes = cast_tuple(random_crop_sizes, len(image_sizes))\n        assert not exists(self.random_crop_sizes[0]), 'you would not need to randomly crop the image for the base unet'\n        # predict x0 config\n        self.predict_x_start = cast_tuple(predict_x_start, len(unets)) if not predict_x_start_for_latent_diffusion else tuple(map(lambda t: isinstance(t, VQGanVAE), self.vaes))\n        # predict v\n        self.predict_v = cast_tuple(predict_v, len(unets))",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2642-2666"
+    },
+    "465": {
+        "file_id": 10,
+        "content": "This code is setting up the parameters for a model. It creates noise schedulers, defines image sizes and crop sizes for different resolutions, and configures predicting x0 and v values. These settings will be used to train or use the model. The code also performs assertions to ensure that the correct number of unets and vaes are provided for each resolution.",
+        "type": "comment"
+    },
+    "466": {
+        "file_id": 10,
+        "content": "        # input image range\n        self.input_image_range = (-1. if not auto_normalize_img else 0., 1.)\n        # cascading ddpm related stuff\n        lowres_conditions = tuple(map(lambda t: t.lowres_cond, self.unets))\n        assert lowres_conditions == (False, *((True,) * (num_unets - 1))), 'the first unet must be unconditioned (by low resolution image), and the rest of the unets must have `lowres_cond` set to True'\n        self.lowres_conds = nn.ModuleList([])\n        for unet_index, use_noise, use_blur in zip(range(num_unets), use_noise_for_lowres_cond, use_blur_for_lowres_cond):\n            if unet_index == 0:\n                self.lowres_conds.append(None)\n                continue\n            lowres_cond = LowresConditioner(\n                downsample_first = lowres_downsample_first,\n                use_blur = use_blur,\n                use_noise = use_noise,\n                blur_prob = blur_prob,\n                blur_sigma = blur_sigma,\n                blur_kernel_size = blur_kernel_size,\n                input_image_range = self.input_image_range,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2668-2691"
+    },
+    "467": {
+        "file_id": 10,
+        "content": "The code initializes the input image range and handles lowres_cond for each unet in the model. It ensures that the first unet is unconditioned, while the rest have `lowres_cond` set to True. The `LowresConditioner` class is used with specified parameters for downsampling, blurring, and input image range.",
+        "type": "comment"
+    },
+    "468": {
+        "file_id": 10,
+        "content": "                normalize_img_fn = self.normalize_img,\n                unnormalize_img_fn = self.unnormalize_img\n            )\n            self.lowres_conds.append(lowres_cond)\n        self.lowres_noise_sample_level = lowres_noise_sample_level\n        # classifier free guidance\n        self.image_cond_drop_prob = image_cond_drop_prob\n        self.text_cond_drop_prob = text_cond_drop_prob\n        self.can_classifier_guidance = image_cond_drop_prob > 0. or text_cond_drop_prob > 0.\n        # whether to clip when sampling\n        self.clip_denoised = clip_denoised\n        self.clip_x_start = clip_x_start\n        # dynamic thresholding settings, if clipping denoised during sampling\n        self.use_dynamic_thres = use_dynamic_thres\n        self.dynamic_thres_percentile = dynamic_thres_percentile\n        # device tracker\n        self.register_buffer('_dummy', torch.Tensor([True]), persistent = False)\n    @property\n    def device(self):\n        return self._dummy.device\n    @property\n    def condition_on_text_encodings(self):",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2692-2725"
+    },
+    "469": {
+        "file_id": 10,
+        "content": "This code is setting up parameters and functions for an image generation model. It includes normalization and unnormalization functions, lowres noise sample level, classifier free guidance settings, clipping options during sampling, dynamic thresholding settings, and device management. The model can condition on text encodings and uses a device tracker to keep track of device information.",
+        "type": "comment"
+    },
+    "470": {
+        "file_id": 10,
+        "content": "        return any([unet.cond_on_text_encodings for unet in self.unets if isinstance(unet, Unet)])\n    def get_unet(self, unet_number):\n        assert 0 < unet_number <= self.num_unets\n        index = unet_number - 1\n        return self.unets[index]\n    def parse_unet_output(self, learned_variance, output):\n        var_interp_frac_unnormalized = None\n        if learned_variance:\n            output, var_interp_frac_unnormalized = output.chunk(2, dim = 1)\n        return UnetOutput(output, var_interp_frac_unnormalized)\n    @contextmanager\n    def one_unet_in_gpu(self, unet_number = None, unet = None):\n        assert exists(unet_number) ^ exists(unet)\n        if exists(unet_number):\n            unet = self.get_unet(unet_number)\n        # devices\n        cuda, cpu = torch.device('cuda'), torch.device('cpu')\n        self.cuda()\n        devices = [module_device(unet) for unet in self.unets]\n        self.unets.to(cpu)\n        unet.to(cuda)\n        yield\n        for unet, device in zip(self.unets, devices):\n            unet.to(device)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2726-2762"
+    },
+    "471": {
+        "file_id": 10,
+        "content": "This code defines methods for working with a collection of UNET models. The `get_unet` method retrieves a specific UNET based on its number, ensuring it is within the valid range. `parse_unet_output` parses the output of a UNET, interpreting learned variance if present. The `one_unet_in_gpu` context manager allows running inference for one UNET on the GPU while keeping other UNETs on the CPU.",
+        "type": "comment"
+    },
+    "472": {
+        "file_id": 10,
+        "content": "    def dynamic_threshold(self, x):\n        \"\"\" proposed in https://arxiv.org/abs/2205.11487 as an improved clamping in the setting of classifier free guidance \"\"\"\n        # s is the threshold amount\n        # static thresholding would just be s = 1\n        s = 1.\n        if self.use_dynamic_thres:\n            s = torch.quantile(\n                rearrange(x, 'b ... -> b (...)').abs(),\n                self.dynamic_thres_percentile,\n                dim = -1\n            )\n            s.clamp_(min = 1.)\n            s = s.view(-1, *((1,) * (x.ndim - 1)))\n        # clip by threshold, depending on whether static or dynamic\n        x = x.clamp(-s, s) / s\n        return x\n    def p_mean_variance(self, unet, x, t, image_embed, noise_scheduler, text_encodings = None, lowres_cond_img = None, self_cond = None, clip_denoised = True, predict_x_start = False, predict_v = False, learned_variance = False, cond_scale = 1., model_output = None, lowres_noise_level = None):\n        assert not (cond_scale != 1. and not self.",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2764-2785"
+    },
+    "473": {
+        "file_id": 10,
+        "content": "This code snippet defines a function `dynamic_threshold` and `p_mean_variance`. The `dynamic_threshold` function adjusts the threshold for clamping based on the input's quantile values. It uses static thresholding (s=1) by default, but can be set to dynamic thresholding if `self.use_dynamic_thres` is true. The `p_mean_variance` function performs classifier-free guidance for image generation and includes options for mean/variance prediction, conditioning, noise scheduling, and more.",
+        "type": "comment"
+    },
+    "474": {
+        "file_id": 10,
+        "content": "can_classifier_guidance), 'the decoder was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'\n        model_output = default(model_output, lambda: unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, self_cond = self_cond, lowres_noise_level = lowres_noise_level))\n        pred, var_interp_frac_unnormalized = self.parse_unet_output(learned_variance, model_output)\n        if predict_v:\n            x_start = noise_scheduler.predict_start_from_v(x, t = t, v = pred)\n        elif predict_x_start:\n            x_start = pred\n        else:\n            x_start = noise_scheduler.predict_start_from_noise(x, t = t, noise = pred)\n        if clip_denoised:\n            x_start = self.dynamic_threshold(x_start)\n        model_mean, posterior_variance, posterior_log_variance = noise_scheduler.q_posterior(x_start=x_start, x_t=x, t=t)\n        if learned_variance:",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2785-2803"
+    },
+    "475": {
+        "file_id": 10,
+        "content": "This code block is responsible for decoding an input image using a pre-trained unet model. It applies classifier free guidance if enabled, and then calculates the mean and variance of the posterior distribution to perform denoising diffusion probability.",
+        "type": "comment"
+    },
+    "476": {
+        "file_id": 10,
+        "content": "            # if learned variance, posterio variance and posterior log variance are predicted by the network\n            # by an interpolation of the max and min log beta values\n            # eq 15 - https://arxiv.org/abs/2102.09672\n            min_log = extract(noise_scheduler.posterior_log_variance_clipped, t, x.shape)\n            max_log = extract(torch.log(noise_scheduler.betas), t, x.shape)\n            var_interp_frac = unnormalize_zero_to_one(var_interp_frac_unnormalized)\n            if self.learned_variance_constrain_frac:\n                var_interp_frac = var_interp_frac.sigmoid()\n            posterior_log_variance = var_interp_frac * max_log + (1 - var_interp_frac) * min_log\n            posterior_variance = posterior_log_variance.exp()\n        return model_mean, posterior_variance, posterior_log_variance, x_start\n    @torch.no_grad()\n    def p_sample(self, unet, x, t, image_embed, noise_scheduler, text_encodings = None, cond_scale = 1., lowres_cond_img = None, self_cond = None, predict_x_",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2804-2820"
+    },
+    "477": {
+        "file_id": 10,
+        "content": "This code calculates the posterior variance and log variance for a model based on the maximum and minimum log beta values, as described in Equation 15 from arXiv paper. It also applies a learned constraint factor and uses sigmoid activation if required. The function returns the model mean, posterior variance, posterior log variance, and x_start.",
+        "type": "comment"
+    },
+    "478": {
+        "file_id": 10,
+        "content": "start = False, predict_v = False, learned_variance = False, clip_denoised = True, lowres_noise_level = None):\n        b, *_, device = *x.shape, x.device\n        model_mean, _, model_log_variance, x_start = self.p_mean_variance(unet, x = x, t = t, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img, self_cond = self_cond, clip_denoised = clip_denoised, predict_x_start = predict_x_start, predict_v = predict_v, noise_scheduler = noise_scheduler, learned_variance = learned_variance, lowres_noise_level = lowres_noise_level)\n        noise = torch.randn_like(x)\n        # no noise when t == 0\n        nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))\n        pred = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise\n        return pred, x_start\n    @torch.no_grad()\n    def p_sample_loop_ddpm(\n        self,\n        unet,\n        shape,\n        image_embed,\n        noise_scheduler,\n        predict_x_start = False,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2820-2836"
+    },
+    "479": {
+        "file_id": 10,
+        "content": "This function takes input x and returns the predicted values pred and x_start. It uses a p_mean_variance method from self to calculate model_mean, model_log_variance, and x_start. Noise is added to the input x, except when t == 0. The result is the sum of model_mean and nonzero_mask * (0.5 * model_log_variance).exp() * noise. This is a part of the DDPM (Denoising Diffusion Probabilistic Models) framework for generating images.",
+        "type": "comment"
+    },
+    "480": {
+        "file_id": 10,
+        "content": "        predict_v = False,\n        learned_variance = False,\n        clip_denoised = True,\n        lowres_cond_img = None,\n        text_encodings = None,\n        cond_scale = 1,\n        is_latent_diffusion = False,\n        lowres_noise_level = None,\n        inpaint_image = None,\n        inpaint_mask = None,\n        inpaint_resample_times = 5\n    ):\n        device = self.device\n        b = shape[0]\n        img = torch.randn(shape, device = device)\n        x_start = None # for self-conditioning\n        is_inpaint = exists(inpaint_image)\n        resample_times = inpaint_resample_times if is_inpaint else 1\n        if is_inpaint:\n            inpaint_image = self.normalize_img(inpaint_image)\n            inpaint_image = resize_image_to(inpaint_image, shape[-1], nearest = True)\n            inpaint_mask = rearrange(inpaint_mask, 'b h w -> b 1 h w').float()\n            inpaint_mask = resize_image_to(inpaint_mask, shape[-1], nearest = True)\n            inpaint_mask = inpaint_mask.bool()\n        if not is_latent_diffusion:",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2837-2866"
+    },
+    "481": {
+        "file_id": 10,
+        "content": "This function initializes image and related variables. If inpainting is present, it normalizes and resizes the image, mask, and sets their dimensions accordingly. The function also determines if the model is performing latent diffusion by checking for provided parameters. It then proceeds to an if-not condition where it assumes that the model is not performing latent diffusion.",
+        "type": "comment"
+    },
+    "482": {
+        "file_id": 10,
+        "content": "            lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)\n        for time in tqdm(reversed(range(0, noise_scheduler.num_timesteps)), desc = 'sampling loop time step', total = noise_scheduler.num_timesteps):\n            is_last_timestep = time == 0\n            for r in reversed(range(0, resample_times)):\n                is_last_resample_step = r == 0\n                times = torch.full((b,), time, device = device, dtype = torch.long)\n                if is_inpaint:\n                    # following the repaint paper\n                    # https://arxiv.org/abs/2201.09865\n                    noised_inpaint_image = noise_scheduler.q_sample(inpaint_image, t = times)\n                    img = (img * ~inpaint_mask) + (noised_inpaint_image * inpaint_mask)\n                self_cond = x_start if unet.self_cond else None\n                img, x_start = self.p_sample(\n                    unet,\n                    img,\n                    times,\n                    image_embed = image_embed,\n                    text_encodings = text_encodings,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2867-2890"
+    },
+    "483": {
+        "file_id": 10,
+        "content": "This code performs progressive growing of an image using a diffusion model, such as DALLE 2. It iterates over timesteps in reverse order and resamples each timestep to produce a final output image. It also includes the option for inpainting by following the Repaint paper's approach. The self-conditioning and U-Net are utilized within the p_sample function, which takes care of the actual sampling process.",
+        "type": "comment"
+    },
+    "484": {
+        "file_id": 10,
+        "content": "                    cond_scale = cond_scale,\n                    self_cond = self_cond,\n                    lowres_cond_img = lowres_cond_img,\n                    lowres_noise_level = lowres_noise_level,\n                    predict_x_start = predict_x_start,\n                    predict_v = predict_v,\n                    noise_scheduler = noise_scheduler,\n                    learned_variance = learned_variance,\n                    clip_denoised = clip_denoised\n                )\n                if is_inpaint and not (is_last_timestep or is_last_resample_step):\n                    # in repaint, you renoise and resample up to 10 times every step\n                    img = noise_scheduler.q_sample_from_to(img, times - 1, times)\n        if is_inpaint:\n            img = (img * ~inpaint_mask) + (inpaint_image * inpaint_mask)\n        unnormalize_img = self.unnormalize_img(img)\n        return unnormalize_img\n    @torch.no_grad()\n    def p_sample_loop_ddim(\n        self,\n        unet,\n        shape,\n        image_embed,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2891-2917"
+    },
+    "485": {
+        "file_id": 10,
+        "content": "This code is part of a model that performs image denoising using diffusion models. It samples images at different timesteps, applies noise scheduling for resampling, and handles inpainting by combining input mask and image embeddings. The output is then unnormalized for the final result.",
+        "type": "comment"
+    },
+    "486": {
+        "file_id": 10,
+        "content": "        noise_scheduler,\n        timesteps,\n        eta = 1.,\n        predict_x_start = False,\n        predict_v = False,\n        learned_variance = False,\n        clip_denoised = True,\n        lowres_cond_img = None,\n        text_encodings = None,\n        cond_scale = 1,\n        is_latent_diffusion = False,\n        lowres_noise_level = None,\n        inpaint_image = None,\n        inpaint_mask = None,\n        inpaint_resample_times = 5\n    ):\n        batch, device, total_timesteps, alphas, eta = shape[0], self.device, noise_scheduler.num_timesteps, noise_scheduler.alphas_cumprod, self.ddim_sampling_eta\n        times = torch.linspace(0., total_timesteps, steps = timesteps + 2)[:-1]\n        times = list(reversed(times.int().tolist()))\n        time_pairs = list(zip(times[:-1], times[1:]))\n        time_pairs = list(filter(lambda t: t[0] > t[1], time_pairs))\n        is_inpaint = exists(inpaint_image)\n        resample_times = inpaint_resample_times if is_inpaint else 1\n        if is_inpaint:\n            inpaint_image = self.normalize_img(inpaint_image)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2918-2946"
+    },
+    "487": {
+        "file_id": 10,
+        "content": "This function takes multiple parameters including noise_scheduler, timesteps, eta, and more. It extracts necessary information like batch size, device, total timesteps, alphas, and other parameters to perform DDIM sampling. It also checks if inpainting is required and resamples times accordingly.",
+        "type": "comment"
+    },
+    "488": {
+        "file_id": 10,
+        "content": "            inpaint_image = resize_image_to(inpaint_image, shape[-1], nearest = True)\n            inpaint_mask = rearrange(inpaint_mask, 'b h w -> b 1 h w').float()\n            inpaint_mask = resize_image_to(inpaint_mask, shape[-1], nearest = True)\n            inpaint_mask = inpaint_mask.bool()\n        img = torch.randn(shape, device = device)\n        x_start = None # for self-conditioning\n        if not is_latent_diffusion:\n            lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)\n        for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):\n            is_last_timestep = time_next == 0\n            for r in reversed(range(0, resample_times)):\n                is_last_resample_step = r == 0\n                alpha = alphas[time]\n                alpha_next = alphas[time_next]\n                time_cond = torch.full((batch,), time, device = device, dtype = torch.long)\n                if is_inpaint:\n                    # following the repaint paper\n                    # https://arxiv.org/abs/2201.09865",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2947-2972"
+    },
+    "489": {
+        "file_id": 10,
+        "content": "The code is sampling from a diffusion model and applying inpainting. It resizes images, prepares masks for inpainting, sets up variables for time steps, and conditions the model based on inpainting or not. The code follows the process described in the Repaint paper (https://arxiv.org/abs/2201.09865).",
+        "type": "comment"
+    },
+    "490": {
+        "file_id": 10,
+        "content": "                    noised_inpaint_image = noise_scheduler.q_sample(inpaint_image, t = time_cond)\n                    img = (img * ~inpaint_mask) + (noised_inpaint_image * inpaint_mask)\n                self_cond = x_start if unet.self_cond else None\n                unet_output = unet.forward_with_cond_scale(img, time_cond, image_embed = image_embed, text_encodings = text_encodings, cond_scale = cond_scale, self_cond = self_cond, lowres_cond_img = lowres_cond_img, lowres_noise_level = lowres_noise_level)\n                pred, _ = self.parse_unet_output(learned_variance, unet_output)\n                # predict x0\n                if predict_v:\n                    x_start = noise_scheduler.predict_start_from_v(img, t = time_cond, v = pred)\n                elif predict_x_start:\n                    x_start = pred\n                else:\n                    x_start = noise_scheduler.predict_start_from_noise(img, t = time_cond, noise = pred)\n                # maybe clip x0\n                if clip_denoised:\n                    x_start = self.dynamic_threshold(x_start)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2973-2994"
+    },
+    "491": {
+        "file_id": 10,
+        "content": "This code is using a conditional image generation model to generate an output image based on the input image, conditioning factors (time_cond, image_embed, text_encodings), and possibly predicting x0 values for further processing or clipping.",
+        "type": "comment"
+    },
+    "492": {
+        "file_id": 10,
+        "content": "                # predict noise\n                pred_noise = noise_scheduler.predict_noise_from_start(img, t = time_cond, x0 = x_start)\n                c1 = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()\n                c2 = ((1 - alpha_next) - torch.square(c1)).sqrt()\n                noise = torch.randn_like(img) if not is_last_timestep else 0.\n                img = x_start * alpha_next.sqrt() + \\\n                      c1 * noise + \\\n                      c2 * pred_noise\n                if is_inpaint and not (is_last_timestep or is_last_resample_step):\n                    # in repaint, you renoise and resample up to 10 times every step\n                    time_next_cond = torch.full((batch,), time_next, device = device, dtype = torch.long)\n                    img = noise_scheduler.q_sample_from_to(img, time_next_cond, time_cond)\n        if exists(inpaint_image):\n            img = (img * ~inpaint_mask) + (inpaint_image * inpaint_mask)\n        img = self.unnormalize_img(img)\n        return img",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:2996-3017"
+    },
+    "493": {
+        "file_id": 10,
+        "content": "Predicts noise based on the current state and time, applies coefficients to noise and image, performs inpainting if necessary, and unnormalizes the image.",
+        "type": "comment"
+    },
+    "494": {
+        "file_id": 10,
+        "content": "    @torch.no_grad()\n    def p_sample_loop(self, *args, noise_scheduler, timesteps = None, **kwargs):\n        num_timesteps = noise_scheduler.num_timesteps\n        timesteps = default(timesteps, num_timesteps)\n        assert timesteps <= num_timesteps\n        is_ddim = timesteps < num_timesteps\n        if not is_ddim:\n            return self.p_sample_loop_ddpm(*args, noise_scheduler = noise_scheduler, **kwargs)\n        return self.p_sample_loop_ddim(*args, noise_scheduler = noise_scheduler, timesteps = timesteps, **kwargs)\n    def p_losses(self, unet, x_start, times, *, image_embed, noise_scheduler, lowres_cond_img = None, text_encodings = None, predict_x_start = False, predict_v = False, noise = None, learned_variance = False, clip_denoised = False, is_latent_diffusion = False, lowres_noise_level = None):\n        noise = default(noise, lambda: torch.randn_like(x_start))\n        # normalize to [-1, 1]\n        if not is_latent_diffusion:\n            x_start = self.normalize_img(x_start)\n            lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:3019-3039"
+    },
+    "495": {
+        "file_id": 10,
+        "content": "Function `p_sample_loop` takes in arguments, determines if DDPM or DDIM should be used for sampling, and calls respective function.\nIn `p_losses`, noise is defaulted if not provided, and images are normalized before processing if not latent diffusion.",
+        "type": "comment"
+    },
+    "496": {
+        "file_id": 10,
+        "content": "        # get x_t\n        x_noisy = noise_scheduler.q_sample(x_start = x_start, t = times, noise = noise)\n        # unet kwargs\n        unet_kwargs = dict(\n            image_embed = image_embed,\n            text_encodings = text_encodings,\n            lowres_cond_img = lowres_cond_img,\n            lowres_noise_level = lowres_noise_level,\n        )\n        # self conditioning\n        self_cond = None\n        if unet.self_cond and random.random() < 0.5:\n            with torch.no_grad():\n                unet_output = unet(x_noisy, times, **unet_kwargs)\n                self_cond, _ = self.parse_unet_output(learned_variance, unet_output)\n                self_cond = self_cond.detach()\n        # forward to get model prediction\n        unet_output = unet(\n            x_noisy,\n            times,\n            **unet_kwargs,\n            self_cond = self_cond,\n            image_cond_drop_prob = self.image_cond_drop_prob,\n            text_cond_drop_prob = self.text_cond_drop_prob,\n        )\n        pred, _ = self.parse_unet_output(learned_variance, unet_output)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:3041-3075"
+    },
+    "497": {
+        "file_id": 10,
+        "content": "Code snippet is from the DALLE2-pytorch model. It samples noisy images and uses them to conditionally generate unet outputs for self-conditioning and prediction, with optional dropout probabilities for image and text conditions.",
+        "type": "comment"
+    },
+    "498": {
+        "file_id": 10,
+        "content": "        if predict_v:\n            target = noise_scheduler.calculate_v(x_start, times, noise)\n        elif predict_x_start:\n            target = x_start\n        else:\n            target = noise\n        loss = noise_scheduler.loss_fn(pred, target, reduction = 'none')\n        loss = reduce(loss, 'b ... -> b (...)', 'mean')\n        loss = noise_scheduler.p2_reweigh_loss(loss, times)\n        loss = loss.mean()\n        if not learned_variance:\n            # return simple loss if not using learned variance\n            return loss\n        # most of the code below is transcribed from\n        # https://github.com/hojonathanho/diffusion/blob/master/diffusion_tf/diffusion_utils_2.py\n        # the Improved DDPM paper then further modified it so that the mean is detached (shown a couple lines before), and weighted to be smaller than the l1 or l2 \"simple\" loss\n        # it is questionable whether this is really needed, looking at some of the figures in the paper, but may as well stay faithful to their implementation",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:3077-3098"
+    },
+    "499": {
+        "file_id": 10,
+        "content": "The code calculates the loss in a specific manner depending on the input parameters. If predict_v is true, it calculates the target value for v. If predict_x_start is true, it uses x_start as the target. Otherwise, it uses noise as the target. Then, it applies the loss function, reduces the loss, reweighs the loss based on times, and finally calculates the mean of the loss. If learned_variance is not used, it returns the simple loss.",
+        "type": "comment"
+    }
+}

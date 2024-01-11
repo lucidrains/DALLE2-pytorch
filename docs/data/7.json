@@ -1,0 +1,547 @@
+{
+    "700": {
+        "file_id": 18,
+        "content": "        attn_dim_head = 64,\n        attn_heads = 8,\n        attn_dropout = 0.,\n    ):\n        super().__init__()\n        assert dim % resnet_groups == 0, f'dimension {dim} must be divisible by {resnet_groups} (groups for the groupnorm)'\n        self.layers = layers\n        self.encoders = MList([])\n        self.decoders = MList([])\n        layer_mults = default(layer_mults, list(map(lambda t: 2 ** t, range(layers))))\n        assert len(layer_mults) == layers, 'layer multipliers must be equal to designated number of layers'\n        layer_dims = [dim * mult for mult in layer_mults]\n        dims = (dim, *layer_dims)\n        self.encoded_dim = dims[-1]\n        dim_pairs = zip(dims[:-1], dims[1:])\n        append = lambda arr, t: arr.append(t)\n        prepend = lambda arr, t: arr.insert(0, t)\n        if not isinstance(num_resnet_blocks, tuple):\n            num_resnet_blocks = (*((0,) * (layers - 1)), num_resnet_blocks)\n        if not isinstance(use_attn, tuple):\n            use_attn = (*((False,) * (layers - 1)), use_attn)",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:233-262"
+    },
+    "701": {
+        "file_id": 18,
+        "content": "This code defines a class with specified parameters for layers, encoders, and decoders. It ensures the dimension is divisible by resnet_groups. The layer multipliers are stored in a list and used to determine the dimensions of each layer. num_resnet_blocks and use_attn are checked to make sure they match the designated number of layers.",
+        "type": "comment"
+    },
+    "702": {
+        "file_id": 18,
+        "content": "        assert len(num_resnet_blocks) == layers, 'number of resnet blocks config must be equal to number of layers'\n        assert len(use_attn) == layers\n        for layer_index, (dim_in, dim_out), layer_num_resnet_blocks, layer_use_attn in zip(range(layers), dim_pairs, num_resnet_blocks, use_attn):\n            append(self.encoders, nn.Sequential(nn.Conv2d(dim_in, dim_out, 4, stride = 2, padding = 1), leaky_relu()))\n            prepend(self.decoders, nn.Sequential(nn.ConvTranspose2d(dim_out, dim_in, 4, 2, 1), leaky_relu()))\n            if layer_use_attn:\n                prepend(self.decoders, VQGanAttention(dim = dim_out, heads = attn_heads, dim_head = attn_dim_head, dropout = attn_dropout))\n            for _ in range(layer_num_resnet_blocks):\n                append(self.encoders, ResBlock(dim_out, groups = resnet_groups))\n                prepend(self.decoders, GLUResBlock(dim_out, groups = resnet_groups))\n            if layer_use_attn:\n                append(self.encoders, VQGanAttention(dim = dim_out, heads = attn_heads, dim_head = attn_dim_head, dropout = attn_dropout))",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:264-279"
+    },
+    "703": {
+        "file_id": 18,
+        "content": "This code creates encoder and decoder blocks for a VQ-VAE model. It asserts that the number of resnet blocks and use_attn match the layers, then iterates over each layer creating convolutional layers, LeakyReLU activation functions, optionally adding attention modules, and repeating a specific number of residual blocks in both encoders and decoders.",
+        "type": "comment"
+    },
+    "704": {
+        "file_id": 18,
+        "content": "        prepend(self.encoders, nn.Conv2d(channels, dim, first_conv_kernel_size, padding = first_conv_kernel_size // 2))\n        append(self.decoders, nn.Conv2d(dim, channels, 1))\n    def get_encoded_fmap_size(self, image_size):\n        return image_size // (2 ** self.layers)\n    @property\n    def last_dec_layer(self):\n        return self.decoders[-1].weight\n    def encode(self, x):\n        for enc in self.encoders:\n            x = enc(x)\n        return x\n    def decode(self, x):\n        for dec in self.decoders:\n            x = dec(x)\n        return x\nclass GLUResBlock(nn.Module):\n    def __init__(self, chan, groups = 16):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Conv2d(chan, chan * 2, 3, padding = 1),\n            nn.GLU(dim = 1),\n            nn.GroupNorm(groups, chan),\n            nn.Conv2d(chan, chan * 2, 3, padding = 1),\n            nn.GLU(dim = 1),\n            nn.GroupNorm(groups, chan),\n            nn.Conv2d(chan, chan, 1)\n        )\n    def forward(self, x):\n        return self.net(x) + x",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:281-315"
+    },
+    "705": {
+        "file_id": 18,
+        "content": "The code defines a class for a VQGAN-VAE model. It consists of encoder and decoder blocks, along with a GLUResBlock for the residual connections in the decoder. The encoder and decoder are composed of convolutional layers that reduce and increase image size respectively. The encoded image size is defined as the original image size divided by 2 to the power of the number of layers. The model can encode and decode images using the encoder and decoder blocks, and the last decoder layer's weights can be accessed separately.",
+        "type": "comment"
+    },
+    "706": {
+        "file_id": 18,
+        "content": "class ResBlock(nn.Module):\n    def __init__(self, chan, groups = 16):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Conv2d(chan, chan, 3, padding = 1),\n            nn.GroupNorm(groups, chan),\n            leaky_relu(),\n            nn.Conv2d(chan, chan, 3, padding = 1),\n            nn.GroupNorm(groups, chan),\n            leaky_relu(),\n            nn.Conv2d(chan, chan, 1)\n        )\n    def forward(self, x):\n        return self.net(x) + x\n# vqgan attention layer\nclass VQGanAttention(nn.Module):\n    def __init__(\n        self,\n        *,\n        dim,\n        dim_head = 64,\n        heads = 8,\n        dropout = 0.\n    ):\n        super().__init__()\n        self.heads = heads\n        self.scale = dim_head ** -0.5\n        inner_dim = heads * dim_head\n        self.dropout = nn.Dropout(dropout)\n        self.pre_norm = LayerNormChan(dim)\n        self.cpb = ContinuousPositionBias(dim = dim // 4, heads = heads)\n        self.to_qkv = nn.Conv2d(dim, inner_dim * 3, 1, bias = False)\n        self.to_out = nn.Conv2d(inner_dim, dim, 1, bias = False)",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:317-354"
+    },
+    "707": {
+        "file_id": 18,
+        "content": "This code defines a residual block and a VQGAN attention layer for image processing. The ResBlock consists of multiple 2D convolutions and GroupNorm layers, followed by leaky ReLU activation functions. The VQGANAttention class is responsible for self-attention in the VQGAN model, using continuous position bias and multi-head attention with dropout regularization.",
+        "type": "comment"
+    },
+    "708": {
+        "file_id": 18,
+        "content": "    def forward(self, x):\n        h = self.heads\n        height, width, residual = *x.shape[-2:], x.clone()\n        x = self.pre_norm(x)\n        q, k, v = self.to_qkv(x).chunk(3, dim = 1)\n        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', h = h), (q, k, v))\n        sim = einsum('b h c i, b h c j -> b h i j', q, k) * self.scale\n        sim = self.cpb(sim)\n        attn = stable_softmax(sim, dim = -1)\n        attn = self.dropout(attn)\n        out = einsum('b h i j, b h c j -> b h c i', attn, v)\n        out = rearrange(out, 'b h c (x y) -> b (h c) x y', x = height, y = width)\n        out = self.to_out(out)\n        return out + residual\n# ViT encoder / decoder\nclass RearrangeImage(nn.Module):\n    def forward(self, x):\n        n = x.shape[1]\n        w = h = int(sqrt(n))\n        return rearrange(x, 'b (h w) ... -> b h w ...', h = h, w = w)\nclass Attention(nn.Module):\n    def __init__(\n        self,\n        dim,\n        *,\n        heads = 8,\n        dim_head = 32\n    ):\n        super().__init__()\n        self.norm = nn.LayerNorm(dim)",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:356-396"
+    },
+    "709": {
+        "file_id": 18,
+        "content": "This code defines a class for the Attention module in a ViT (Vision Transformer) model. It performs multi-head attention using key, query, and value tensors, followed by a softmax function to compute attention weights. The output is then passed through a linear layer and layer normalization before being added back to the input with residual connection.",
+        "type": "comment"
+    },
+    "710": {
+        "file_id": 18,
+        "content": "        self.heads = heads\n        self.scale = dim_head ** -0.5\n        inner_dim = dim_head * heads\n        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)\n        self.to_out = nn.Linear(inner_dim, dim)\n    def forward(self, x):\n        h = self.heads\n        x = self.norm(x)\n        q, k, v = self.to_qkv(x).chunk(3, dim = -1)\n        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))\n        q = q * self.scale\n        sim = einsum('b h i d, b h j d -> b h i j', q, k)\n        sim = sim - sim.amax(dim = -1, keepdim = True).detach()\n        attn = sim.softmax(dim = -1)\n        out = einsum('b h i j, b h j d -> b h i d', attn, v)\n        out = rearrange(out, 'b h n d -> b n (h d)')\n        return self.to_out(out)\ndef FeedForward(dim, mult = 4):\n    return nn.Sequential(\n        nn.LayerNorm(dim),\n        nn.Linear(dim, dim * mult, bias = False),\n        nn.GELU(),\n        nn.Linear(dim * mult, dim, bias = False)\n    )\nclass Transformer(nn.Module):\n    def __init__(\n        self,",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:397-433"
+    },
+    "711": {
+        "file_id": 18,
+        "content": "This code defines a MultiHeadAttention module for a transformer model. It initializes the attention head count and scale, calculates inner dimension based on head count and input dimension. The forward function performs multi-head attention by splitting input into query, key, value tensors, scaling query tensor, computing similarity between query and key, subtracting maximum similarity to avoid zero gradients, performing softmax on attention scores, and finally producing output tensor through weighted sum of value tensors. The FeedForward function defines a feedforward network for the transformer model, consisting of layer normalization, linear layers with GELU activation function.",
+        "type": "comment"
+    },
+    "712": {
+        "file_id": 18,
+        "content": "        dim,\n        *,\n        layers,\n        dim_head = 32,\n        heads = 8,\n        ff_mult = 4\n    ):\n        super().__init__()\n        self.layers = nn.ModuleList([])\n        for _ in range(layers):\n            self.layers.append(nn.ModuleList([\n                Attention(dim = dim, dim_head = dim_head, heads = heads),\n                FeedForward(dim = dim, mult = ff_mult)\n            ]))\n        self.norm = nn.LayerNorm(dim)\n    def forward(self, x):\n        for attn, ff in self.layers:\n            x = attn(x) + x\n            x = ff(x) + x\n        return self.norm(x)\nclass ViTEncDec(nn.Module):\n    def __init__(\n        self,\n        dim,\n        channels = 3,\n        layers = 4,\n        patch_size = 8,\n        dim_head = 32,\n        heads = 8,\n        ff_mult = 4\n    ):\n        super().__init__()\n        self.encoded_dim = dim\n        self.patch_size = patch_size\n        input_dim = channels * (patch_size ** 2)\n        self.encoder = nn.Sequential(\n            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size),",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:434-476"
+    },
+    "713": {
+        "file_id": 18,
+        "content": "The code defines a class for an encoder-decoder architecture, which is part of the Vision Transformer (ViT) model. It utilizes attention and feedforward layers, and includes layer normalization in its forward pass. The encoder section takes input images, reshapes them into patches, and passes them through multiple attention and feedforward layers.",
+        "type": "comment"
+    },
+    "714": {
+        "file_id": 18,
+        "content": "            nn.Linear(input_dim, dim),\n            Transformer(\n                dim = dim,\n                dim_head = dim_head,\n                heads = heads,\n                ff_mult = ff_mult,\n                layers = layers\n            ),\n            RearrangeImage(),\n            Rearrange('b h w c -> b c h w')\n        )\n        self.decoder = nn.Sequential(\n            Rearrange('b c h w -> b (h w) c'),\n            Transformer(\n                dim = dim,\n                dim_head = dim_head,\n                heads = heads,\n                ff_mult = ff_mult,\n                layers = layers\n            ),\n            nn.Sequential(\n                nn.Linear(dim, dim * 4, bias = False),\n                nn.Tanh(),\n                nn.Linear(dim * 4, input_dim, bias = False),\n            ),\n            RearrangeImage(),\n            Rearrange('b h w (p1 p2 c) -> b c (h p1) (w p2)', p1 = patch_size, p2 = patch_size)\n        )\n    def get_encoded_fmap_size(self, image_size):\n        return image_size // self.patch_size\n    @property",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:477-510"
+    },
+    "715": {
+        "file_id": 18,
+        "content": "The code defines a VQ-VAE model for image generation, consisting of an encoder and decoder. The encoder processes the input image and outputs a compressed codebook index followed by a positional embedding. The decoder then reconstructs the original image from these inputs using a series of transformers and linear layers. The get_encoded_fmap_size function calculates the encoded feature map size based on the input image size.",
+        "type": "comment"
+    },
+    "716": {
+        "file_id": 18,
+        "content": "    def last_dec_layer(self):\n        return self.decoder[-3][-1].weight\n    def encode(self, x):\n        return self.encoder(x)\n    def decode(self, x):\n        return self.decoder(x)\n# main vqgan-vae classes\nclass NullVQGanVAE(nn.Module):\n    def __init__(\n        self,\n        *,\n        channels\n    ):\n        super().__init__()\n        self.encoded_dim = channels\n        self.layers = 0\n    def get_encoded_fmap_size(self, size):\n        return size\n    def copy_for_eval(self):\n        return self\n    def encode(self, x):\n        return x\n    def decode(self, x):\n        return x\nclass VQGanVAE(nn.Module):\n    def __init__(\n        self,\n        *,\n        dim,\n        image_size,\n        channels = 3,\n        layers = 4,\n        l2_recon_loss = False,\n        use_hinge_loss = True,\n        vgg = None,\n        vq_codebook_dim = 256,\n        vq_codebook_size = 512,\n        vq_decay = 0.8,\n        vq_commitment_weight = 1.,\n        vq_kmeans_init = True,\n        vq_use_cosine_sim = True,\n        use_vgg_and_gan = True,\n        vae_type = 'resnet',",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:511-562"
+    },
+    "717": {
+        "file_id": 18,
+        "content": "This code defines two classes: NullVQGanVAE and VQGanVAE. The NullVQGanVAE is a placeholder class without any specific layers or functionality, while the VQGanVAE class represents a variant of the VAE model with optional features like VGG loss, GAN integration, and customizable parameters for codebook dimensions and layers.",
+        "type": "comment"
+    },
+    "718": {
+        "file_id": 18,
+        "content": "        discr_layers = 4,\n        **kwargs\n    ):\n        super().__init__()\n        vq_kwargs, kwargs = groupby_prefix_and_trim('vq_', kwargs)\n        encdec_kwargs, kwargs = groupby_prefix_and_trim('encdec_', kwargs)\n        self.image_size = image_size\n        self.channels = channels\n        self.codebook_size = vq_codebook_size\n        if vae_type == 'resnet':\n            enc_dec_klass = ResnetEncDec\n        elif vae_type == 'vit':\n            enc_dec_klass = ViTEncDec\n        else:\n            raise ValueError(f'{vae_type} not valid')\n        self.enc_dec = enc_dec_klass(\n            dim = dim,\n            channels = channels,\n            layers = layers,\n            **encdec_kwargs\n        )\n        self.vq = VQ(\n            dim = self.enc_dec.encoded_dim,\n            codebook_dim = vq_codebook_dim,\n            codebook_size = vq_codebook_size,\n            decay = vq_decay,\n            commitment_weight = vq_commitment_weight,\n            accept_image_fmap = True,\n            kmeans_init = vq_kmeans_init,\n            use_cosine_sim = vq_use_cosine_sim,",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:563-596"
+    },
+    "719": {
+        "file_id": 18,
+        "content": "This code initializes a VQ-VAE model with given parameters. It uses a specified encoder-decoder network (ResNet or ViT), codebook size, and other VQ-specific options. The VQ module is initialized based on the dimensionality of the encoder-decoder's encoded output, and the codebook size and related options. If an invalid VAE type is given, a ValueError is raised.",
+        "type": "comment"
+    },
+    "720": {
+        "file_id": 18,
+        "content": "            **vq_kwargs\n        )\n        # reconstruction loss\n        self.recon_loss_fn = F.mse_loss if l2_recon_loss else F.l1_loss\n        # turn off GAN and perceptual loss if grayscale\n        self.vgg = None\n        self.discr = None\n        self.use_vgg_and_gan = use_vgg_and_gan\n        if not use_vgg_and_gan:\n            return\n        # preceptual loss\n        if exists(vgg):\n            self.vgg = vgg\n        else:\n            self.vgg = torchvision.models.vgg16(pretrained = True)\n            self.vgg.classifier = nn.Sequential(*self.vgg.classifier[:-2])\n        # gan related losses\n        layer_mults = list(map(lambda t: 2 ** t, range(discr_layers)))\n        layer_dims = [dim * mult for mult in layer_mults]\n        dims = (dim, *layer_dims)\n        self.discr = Discriminator(dims = dims, channels = channels)\n        self.discr_loss = hinge_discr_loss if use_hinge_loss else bce_discr_loss\n        self.gen_loss = hinge_gen_loss if use_hinge_loss else bce_gen_loss\n    @property\n    def encoded_dim(self):",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:597-633"
+    },
+    "721": {
+        "file_id": 18,
+        "content": "This code defines a VQGAN-VAE model with optional GAN and perceptual loss components. It initializes the VGG model, Discriminator, and sets the reconstruction and generator losses based on provided arguments. The encoded_dim property returns the dimension of the encoded images.",
+        "type": "comment"
+    },
+    "722": {
+        "file_id": 18,
+        "content": "        return self.enc_dec.encoded_dim\n    def get_encoded_fmap_size(self, image_size):\n        return self.enc_dec.get_encoded_fmap_size(image_size)\n    def copy_for_eval(self):\n        device = next(self.parameters()).device\n        vae_copy = copy.deepcopy(self.cpu())\n        if vae_copy.use_vgg_and_gan:\n            del vae_copy.discr\n            del vae_copy.vgg\n        vae_copy.eval()\n        return vae_copy.to(device)\n    @remove_vgg\n    def state_dict(self, *args, **kwargs):\n        return super().state_dict(*args, **kwargs)\n    @remove_vgg\n    def load_state_dict(self, *args, **kwargs):\n        return super().load_state_dict(*args, **kwargs)\n    @property\n    def codebook(self):\n        return self.vq.codebook\n    def encode(self, fmap):\n        fmap = self.enc_dec.encode(fmap)\n        return fmap\n    def decode(self, fmap, return_indices_and_loss = False):\n        fmap, indices, commit_loss = self.vq(fmap)\n        fmap = self.enc_dec.decode(fmap)\n        if not return_indices_and_loss:\n            return fmap",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:634-672"
+    },
+    "723": {
+        "file_id": 18,
+        "content": "This code defines a class with methods to get encoded dimensions, calculate encoded frame map size, copy the model for evaluation, save and load state dictionary while removing VGG, encode input frames, and decode encoded frames.",
+        "type": "comment"
+    },
+    "724": {
+        "file_id": 18,
+        "content": "        return fmap, indices, commit_loss\n    def forward(\n        self,\n        img,\n        return_loss = False,\n        return_discr_loss = False,\n        return_recons = False,\n        add_gradient_penalty = True\n    ):\n        batch, channels, height, width, device = *img.shape, img.device\n        assert height == self.image_size and width == self.image_size, 'height and width of input image must be equal to {self.image_size}'\n        assert channels == self.channels, 'number of channels on image or sketch is not equal to the channels set on this VQGanVAE'\n        fmap = self.encode(img)\n        fmap, indices, commit_loss = self.decode(fmap, return_indices_and_loss = True)\n        if not return_loss and not return_discr_loss:\n            return fmap\n        assert return_loss ^ return_discr_loss, 'you should either return autoencoder loss or discriminator loss, but not both'\n        # whether to return discriminator loss\n        if return_discr_loss:\n            assert exists(self.discr), 'discriminator must exist to train it'",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:674-700"
+    },
+    "725": {
+        "file_id": 18,
+        "content": "This function encodes an input image, decodes it, and can optionally return autoencoder or discriminator losses. It expects the image to have the specified dimensions and number of channels. The code asserts that the image's height, width, and number of channels match the expected values, and that only one type of loss is returned at a time.",
+        "type": "comment"
+    },
+    "726": {
+        "file_id": 18,
+        "content": "            fmap.detach_()\n            img.requires_grad_()\n            fmap_discr_logits, img_discr_logits = map(self.discr, (fmap, img))\n            discr_loss = self.discr_loss(fmap_discr_logits, img_discr_logits)\n            if add_gradient_penalty:\n                gp = gradient_penalty(img, img_discr_logits)\n                loss = discr_loss + gp\n            if return_recons:\n                return loss, fmap\n            return loss\n        # reconstruction loss\n        recon_loss = self.recon_loss_fn(fmap, img)\n        # early return if training on grayscale\n        if not self.use_vgg_and_gan:\n            if return_recons:\n                return recon_loss, fmap\n            return recon_loss\n        # perceptual loss\n        img_vgg_input = img\n        fmap_vgg_input = fmap\n        if img.shape[1] == 1:\n            # handle grayscale for vgg\n            img_vgg_input, fmap_vgg_input = map(lambda t: repeat(t, 'b 1 ... -> b c ...', c = 3), (img_vgg_input, fmap_vgg_input))\n        img_vgg_feats = self.vgg(img_vgg_input)",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:702-739"
+    },
+    "727": {
+        "file_id": 18,
+        "content": "The code is calculating the reconstruction and perceptual loss for an image generation model. It also includes gradient penalty for the discriminator loss, and optionally returns the reconstructed feature map.",
+        "type": "comment"
+    },
+    "728": {
+        "file_id": 18,
+        "content": "        recon_vgg_feats = self.vgg(fmap_vgg_input)\n        perceptual_loss = F.mse_loss(img_vgg_feats, recon_vgg_feats)\n        # generator loss\n        gen_loss = self.gen_loss(self.discr(fmap))\n        # calculate adaptive weight\n        last_dec_layer = self.enc_dec.last_dec_layer\n        norm_grad_wrt_gen_loss = grad_layer_wrt_loss(gen_loss, last_dec_layer).norm(p = 2)\n        norm_grad_wrt_perceptual_loss = grad_layer_wrt_loss(perceptual_loss, last_dec_layer).norm(p = 2)\n        adaptive_weight = safe_div(norm_grad_wrt_perceptual_loss, norm_grad_wrt_gen_loss)\n        adaptive_weight.clamp_(max = 1e4)\n        # combine losses\n        loss = recon_loss + perceptual_loss + commit_loss + adaptive_weight * gen_loss\n        if return_recons:\n            return loss, fmap\n        return loss",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:740-764"
+    },
+    "729": {
+        "file_id": 18,
+        "content": "This code calculates a combination of losses, including reconstruction, perceptual, and commitment. The adaptive weight is determined based on the gradients of these losses. A clamp function limits the adaptive weight to prevent extreme values. Finally, the combined loss is calculated and returned. If return_recons is True, fmap is also returned.",
+        "type": "comment"
+    },
+    "730": {
+        "file_id": 19,
+        "content": "/dalle2_pytorch/vqgan_vae_trainer.py",
+        "type": "filepath"
+    },
+    "731": {
+        "file_id": 19,
+        "content": "This code defines ImageDataset and VQGanVAETrainer classes for loading image data and training a VAE model, setting parameters, optimizers, and creating loaders. It trains the model, logs losses, saves models, and tracks progress in a results folder.",
+        "type": "summary"
+    },
+    "732": {
+        "file_id": 19,
+        "content": "from math import sqrt\nimport copy\nfrom random import choice\nfrom pathlib import Path\nfrom shutil import rmtree\nfrom PIL import Image\nimport torch\nfrom torch import nn\nfrom torch.cuda.amp import autocast, GradScaler\nfrom torch.utils.data import Dataset, DataLoader, random_split\nimport torchvision.transforms as T\nfrom torchvision.datasets import ImageFolder\nfrom torchvision.utils import make_grid, save_image\nfrom einops import rearrange\nfrom dalle2_pytorch.vqgan_vae import VQGanVAE\nfrom dalle2_pytorch.optimizer import get_optimizer\nfrom ema_pytorch import EMA\n# helpers\ndef exists(val):\n    return val is not None\ndef noop(*args, **kwargs):\n    pass\ndef cycle(dl):\n    while True:\n        for data in dl:\n            yield data\ndef cast_tuple(t):\n    return t if isinstance(t, (tuple, list)) else (t,)\ndef yes_or_no(question):\n    answer = input(f'{question} (y/n) ')\n    return answer.lower() in ('yes', 'y')\ndef accum_log(log, new_logs):\n    for key, new_value in new_logs.items():\n        old_value = log.get(key, 0.)\n        log[key] = old_value + new_value",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:1-47"
+    },
+    "733": {
+        "file_id": 19,
+        "content": "This code contains several utility functions and helper methods. It includes import statements for various libraries, classes for data handling and model training, as well as custom functions for logging, looping, and user input.",
+        "type": "comment"
+    },
+    "734": {
+        "file_id": 19,
+        "content": "    return log\n# classes\nclass ImageDataset(Dataset):\n    def __init__(\n        self,\n        folder,\n        image_size,\n        exts = ['jpg', 'jpeg', 'png']\n    ):\n        super().__init__()\n        self.folder = folder\n        self.image_size = image_size\n        self.paths = [p for ext in exts for p in Path(f'{folder}').glob(f'**/*.{ext}')]\n        print(f'{len(self.paths)} training samples found at {folder}')\n        self.transform = T.Compose([\n            T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),\n            T.Resize(image_size),\n            T.RandomHorizontalFlip(),\n            T.CenterCrop(image_size),\n            T.ToTensor()\n        ])\n    def __len__(self):\n        return len(self.paths)\n    def __getitem__(self, index):\n        path = self.paths[index]\n        img = Image.open(path)\n        return self.transform(img)\n# main trainer class\nclass VQGanVAETrainer(nn.Module):\n    def __init__(\n        self,\n        vae,\n        *,\n        num_train_steps,\n        lr,\n        batch_size,",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:48-91"
+    },
+    "735": {
+        "file_id": 19,
+        "content": "The code defines a class \"ImageDataset\" for loading and transforming image data, and a main trainer class \"VQGanVAETrainer\" for training a VAE model. The \"ImageDataset\" class initializes with a folder path, image size, and extension types to filter the images, then applies image transformations like converting to RGB mode, resizing, horizontal flipping, cropping, and tensor conversion. The \"VQGanVAETrainer\" class initializes with parameters like the VAE model, number of training steps, learning rate, and batch size for the training process.",
+        "type": "comment"
+    },
+    "736": {
+        "file_id": 19,
+        "content": "        folder,\n        grad_accum_every,\n        wd = 0.,\n        save_results_every = 100,\n        save_model_every = 1000,\n        results_folder = './results',\n        valid_frac = 0.05,\n        random_split_seed = 42,\n        ema_beta = 0.995,\n        ema_update_after_step = 500,\n        ema_update_every = 10,\n        apply_grad_penalty_every = 4,\n        amp = False\n    ):\n        super().__init__()\n        assert isinstance(vae, VQGanVAE), 'vae must be instance of VQGanVAE'\n        image_size = vae.image_size\n        self.vae = vae\n        self.ema_vae = EMA(vae, update_after_step = ema_update_after_step, update_every = ema_update_every)\n        self.register_buffer('steps', torch.Tensor([0]))\n        self.num_train_steps = num_train_steps\n        self.batch_size = batch_size\n        self.grad_accum_every = grad_accum_every\n        all_parameters = set(vae.parameters())\n        discr_parameters = set(vae.discr.parameters())\n        vae_parameters = all_parameters - discr_parameters\n        self.optim = get_optimizer(vae_parameters, lr = lr, wd = wd)",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:92-123"
+    },
+    "737": {
+        "file_id": 19,
+        "content": "The code initializes an instance of a VQGanVAE and sets up various parameters for training. It checks if the provided vae is of type VQGanVAE, then assigns image size, creates an EMA model with specified update steps and intervals, registers a buffer for tracking steps, sets number of train steps, batch size, grad accumulation every, and initializes optimizer with specified learning rate and weight decay.",
+        "type": "comment"
+    },
+    "738": {
+        "file_id": 19,
+        "content": "        self.discr_optim = get_optimizer(discr_parameters, lr = lr, wd = wd)\n        self.amp = amp\n        self.scaler = GradScaler(enabled = amp)\n        self.discr_scaler = GradScaler(enabled = amp)\n        # create dataset\n        self.ds = ImageDataset(folder, image_size = image_size)\n        # split for validation\n        if valid_frac > 0:\n            train_size = int((1 - valid_frac) * len(self.ds))\n            valid_size = len(self.ds) - train_size\n            self.ds, self.valid_ds = random_split(self.ds, [train_size, valid_size], generator = torch.Generator().manual_seed(random_split_seed))\n            print(f'training with dataset of {len(self.ds)} samples and validating with randomly splitted {len(self.valid_ds)} samples')\n        else:\n            self.valid_ds = self.ds\n            print(f'training with shared training and valid dataset of {len(self.ds)} samples')\n        # dataloader\n        self.dl = cycle(DataLoader(\n            self.ds,\n            batch_size = batch_size,\n            shuffle = True",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:124-150"
+    },
+    "739": {
+        "file_id": 19,
+        "content": "This code initializes a Discriminator optimizer, Amplitude Signed-Precision (AMP) for mixed precision training, GradScaler for handling gradients, creates an ImageDataset from the given folder and image size, splits the dataset into training and validation if valid_frac is greater than 0, creates DataLoader for the dataset with specified batch_size and shuffle set to True.",
+        "type": "comment"
+    },
+    "740": {
+        "file_id": 19,
+        "content": "        ))\n        self.valid_dl = cycle(DataLoader(\n            self.valid_ds,\n            batch_size = batch_size,\n            shuffle = True\n        ))\n        self.save_model_every = save_model_every\n        self.save_results_every = save_results_every\n        self.apply_grad_penalty_every = apply_grad_penalty_every\n        self.results_folder = Path(results_folder)\n        if len([*self.results_folder.glob('**/*')]) > 0 and yes_or_no('do you want to clear previous experiment checkpoints and results?'):\n            rmtree(str(self.results_folder))\n        self.results_folder.mkdir(parents = True, exist_ok = True)\n    def train_step(self):\n        device = next(self.vae.parameters()).device\n        steps = int(self.steps.item())\n        apply_grad_penalty = not (steps % self.apply_grad_penalty_every)\n        self.vae.train()\n        # logs\n        logs = {}\n        # update vae (generator)\n        for _ in range(self.grad_accum_every):\n            img = next(self.dl)\n            img = img.to(device)\n            with autocast(enabled = self.amp):",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:151-188"
+    },
+    "741": {
+        "file_id": 19,
+        "content": "The code initializes the valid data loader and sets parameters for saving models, results, and applying gradient penalty. It checks if previous experiment checkpoints and results should be cleared, creates the results folder if needed, and defines the train_step function for training the VAE (generator).",
+        "type": "comment"
+    },
+    "742": {
+        "file_id": 19,
+        "content": "                loss = self.vae(\n                    img,\n                    return_loss = True,\n                    apply_grad_penalty = apply_grad_penalty\n                )\n                self.scaler.scale(loss / self.grad_accum_every).backward()\n            accum_log(logs, {'loss': loss.item() / self.grad_accum_every})\n        self.scaler.step(self.optim)\n        self.scaler.update()\n        self.optim.zero_grad()\n        # update discriminator\n        if exists(self.vae.discr):\n            discr_loss = 0\n            for _ in range(self.grad_accum_every):\n                img = next(self.dl)\n                img = img.to(device)\n                with autocast(enabled = self.amp):\n                    loss = self.vae(img, return_discr_loss = True)\n                    self.discr_scaler.scale(loss / self.grad_accum_every).backward()\n                accum_log(logs, {'discr_loss': loss.item() / self.grad_accum_every})\n            self.discr_scaler.step(self.discr_optim)\n            self.discr_scaler.update()\n            self.discr_optim.zero_grad()",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:189-221"
+    },
+    "743": {
+        "file_id": 19,
+        "content": "This code trains a VAE model and updates the discriminator. It uses scaling, accumulation, and gradients for efficient backpropagation. The loss is calculated and logged for both VAE and discriminator, then optimizers are updated.",
+        "type": "comment"
+    },
+    "744": {
+        "file_id": 19,
+        "content": "            # log\n            print(f\"{steps}: vae loss: {logs['loss']} - discr loss: {logs['discr_loss']}\")\n        # update exponential moving averaged generator\n        self.ema_vae.update()\n        # sample results every so often\n        if not (steps % self.save_results_every):\n            for model, filename in ((self.ema_vae.ema_model, f'{steps}.ema'), (self.vae, str(steps))):\n                model.eval()\n                imgs = next(self.dl)\n                imgs = imgs.to(device)\n                recons = model(imgs)\n                nrows = int(sqrt(self.batch_size))\n                imgs_and_recons = torch.stack((imgs, recons), dim = 0)\n                imgs_and_recons = rearrange(imgs_and_recons, 'r b ... -> (b r) ...')\n                imgs_and_recons = imgs_and_recons.detach().cpu().float().clamp(0., 1.)\n                grid = make_grid(imgs_and_recons, nrow = 2, normalize = True, value_range = (0, 1))\n                logs['reconstructions'] = grid\n                save_image(grid, str(self.results_folder / f'{filename}.png'))",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:223-251"
+    },
+    "745": {
+        "file_id": 19,
+        "content": "This code snippet logs the VAE and discriminator losses, updates the exponential moving average (EMA) generator model, saves models every save_results_every steps, and generates and saves reconstruction images for training.",
+        "type": "comment"
+    },
+    "746": {
+        "file_id": 19,
+        "content": "            print(f'{steps}: saving to {str(self.results_folder)}')\n        # save model every so often\n        if not (steps % self.save_model_every):\n            state_dict = self.vae.state_dict()\n            model_path = str(self.results_folder / f'vae.{steps}.pt')\n            torch.save(state_dict, model_path)\n            ema_state_dict = self.ema_vae.state_dict()\n            model_path = str(self.results_folder / f'vae.{steps}.ema.pt')\n            torch.save(ema_state_dict, model_path)\n            print(f'{steps}: saving model to {str(self.results_folder)}')\n        self.steps += 1\n        return logs\n    def train(self, log_fn = noop):\n        device = next(self.vae.parameters()).device\n        while self.steps < self.num_train_steps:\n            logs = self.train_step()\n            log_fn(logs)\n        print('training complete')",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae_trainer.py:253-278"
+    },
+    "747": {
+        "file_id": 19,
+        "content": "Saves the VAE model and EMA-VAE model periodically during training, tracking progress in specified results folder.",
+        "type": "comment"
+    },
+    "748": {
+        "file_id": 20,
+        "content": "/dalle2_pytorch/dataloaders/README.md",
+        "type": "filepath"
+    },
+    "749": {
+        "file_id": 20,
+        "content": "The code creates a dataloader for image embedding datasets and sets up training, evaluation, and testing splits for three ranks using the provided config TRAIN_ARGS. It uses img2dataset, clip-retrieval, and embedding-dataset-reordering tools to load images and embeddings without resampling.",
+        "type": "summary"
+    },
+    "750": {
+        "file_id": 20,
+        "content": "## Dataloaders\nIn order to make loading data simple and efficient, we include some general dataloaders that can be used to train portions of the network.\n### Decoder: Image Embedding Dataset\nWhen training the decoder (and up samplers if training together) in isolation, you will need to load images and corresponding image embeddings. This dataset can read two similar types of datasets. First, it can read a [webdataset](https://github.com/webdataset/webdataset) that contains `.jpg` and `.npy` files in the `.tar`s that contain the images and associated image embeddings respectively. Alternatively, you can also specify a source for the embeddings outside of the webdataset. In this case, the path to the embeddings should contain `.npy` files with the same shard numbers as the webdataset and there should be a correspondence between the filename of the `.jpg` and the index of the embedding in the `.npy`. So, for example, `0001.tar` from the webdataset with image `00010509.jpg` (the first 4 digit",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/README.md:1-5"
+    },
+    "751": {
+        "file_id": 20,
+        "content": "This code snippet describes the usage of general dataloaders for efficient data loading and training portions of the network, particularly focusing on the decoder. It supports two types of datasets: a webdataset containing .jpg and .npy files in .tar formats or an external source where .npy files correspond to .jpg filenames from the webdataset.",
+        "type": "comment"
+    },
+    "752": {
+        "file_id": 20,
+        "content": "s are the shard number and the last 4 are the index) in it should be paralleled by a `img_emb_0001.npy` which contains a NumPy array with the embedding at index 509.\nGenerating a dataset of this type:\n1. Use [img2dataset](https://github.com/rom1504/img2dataset) to generate a webdataset.\n2. Use [clip-retrieval](https://github.com/rom1504/clip-retrieval) to convert the images to embeddings.\n3. Use [embedding-dataset-reordering](https://github.com/Veldrovive/embedding-dataset-reordering) to reorder the embeddings into the expected format.\nUsage:\n```python\nfrom dalle2_pytorch.dataloaders import ImageEmbeddingDataset, create_image_embedding_dataloader\n# Create a dataloader directly.\ndataloader = create_image_embedding_dataloader(\n    tar_url=\"/path/or/url/to/webdataset/{0000..9999}.tar\", # Uses bracket expanding notation. This specifies to read all tars from 0000.tar to 9999.tar\n    embeddings_url=\"path/or/url/to/embeddings/folder\",     # Included if .npy files are not in webdataset. Left out or set to None otherwise",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/README.md:5-19"
+    },
+    "753": {
+        "file_id": 20,
+        "content": "This code demonstrates how to create a dataloader for an image embedding dataset. It utilizes three separate tools: img2dataset, clip-retrieval, and embedding-dataset-reordering. The user must provide the appropriate URLs for the webdataset and embeddings folder in order to generate the dataloader. The code snippet also highlights the usage of create_image_embedding_dataloader function which takes in URL parameters and returns a dataloader object.",
+        "type": "comment"
+    },
+    "754": {
+        "file_id": 20,
+        "content": "    num_workers=4,\n    batch_size=32,\n    shard_width=4,                                         # If a file in the webdataset shard 3 is named 0003039.jpg, we know the shard width is 4 and the last three digits are the index\n    shuffle_num=200,                                       # Does a shuffle of the data with a buffer size of 200\n    shuffle_shards=True,                                   # Shuffle the order the shards are read in\n    resample_shards=False,                                 # Sample shards with replacement. If true, an epoch will be infinite unless stopped manually\n)\nfor img, emb in dataloader:\n    print(img.shape)  # torch.Size([32, 3, 256, 256])\n    print(emb.shape)  # torch.Size([32, 512])\n    # Train decoder only as shown above\n# Or create a dataset without a loader so you can configure it manually\ndataset = ImageEmbeddingDataset(\n    urls=\"/path/or/url/to/webdataset/{0000..9999}.tar\",\n    embedding_folder_url=\"path/or/url/to/embeddings/folder\",\n    shard_width=4,\n    shuffle_shards=True,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/README.md:20-37"
+    },
+    "755": {
+        "file_id": 20,
+        "content": "This code initializes a dataloader with parameters such as number of workers, batch size, shard width, and shuffle settings. It loads images and their corresponding embeddings from webdataset files. The images' shapes are printed for a single epoch. An ImageEmbeddingDataset is also created without a loader for manual configuration.",
+        "type": "comment"
+    },
+    "756": {
+        "file_id": 20,
+        "content": "    resample=False\n)\n```\n### Diffusion Prior: Prior Embedding Dataset\nWhen training the prior it is much more efficient to work with pre-computed embeddings. The `PriorEmbeddingDataset` class enables you to leverage the same script (with minimal modification) for both embedding-only and text-conditioned prior training. This saves you from having to worry about a lot of the boilerplate code.\nTo utilize the `PriorEmbeddingDataset`, all you need to do is make a single call to `get_reader()` which will create `EmbeddingReader` object(s) for you. Afterwards, you can utilize `make_splits()` to cleanly create DataLoader objects from for your training run.\nIf you are training in a distributed manner, `make_splits()` accepts `rank` and `world_size` arguments to properly distribute to each process. The defaults for these values are `rank=0` and `world_size=1`, so single-process training can safely ignore these parameters.\nUsage:\n```python\nfrom dalle2_pytorch.dataloaders import get_reader, make_splits\n# grab embeddings from some specified location",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/README.md:38-53"
+    },
+    "757": {
+        "file_id": 20,
+        "content": "The `resample=False` argument is used to disable resampling when processing the embeddings in the Prior Embedding Dataset. This ensures that the embeddings are not recomputed and can be efficiently used for both embedding-only and text-conditioned prior training.",
+        "type": "comment"
+    },
+    "758": {
+        "file_id": 20,
+        "content": "IMG_URL = \"data/img_emb/\"\nMETA_URL = \"data/meta/\"\nreader = get_reader(text_conditioned=True, img_url=IMG_URL, meta_url=META_URL)\n# some config for training\nTRAIN_ARGS = {\n    \"world_size\": 3,\n    \"text_conditioned\": True,\n    \"start\": 0,\n    \"num_data_points\": 10000,\n    \"batch_size\": 2,\n    \"train_split\": 0.5,\n    \"eval_split\": 0.25,\n    \"image_reader\": reader,\n}\n# specifying a rank will handle allocation internally\nrank0_train, rank0_eval, rank0_test = make_splits(rank=0, **TRAIN_ARGS)\nrank1_train, rank1_eval, rank1_test = make_splits(rank=1, **TRAIN_ARGS)\nrank2_train, rank2_eval, rank2_test = make_splits(rank=2, **TRAIN_ARGS)\n```",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/README.md:54-75"
+    },
+    "759": {
+        "file_id": 20,
+        "content": "The code sets up training, evaluation, and testing splits for three different ranks (0, 1, 2) using the provided config TRAIN_ARGS. It uses the get_reader function to load image and metadata from specified URLs, and the make_splits function to divide the data into train, eval, and test sets for distributed training.",
+        "type": "comment"
+    },
+    "760": {
+        "file_id": 21,
+        "content": "/dalle2_pytorch/dataloaders/__init__.py",
+        "type": "filepath"
+    },
+    "761": {
+        "file_id": 21,
+        "content": "This code imports necessary classes for ImageEmbeddingDataset and PriorEmbeddingDataset from their respective modules in the DALLE2-pytorch library. These datasets are used to load data for the model's training and inference.",
+        "type": "summary"
+    },
+    "762": {
+        "file_id": 21,
+        "content": "from dalle2_pytorch.dataloaders.decoder_loader import ImageEmbeddingDataset, create_image_embedding_dataloader\nfrom dalle2_pytorch.dataloaders.prior_loader import make_splits, get_reader, PriorEmbeddingDataset",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/__init__.py:1-2"
+    },
+    "763": {
+        "file_id": 21,
+        "content": "This code imports necessary classes for ImageEmbeddingDataset and PriorEmbeddingDataset from their respective modules in the DALLE2-pytorch library. These datasets are used to load data for the model's training and inference.",
+        "type": "comment"
+    },
+    "764": {
+        "file_id": 22,
+        "content": "/dalle2_pytorch/dataloaders/decoder_loader.py",
+        "type": "filepath"
+    },
+    "765": {
+        "file_id": 22,
+        "content": "The code defines functions for retrieving embeddings, combining image and text embeddings, creating image embedding datasets, and handling exceptions in webdataset tar files. It also includes support for preprocessing, resampling, shuffling, package checks, and dataloaders.",
+        "type": "summary"
+    },
+    "766": {
+        "file_id": 22,
+        "content": "import os\nimport webdataset as wds\nimport torch\nfrom torch.utils.data import DataLoader\nimport numpy as np\nimport fsspec\nimport shutil\ndef get_shard(filename):\n    \"\"\"\n    Filenames with shards in them have a consistent structure that we can take advantage of\n    Standard structure: path/to/file/prefix_string_00001.ext\n    \"\"\"\n    try:\n        return filename.split(\"_\")[-1].split(\".\")[0]\n    except ValueError:\n        raise RuntimeError(f\"Could not find shard for filename {filename}\")\ndef get_example_file(fs, path, file_format):\n    \"\"\"\n    Given a file system and a file extension, return the example file\n    \"\"\"\n    return fs.glob(os.path.join(path, f\"*.{file_format}\"))[0]\ndef embedding_inserter(samples, embeddings_url, index_width, sample_key='npy', handler=wds.handlers.reraise_exception):\n    \"\"\"Given a datum of {\"__key__\": str, \"__url__\": str, ...} adds the cooresponding embedding and yields\"\"\"\n    previous_tar_url = None\n    current_embeddings = None\n    # Get a reference to an abstract file system where the embeddings are stored",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:1-29"
+    },
+    "767": {
+        "file_id": 22,
+        "content": "This code defines three functions: `get_shard`, `get_example_file`, and `embedding_inserter`. The first function extracts the shard number from a filename. The second function returns an example file given a file system and a file format. Lastly, the third function inserts embeddings into a dataset, given samples, embedding URL, index width, sample key, and a handler to handle exceptions.",
+        "type": "comment"
+    },
+    "768": {
+        "file_id": 22,
+        "content": "    embeddings_fs, embeddings_path = fsspec.core.url_to_fs(embeddings_url)\n    example_embedding_file = get_example_file(embeddings_fs, embeddings_path, \"npy\")\n    example_embedding_shard = get_shard(example_embedding_file)\n    emb_shard_width = len(example_embedding_shard)\n    # Easier to get the basename without the shard once than search through for the correct file every time\n    embedding_file_basename = '_'.join(example_embedding_file.split(\"_\")[:-1]) + \"_\"\n    def load_corresponding_embeds(tar_url):\n      \"\"\"Finds and reads the npy files that contains embeddings for the given webdataset tar\"\"\"\n      shard = int(tar_url.split(\"/\")[-1].split(\".\")[0])\n      embedding_url = embedding_file_basename + str(shard).zfill(emb_shard_width) + '.npy'\n      with embeddings_fs.open(embedding_url) as f:\n        data = np.load(f)\n      return torch.from_numpy(data)\n    for sample in samples:\n        try:\n            tar_url = sample[\"__url__\"]\n            key = sample[\"__key__\"]\n            if tar_url != previous_tar_url:",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:30-49"
+    },
+    "769": {
+        "file_id": 22,
+        "content": "This code segment retrieves and loads embeddings from a webdataset tar file using the given URL. It identifies the correct npy file containing the embeddings by extracting the shard number from the URL, then opens and loads the data into a torch tensor.",
+        "type": "comment"
+    },
+    "770": {
+        "file_id": 22,
+        "content": "                # If the tar changed, we need to download new embeddings\n                # This means if we shuffle before inserting it will load many more files than we expect and be very inefficient.\n                previous_tar_url = tar_url\n                current_embeddings = load_corresponding_embeds(tar_url)\n            embedding_index = int(key[-index_width:])\n            embedding = current_embeddings[embedding_index]\n            # We need to check if this sample is nonzero. If it is, this embedding is not valid and we should continue to the next loop\n            if torch.count_nonzero(embedding) == 0:\n                raise RuntimeError(f\"Webdataset had a sample, but no embedding was found. ImgShard: {key[:-index_width]} - Index: {key[-index_width:]}\")\n            sample[sample_key] = embedding\n            yield sample\n        except Exception as exn:  # From wds implementation\n            if handler(exn):\n                continue\n            else:\n                break\ninsert_embedding = wds.filters.pipelinefilter(embedding_inserter)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:50-67"
+    },
+    "771": {
+        "file_id": 22,
+        "content": "The code checks if a tar file changed and loads corresponding embeddings. If the sample has no embedding, it raises an error. The insert_embedding variable is assigned a pipeline filter with the embedding inserter function.",
+        "type": "comment"
+    },
+    "772": {
+        "file_id": 22,
+        "content": "def unassociated_shard_skipper(tarfiles, embeddings_url, handler=wds.handlers.reraise_exception):\n    \"\"\"Finds if the is a corresponding embedding for the tarfile at { url: [URL] }\"\"\"\n    embeddings_fs, embeddings_path = fsspec.core.url_to_fs(embeddings_url)\n    embedding_files = embeddings_fs.ls(embeddings_path)\n    get_embedding_shard = lambda embedding_file: int(embedding_file.split(\"_\")[-1].split(\".\")[0])\n    embedding_shards = set([get_embedding_shard(filename) for filename in embedding_files])  # Sets have O(1) check for member\n    get_tar_shard = lambda tar_file: int(tar_file.split(\"/\")[-1].split(\".\")[0])\n    for tarfile in tarfiles:\n        try:\n            webdataset_shard = get_tar_shard(tarfile[\"url\"])\n            # If this shard has an associated embeddings file, we pass it through. Otherwise we iterate until we do have one\n            if webdataset_shard in embedding_shards:\n                yield tarfile\n        except Exception as exn:  # From wds implementation\n            if handler(exn):",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:69-84"
+    },
+    "773": {
+        "file_id": 22,
+        "content": "This function checks if there are corresponding embeddings for the given tarfiles. It first retrieves a set of embedding shards from the embeddings_url, then iterates through the tarfiles. If a tarfile's shard is in the set of embedding shards, it yields the tarfile. Otherwise, it will continue to iterate until it finds a matching shard. Exceptions are handled using the provided handler function.",
+        "type": "comment"
+    },
+    "774": {
+        "file_id": 22,
+        "content": "                continue\n            else:\n                break\nskip_unassociated_shards = wds.filters.pipelinefilter(unassociated_shard_skipper)\ndef join_embeddings(samples, handler=wds.handlers.reraise_exception):\n    \"\"\"\n    Takes the img_emb and text_emb keys and turns them into one key \"emb\": { \"text\": text_emb, \"img\": img_emb }\n    either or both of text_emb and img_emb may not be in the sample so we only add the ones that exist\n    \"\"\"\n    for sample in samples:\n        try:\n            sample['emb'] = {}\n            if 'text_emb' in sample:\n                sample['emb']['text'] = sample['text_emb']\n            if 'img_emb' in sample:\n                sample['emb']['img'] = sample['img_emb']\n            yield sample\n        except Exception as exn:  # From wds implementation\n            if handler(exn):\n                continue\n            else:\n                break\ndef verify_keys(samples, required_keys, handler=wds.handlers.reraise_exception):\n    \"\"\"\n    Requires that both the image and embedding are present in the sample",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:85-111"
+    },
+    "775": {
+        "file_id": 22,
+        "content": "The code defines two functions: `join_embeddings()` and `verify_keys()`. The first function combines the `img_emb` and `text_emb` keys into a single \"emb\" key in each sample, only including existing embeddings. The second function ensures that both image and embedding are present in each sample. If not, it either continues or breaks depending on the exception handler.",
+        "type": "comment"
+    },
+    "776": {
+        "file_id": 22,
+        "content": "    This is important to do as a user may forget they do not have embeddings in their webdataset and neglect to add them using the embedding_folder_url parameter.\n    \"\"\"\n    for sample in samples:\n        try:\n            for key in required_keys:\n                assert key in sample, f\"Sample {sample['__key__']} missing {key}. Has keys {sample.keys()}\"\n            yield sample\n        except Exception as exn:  # From wds implementation\n            if handler(exn):\n                continue\n            else:\n                break\nkey_verifier = wds.filters.pipelinefilter(verify_keys)\nclass ImageEmbeddingDataset(wds.DataPipeline, wds.compat.FluidInterface):\n    \"\"\"\n    A fluid interface wrapper for DataPipline that returns image embedding pairs\n    Reads embeddings as npy files from the webdataset if they exist. If embedding_folder_url is set, they will be inserted in from the alternate source.\n    \"\"\"\n    def __init__(\n            self,\n            urls,\n            img_embedding_folder_url=None,\n            text_embedding_folder_url=None,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:112-136"
+    },
+    "777": {
+        "file_id": 22,
+        "content": "This code checks if required keys are present in each sample, asserts if missing and yields the sample. It uses a key_verifier filter and a fluid interface for DataPipeline to return image embedding pairs. Embeddings can be read from webdataset or inserted from an alternate source based on embedding_folder_url.",
+        "type": "comment"
+    },
+    "778": {
+        "file_id": 22,
+        "content": "            index_width=None,\n            img_preproc=None,\n            extra_keys=[],\n            handler=wds.handlers.reraise_exception,\n            resample=False,\n            shuffle_shards=True\n    ):\n        \"\"\"\n        Modeled directly off of the WebDataset constructor\n        :param urls: A url pointing to the tar files of the webdataset formatted as /path/to/webdataset/{0000..9999}.tar\n        :param embedding_folder_url: Required if webdataset does not contain embeddings. A url pointing to the npy files of the embeddings. Should have the same number of shards as the webdataset.\n            Webdataset image keys should align with the index of the embedding. This means missing image indices must have a corresponding embedding of all zeros.\n        :param index_width: The number of digits in the index. This is used to align the embedding index with the image index.\n            For example, if a file in the webdataset shard 3 is named 0003039.jpg, we know the shard is 4 digits and the last 3 digits are the index_width.",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:137-151"
+    },
+    "779": {
+        "file_id": 22,
+        "content": "The code defines a function to load data from webdatasets and embeddings for a model. It takes URLs as input, where each URL points to tar files of the webdataset. If embeddings are not included in the dataset, an embedding_folder_URL is required. The index width specifies the number of digits in the index, used to align image and embedding indices. The handler handles exceptions, while resample can be set for resampling data. The shuffle_shards flag determines whether to shuffle shards during loading.",
+        "type": "comment"
+    },
+    "780": {
+        "file_id": 22,
+        "content": "        :param img_preproc: This function is run on the img before it is batched and returned. Useful for data augmentation or converting to torch tensor.\n        :param handler: A webdataset handler.\n        :param resample: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.\n        :param shuffle_shards: If true, shuffle the shards before resampling. This cannot be true if resample is true.\n        \"\"\"\n        super().__init__()\n        keys = [\"jpg\", \"emb\"] + extra_keys\n        # if img_embedding_folder_url is not None:\n        #     keys.append(\"img_emb\")\n        # if text_embedding_folder_url is not None:\n        #     keys.append(\"text_emb\")\n        # keys.extend(extra_keys)\n        self.key_map = {key: i for i, key in enumerate(keys)}\n        self.resampling = resample\n        self.img_preproc = img_preproc\n        # If s3, check if s3fs is installed and s3cmd is installed and check if the data is piped instead of straight up",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:152-169"
+    },
+    "781": {
+        "file_id": 22,
+        "content": "This function is a webdataset handler that takes parameters for img_preproc, resample, and shuffle_shards. It initializes the keys for data loading and maps them to their respective indices. If img_embedding_folder_url or text_embedding_folder_url is not None, \"img_emb\" and \"text_emb\" will be added as keys. The function also checks if s3fs and s3cmd are installed, and handles data piping.",
+        "type": "comment"
+    },
+    "782": {
+        "file_id": 22,
+        "content": "        if (isinstance(urls, str) and \"s3:\" in urls) or (isinstance(urls, list) and any([\"s3:\" in url for url in urls])):\n            # Then this has an s3 link for the webdataset and we need extra packages\n            if shutil.which(\"s3cmd\") is None:\n                raise RuntimeError(\"s3cmd is required for s3 webdataset\")\n        if (img_embedding_folder_url is not None and \"s3:\" in img_embedding_folder_url) or (text_embedding_folder_url is not None and \"s3:\" in text_embedding_folder_url):\n            # Then the embeddings are being loaded from s3 and fsspec requires s3fs\n            try:\n                import s3fs\n            except ImportError:\n                raise RuntimeError(\"s3fs is required to load embeddings from s3\")\n        # Add the shardList and randomize or resample if requested\n        if resample:\n            assert not shuffle_shards, \"Cannot both resample and shuffle\"\n            self.append(wds.ResampledShards(urls))\n        else:\n            self.append(wds.SimpleShardList(urls))",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:170-185"
+    },
+    "783": {
+        "file_id": 22,
+        "content": "Code checks if the URLs provided for webdataset contain \"s3:\" indicating S3 links. If so, it requires 's3cmd' and 's3fs' packages to be installed or raises an error. It also adds shardList and allows resampling or shuffling of shards based on user input.",
+        "type": "comment"
+    },
+    "784": {
+        "file_id": 22,
+        "content": "            if shuffle_shards:\n                self.append(wds.filters.shuffle(1000))\n        if img_embedding_folder_url is not None:\n            # There may be webdataset shards that do not have a embedding shard associated with it. If we do not skip these, they would cause issues.\n            self.append(skip_unassociated_shards(embeddings_url=img_embedding_folder_url, handler=handler))\n        if text_embedding_folder_url is not None:\n            self.append(skip_unassociated_shards(embeddings_url=text_embedding_folder_url, handler=handler))\n        self.append(wds.tarfile_to_samples(handler=handler))\n        self.append(wds.decode(\"pilrgb\", handler=handler))\n        if img_embedding_folder_url is not None:\n            # Then we are loading image embeddings for a remote source\n            assert index_width is not None, \"Reading embeddings separately requires index width length to be given\"\n            self.append(insert_embedding(embeddings_url=img_embedding_folder_url, index_width=index_width, sample_key='img_emb', handler=handler))",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:186-200"
+    },
+    "785": {
+        "file_id": 22,
+        "content": "The code configures a decoder loader for DALLE2-pytorch. It shuffles 1000 filters and skips unassociated shards if necessary, loads embeddings from URLs, converts to samples, and decodes images as PILRGB.",
+        "type": "comment"
+    },
+    "786": {
+        "file_id": 22,
+        "content": "        if text_embedding_folder_url is not None:\n            # Then we are loading image embeddings for a remote source\n            assert index_width is not None, \"Reading embeddings separately requires index width length to be given\"\n            self.append(insert_embedding(embeddings_url=text_embedding_folder_url, index_width=index_width, sample_key='text_emb', handler=handler))\n        self.append(join_embeddings)\n        self.append(key_verifier(required_keys=keys, handler=handler))\n        # Apply preprocessing\n        self.append(wds.map(self.preproc))\n        self.append(wds.to_tuple(*keys))\n    def preproc(self, sample):\n        \"\"\"Applies the preprocessing for images\"\"\"\n        if self.img_preproc is not None:\n            sample[\"jpg\"] = self.img_preproc(sample[\"jpg\"])\n        return sample\ndef create_image_embedding_dataloader(\n    tar_url,\n    num_workers,\n    batch_size,\n    img_embeddings_url=None,\n    text_embeddings_url=None,\n    index_width=None,\n    shuffle_num = None,\n    shuffle_shards = True,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:201-225"
+    },
+    "787": {
+        "file_id": 22,
+        "content": "This code creates an image embedding dataloader. If a text embedding folder URL is provided, it loads image embeddings for remote sources based on the given index width. It then applies preprocessing and joins the embeddings before returning the tuple of keys. The preproc function applies image preprocessing if available.",
+        "type": "comment"
+    },
+    "788": {
+        "file_id": 22,
+        "content": "    resample_shards = False, \n    img_preproc=None,\n    extra_keys=[],\n    handler=wds.handlers.reraise_exception#warn_and_continue\n):\n    \"\"\"\n    Convenience function to create an image embedding dataseta and dataloader in one line\n    :param tar_url: A url pointing to the tar files of the webdataset formatted as /path/to/webdataset/{0000..9999}.tar\n    :param num_workers: The number of workers to use for the dataloader\n    :param batch_size: The batch size to use for the dataloader\n    :param embeddings_url: Required if webdataset does not contain embeddings. A url pointing to the npy files of the embeddings. Should have the same number of shards as the webdataset.\n        Webdataset image keys should align with the index of the embedding. This means missing image indices must have a corresponding embedding of all zeros.\n    :param index_width: The number of digits in the index. This is used to align the embedding index with the image index.\n            For example, if a file in the webdataset sh",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:226-240"
+    },
+    "789": {
+        "file_id": 22,
+        "content": "This code creates an image embedding dataset and dataloader in one line, accepting parameters such as tar_url, num_workers, batch_size, embeddings_url, and index_width. The function is designed for webdataset format and requires the same number of shards for both the webdataset images and their corresponding embeddings. It also supports handling exceptions using a specified handler.",
+        "type": "comment"
+    },
+    "790": {
+        "file_id": 22,
+        "content": "ard 3 is named 0003039.jpg, we know the shard is 4 digits and the last 3 digits are the index_width.\n    :param shuffle_num: If not None, shuffle the dataset with this size buffer after sampling.\n    :param shuffle_shards: If true, shuffle the shards before sampling. This cannot be true if resample is true.\n    :param resample_shards: If true, resample webdataset shards with replacement. You need to set your own epoch size if this is true since it will resample infinitely.\n    :param handler: A webdataset handler.\n    \"\"\"\n    ds = ImageEmbeddingDataset(\n        tar_url,\n        img_embedding_folder_url=img_embeddings_url,\n        text_embedding_folder_url=text_embeddings_url,\n        index_width=index_width,\n        shuffle_shards=shuffle_shards,\n        resample=resample_shards,\n        extra_keys=extra_keys,\n        img_preproc=img_preproc,\n        handler=handler\n    )\n    if shuffle_num is not None and shuffle_num > 0:\n        ds.shuffle(1000)\n    return DataLoader(\n        ds,\n        num_workers=num_workers,",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:240-261"
+    },
+    "791": {
+        "file_id": 22,
+        "content": "This code defines a function that takes in parameters like tar_url, img_embedding_folder_url, text_embeddings_url, index_width, extra_keys, img_preproc, and handler. It creates an ImageEmbeddingDataset and optionally shuffles it based on the given shuffle_num. Then, it returns a DataLoader for further processing.",
+        "type": "comment"
+    },
+    "792": {
+        "file_id": 22,
+        "content": "        batch_size=batch_size,\n        prefetch_factor=2,  # This might be good to have high so the next npy file is prefetched\n        pin_memory=True,\n        shuffle=False\n    )",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/decoder_loader.py:262-266"
+    },
+    "793": {
+        "file_id": 22,
+        "content": "This code creates a data loader for the decoder model. It sets batch size, prefetch factor (for efficient loading), pin memory (for faster GPU transfers), and disables shuffling.",
+        "type": "comment"
+    },
+    "794": {
+        "file_id": 23,
+        "content": "/dalle2_pytorch/dataloaders/prior_loader.py",
+        "type": "filepath"
+    },
+    "795": {
+        "file_id": 23,
+        "content": "This code offers efficient data retrieval classes for DALL-E 2, supports text conditioning and MPI distribution. It divides embedding reader objects into training, evaluation, and test sets using PyTorch Dataloaders, without specifying batch sizes.",
+        "type": "summary"
+    },
+    "796": {
+        "file_id": 23,
+        "content": "from math import ceil\nfrom clip import tokenize\nfrom embedding_reader import EmbeddingReader\nfrom torch import from_numpy\nfrom torch.utils.data import IterableDataset, DataLoader\nclass PriorEmbeddingDataset(IterableDataset):\n    \"\"\"\n    PriorEmbeddingDataset is a wrapper of EmbeddingReader.\n    It enables one to simplify the logic necessary to yield samples from\n    the different EmbeddingReader configurations available.\n    \"\"\"\n    def __init__(\n        self,\n        text_conditioned: bool,\n        batch_size: int,\n        start: int,\n        stop: int,\n        image_reader,\n        text_reader: EmbeddingReader = None,\n    ) -> None:\n        super(PriorEmbeddingDataset).__init__()\n        self.text_conditioned = text_conditioned\n        if not self.text_conditioned:\n            self.text_reader = text_reader\n        self.image_reader = image_reader\n        self.start = start\n        self.stop = stop\n        self.batch_size = batch_size\n    def __len__(self):\n        return self.stop - self.start\n    def __iter__(self):",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:1-40"
+    },
+    "797": {
+        "file_id": 23,
+        "content": "The code defines a class called PriorEmbeddingDataset that wraps the EmbeddingReader class. It allows for simplified sample retrieval from various configurations of EmbeddingReader by enabling batch-based access to prior data, where text_conditioned and batch_size are parameters, along with start and stop indices for the range of data to be loaded.",
+        "type": "comment"
+    },
+    "798": {
+        "file_id": 23,
+        "content": "        # D.R.Y loader args\n        loader_args = dict(\n            batch_size=self.batch_size,\n            start=self.start,\n            end=self.stop,\n            show_progress=False,\n        )\n        # if the data requested is text conditioned, only load images\n        if self.text_conditioned:\n            self.loader = self.image_reader(**loader_args)\n        # otherwise, include text embeddings and bypass metadata\n        else:\n            self.loader = zip(\n                self.image_reader(**loader_args), self.text_reader(**loader_args)\n            )\n        # return the data loader in its formatted state\n        return self\n    def __next__(self):\n        try:\n            return self.get_sample()\n        except StopIteration:\n            raise StopIteration\n    def __str__(self):\n        return f\"<PriorEmbeddingDataset: start: {self.start}, stop: {self.stop}, len: {self.__len__()}>\"\n    def set_start(self, start):\n        \"\"\"\n        Adjust the starting point within the reader, useful for resuming an epoch",
+        "type": "code",
+        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:41-72"
+    },
+    "799": {
+        "file_id": 23,
+        "content": "The code defines a PriorEmbeddingDataset class for data loading in DALLE2-pytorch. It uses an image_reader and text_reader to load data in a batch, with optional text conditioning. It includes a __next__ method for iterating through the dataset and a set_start method for adjusting the starting point within the reader.",
+        "type": "comment"
+    }
+}

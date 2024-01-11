@@ -1,0 +1,548 @@
+{
+    "600": {
+        "file_id": 14,
+        "content": "        if actual_sum != 1.:\n            raise ValueError(f'{dict(self).keys()} must sum to 1.0. Found: {actual_sum}')\n        return self\nclass TrackerLogConfig(BaseModel):\n    log_type: str = 'console'\n    resume: bool = False  # For logs that are saved to unique locations, resume a previous run\n    auto_resume: bool = False  # If the process crashes and restarts, resume from the run that crashed\n    verbose: bool = False\n    class Config:\n        # Each individual log type has it's own arguments that will be passed through the config\n        extra = \"allow\"\n    def create(self, data_path: str):\n        kwargs = self.dict()\n        return create_logger(self.log_type, data_path, **kwargs)\nclass TrackerLoadConfig(BaseModel):\n    load_from: Optional[str] = None\n    only_auto_resume: bool = False  # Only attempt to load if the logger is auto-resuming\n    class Config:\n        extra = \"allow\"\n    def create(self, data_path: str):\n        kwargs = self.dict()\n        if self.load_from is None:\n            return None",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:44-73"
+    },
+    "601": {
+        "file_id": 14,
+        "content": "The code defines two classes, `TrackerLogConfig` and `TrackerLoadConfig`, which inherit from `BaseModel`. These classes have various attributes such as `log_type`, `resume`, `auto_resume`, and `verbose`. They also have a method called `create` that takes in a `data_path` parameter and returns a logger object. The classes ensure their attributes sum up to 1.0, and allow additional arguments for each individual log type. The `TrackerLoadConfig` class has an optional attribute `load_from`, which determines if the logger should load from a previous run. If `load_from` is set to `None`, it returns None instead of loading.",
+        "type": "comment"
+    },
+    "602": {
+        "file_id": 14,
+        "content": "        return create_loader(self.load_from, data_path, **kwargs)\nclass TrackerSaveConfig(BaseModel):\n    save_to: str = 'local'\n    save_all: bool = False\n    save_latest: bool = True\n    save_best: bool = True\n    class Config:\n        extra = \"allow\"\n    def create(self, data_path: str):\n        kwargs = self.dict()\n        return create_saver(self.save_to, data_path, **kwargs)\nclass TrackerConfig(BaseModel):\n    data_path: str = '.tracker_data'\n    overwrite_data_path: bool = False\n    log: TrackerLogConfig\n    load: Optional[TrackerLoadConfig] = None\n    save: Union[List[TrackerSaveConfig], TrackerSaveConfig]\n    def create(self, full_config: BaseModel, extra_config: dict, dummy_mode: bool = False) -> Tracker:\n        tracker = Tracker(self.data_path, dummy_mode=dummy_mode, overwrite_data_path=self.overwrite_data_path)\n        # Add the logger\n        tracker.add_logger(self.log.create(self.data_path))\n        # Add the loader\n        if self.load is not None:\n            tracker.add_loader(self.load.create(self.data_path))",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:74-102"
+    },
+    "603": {
+        "file_id": 14,
+        "content": "This code defines classes for tracker configuration and load/save operations. The TrackerConfig class contains information about the data path, overwrite option, logger settings, and optional load configurations. The create method of TrackerConfig initializes a new Tracker object and adds a logger if present in the configuration. If there is a defined load configuration, it also adds a loader to the tracker.",
+        "type": "comment"
+    },
+    "604": {
+        "file_id": 14,
+        "content": "        # Add the saver or savers\n        if isinstance(self.save, list):\n            for save_config in self.save:\n                tracker.add_saver(save_config.create(self.data_path))\n        else:\n            tracker.add_saver(self.save.create(self.data_path))\n        # Initialize all the components and verify that all data is valid\n        tracker.init(full_config, extra_config)\n        return tracker\n# diffusion prior pydantic classes\nclass AdapterConfig(BaseModel):\n    make: str = \"openai\"\n    model: str = \"ViT-L/14\"\n    base_model_kwargs: Optional[Dict[str, Any]] = None\n    def create(self):\n        if self.make == \"openai\":\n            return OpenAIClipAdapter(self.model)\n        elif self.make == \"open_clip\":\n            pretrained = dict(list_pretrained())\n            checkpoint = pretrained[self.model]\n            return OpenClipAdapter(name=self.model, pretrained=checkpoint)\n        elif self.make == \"x-clip\":\n            return XClipAdapter(XCLIP(**self.base_model_kwargs))\n        elif self.make == \"coca\":",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:103-129"
+    },
+    "605": {
+        "file_id": 14,
+        "content": "This code defines a function that initializes and returns a tracker object, which is responsible for managing savers and components of the model. It also includes classes for different types of adapters used in the model. The tracker object verifies data validity after initialization.",
+        "type": "comment"
+    },
+    "606": {
+        "file_id": 14,
+        "content": "            return CoCaAdapter(CoCa(**self.base_model_kwargs))\n        else:\n            raise AttributeError(\"No adapter with that name is available.\")\nclass DiffusionPriorNetworkConfig(BaseModel):\n    dim: int\n    depth: int\n    max_text_len: Optional[int] = None\n    num_timesteps: Optional[int] = None\n    num_time_embeds: int = 1\n    num_image_embeds: int = 1\n    num_text_embeds: int = 1\n    dim_head: int = 64\n    heads: int = 8\n    ff_mult: int = 4\n    norm_in: bool = False\n    norm_out: bool = True\n    attn_dropout: float = 0.\n    ff_dropout: float = 0.\n    final_proj: bool = True\n    normformer: bool = False\n    rotary_emb: bool = True\n    class Config:\n        extra = \"allow\"\n    def create(self):\n        kwargs = self.dict()\n        return DiffusionPriorNetwork(**kwargs)\nclass DiffusionPriorConfig(BaseModel):\n    clip: Optional[AdapterConfig] = None\n    net: DiffusionPriorNetworkConfig\n    image_embed_dim: int\n    image_size: int\n    image_channels: int = 3\n    timesteps: int = 1000\n    sample_timesteps: Optional[int] = None",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:130-167"
+    },
+    "607": {
+        "file_id": 14,
+        "content": "This code defines configurations for a neural network model. It includes classes for adapters, diffusion prior networks, and diffusion prior models. The adapter class takes in base_model_kwargs and returns an instance of either CoCaAdapter or raises AttributeError if no matching adapter found. DiffusionPriorNetworkConfig defines the architecture specifications like dimensions, depth, and dropout rates. DiffusionPriorConfig handles configurations for clip adapters, diffusion prior networks, image embedding dimensions, image size, and number of timesteps. The create() function returns an instance of the model based on its configuration.",
+        "type": "comment"
+    },
+    "608": {
+        "file_id": 14,
+        "content": "    cond_drop_prob: float = 0.\n    loss_type: str = 'l2'\n    predict_x_start: bool = True\n    beta_schedule: str = 'cosine'\n    condition_on_text_encodings: bool = True\n    class Config:\n        extra = \"allow\"\n    def create(self):\n        kwargs = self.dict()\n        has_clip = exists(kwargs.pop('clip'))\n        kwargs.pop('net')\n        clip = None\n        if has_clip:\n            clip = self.clip.create()\n        diffusion_prior_network = self.net.create()\n        return DiffusionPrior(net = diffusion_prior_network, clip = clip, **kwargs)\nclass DiffusionPriorTrainConfig(BaseModel):\n    epochs: int = 1\n    lr: float = 1.1e-4\n    wd: float = 6.02e-2\n    max_grad_norm: float = 0.5\n    use_ema: bool = True\n    ema_beta: float = 0.99\n    amp: bool = False\n    warmup_steps: Optional[int] = None   # number of warmup steps\n    save_every_seconds: int = 3600       # how often to save\n    eval_timesteps: List[int] = [64]     # which sampling timesteps to evaluate with\n    best_validation_loss: float = 1e9    # the current best valudation loss observed",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:168-201"
+    },
+    "609": {
+        "file_id": 14,
+        "content": "The code defines a class for training configurations, including epochs, learning rate, weight decay, and other parameters. It also contains functions to create instances of diffusion prior networks and conditioning models. The class is part of the DALLE2-pytorch framework and is used for training the model.",
+        "type": "comment"
+    },
+    "610": {
+        "file_id": 14,
+        "content": "    current_epoch: int = 0               # the current epoch\n    num_samples_seen: int = 0            # the current number of samples seen\n    random_seed: int = 0                 # manual seed for torch\nclass DiffusionPriorDataConfig(BaseModel):\n    image_url: str                   # path to embeddings folder\n    meta_url: str                    # path to metadata (captions) for images\n    splits: TrainSplitConfig         # define train, validation, test splits for your dataset\n    batch_size: int                  # per-gpu batch size used to train the model\n    num_data_points: int = 25e7      # total number of datapoints to train on\n    eval_every_seconds: int = 3600   # validation statistics will be performed this often\nclass TrainDiffusionPriorConfig(BaseModel):\n    prior: DiffusionPriorConfig\n    data: DiffusionPriorDataConfig\n    train: DiffusionPriorTrainConfig\n    tracker: TrackerConfig\n    @classmethod\n    def from_json_path(cls, json_path):\n        with open(json_path) as f:\n            config = json.load(f)",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:202-223"
+    },
+    "611": {
+        "file_id": 14,
+        "content": "The code defines a configuration class for training the DiffusionPrior model, which contains details such as the data source, batch size, total number of datapoints to train on, and validation frequency. It also has methods to load configurations from JSON files.",
+        "type": "comment"
+    },
+    "612": {
+        "file_id": 14,
+        "content": "        return cls(**config)\n# decoder pydantic classes\nclass UnetConfig(BaseModel):\n    dim: int\n    dim_mults: ListOrTuple[int]\n    image_embed_dim: Optional[int] = None\n    text_embed_dim: Optional[int] = None\n    cond_on_text_encodings: Optional[bool] = None\n    cond_dim: Optional[int] = None\n    channels: int = 3\n    self_attn: SingularOrIterable[bool] = False\n    attn_dim_head: int = 32\n    attn_heads: int = 16\n    init_cross_embed: bool = True\n    class Config:\n        extra = \"allow\"\nclass DecoderConfig(BaseModel):\n    unets: ListOrTuple[UnetConfig]\n    image_size: Optional[int] = None\n    image_sizes: ListOrTuple[int] = None\n    clip: Optional[AdapterConfig] = None   # The clip model to use if embeddings are not provided\n    channels: int = 3\n    timesteps: int = 1000\n    sample_timesteps: Optional[SingularOrIterable[Optional[int]]] = None\n    loss_type: str = 'l2'\n    beta_schedule: Optional[ListOrTuple[str]] = None  # None means all cosine\n    learned_variance: SingularOrIterable[bool] = True\n    image_cond_drop_prob: float = 0.1",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:224-255"
+    },
+    "613": {
+        "file_id": 14,
+        "content": "The code defines two Pydantic classes, UnetConfig and DecoderConfig, which represent the configurations for the DALL-E 2 model. The UnetConfig class handles the configuration of the UNet transformer in the decoder while the DecoderConfig class includes various settings like the number of UNet blocks, image size, clip model, timesteps, loss type, and more.",
+        "type": "comment"
+    },
+    "614": {
+        "file_id": 14,
+        "content": "    text_cond_drop_prob: float = 0.5\n    def create(self):\n        decoder_kwargs = self.dict()\n        unet_configs = decoder_kwargs.pop('unets')\n        unets = [Unet(**config) for config in unet_configs]\n        has_clip = exists(decoder_kwargs.pop('clip'))\n        clip = None\n        if has_clip:\n            clip = self.clip.create()\n        return Decoder(unets, clip=clip, **decoder_kwargs)\n    @validator('image_sizes')\n    def check_image_sizes(cls, image_sizes, values):\n        if exists(values.get('image_size')) ^ exists(image_sizes):\n            return image_sizes\n        raise ValueError('either image_size or image_sizes is required, but not both')\n    class Config:\n        extra = \"allow\"\nclass DecoderDataConfig(BaseModel):\n    webdataset_base_url: str                     # path to a webdataset with jpg images\n    img_embeddings_url: Optional[str] = None     # path to .npy files with embeddings\n    text_embeddings_url: Optional[str] = None    # path to .npy files with embeddings\n    num_workers: int = 4",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:256-284"
+    },
+    "615": {
+        "file_id": 14,
+        "content": "This code defines a class \"TrainConfigs\" that creates a decoder for DALL-E 2 training. It uses the Unet architecture, optionally includes CLIP for visual guidance, and allows specifying image sizes through 'image_size' or list of 'image_sizes'. The class also provides configurations for loading data from webdataset with jpg images, embedding files, and setting the number of workers for data loading.",
+        "type": "comment"
+    },
+    "616": {
+        "file_id": 14,
+        "content": "    batch_size: int = 64\n    start_shard: int = 0\n    end_shard: int = 9999999\n    shard_width: int = 6\n    index_width: int = 4\n    splits: TrainSplitConfig\n    shuffle_train: bool = True\n    resample_train: bool = False\n    preprocessing: Dict[str, Any] = {'ToTensor': True}\n    @property\n    def img_preproc(self):\n        def _get_transformation(transformation_name, **kwargs):\n            if transformation_name == \"RandomResizedCrop\":\n                return T.RandomResizedCrop(**kwargs)\n            elif transformation_name == \"RandomHorizontalFlip\":\n                return T.RandomHorizontalFlip()\n            elif transformation_name == \"ToTensor\":\n                return T.ToTensor()\n        transforms = []\n        for transform_name, transform_kwargs_or_bool in self.preprocessing.items():\n            transform_kwargs = {} if not isinstance(transform_kwargs_or_bool, dict) else transform_kwargs_or_bool\n            transforms.append(_get_transformation(transform_name, **transform_kwargs))\n        return T.Compose(transforms)",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:285-309"
+    },
+    "617": {
+        "file_id": 14,
+        "content": "This code defines a training configuration with batch size, sharding settings, transformation preprocessing, and boolean flags for shuffling and resampling. It also includes a property method to generate the image preprocessing transforms based on provided names and optional arguments.",
+        "type": "comment"
+    },
+    "618": {
+        "file_id": 14,
+        "content": "class DecoderTrainConfig(BaseModel):\n    epochs: int = 20\n    lr: SingularOrIterable[float] = 1e-4\n    wd: SingularOrIterable[float] = 0.01\n    warmup_steps: Optional[SingularOrIterable[int]] = None\n    find_unused_parameters: bool = True\n    static_graph: bool = True\n    max_grad_norm: SingularOrIterable[float] = 0.5\n    save_every_n_samples: int = 100000\n    n_sample_images: int = 6                       # The number of example images to produce when sampling the train and test dataset\n    cond_scale: Union[float, List[float]] = 1.0\n    device: str = 'cuda:0'\n    epoch_samples: Optional[int] = None                      # Limits the number of samples per epoch. None means no limit. Required if resample_train is true as otherwise the number of samples per epoch is infinite.\n    validation_samples: Optional[int] = None                 # Same as above but for validation.\n    save_immediately: bool = False\n    use_ema: bool = True\n    ema_beta: float = 0.999\n    amp: bool = False\n    unet_training_mask: Optional[ListOrTuple[bool]] = None   # If None, use all unets",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:311-329"
+    },
+    "619": {
+        "file_id": 14,
+        "content": "This code defines a DecoderTrainConfig class with various configuration options for training the decoder model in DALLE2. The class includes settings for epochs, learning rate, weight decay, warmup steps, finding unused parameters, static graph usage, gradient clipping, saving samples, generating example images, scaling conditions, device selection, sample limits per epoch and validation, saving immediately, using exponential moving average (EMA), EMA beta value, using mixed precision training (AMP), and unet training masks.",
+        "type": "comment"
+    },
+    "620": {
+        "file_id": 14,
+        "content": "class DecoderEvaluateConfig(BaseModel):\n    n_evaluation_samples: int = 1000\n    FID: Optional[Dict[str, Any]] = None\n    IS: Optional[Dict[str, Any]] = None\n    KID: Optional[Dict[str, Any]] = None\n    LPIPS: Optional[Dict[str, Any]] = None\nclass TrainDecoderConfig(BaseModel):\n    decoder: DecoderConfig\n    data: DecoderDataConfig\n    train: DecoderTrainConfig\n    evaluate: DecoderEvaluateConfig\n    tracker: TrackerConfig\n    seed: int = 0\n    @classmethod\n    def from_json_path(cls, json_path):\n        with open(json_path) as f:\n            config = json.load(f)\n            print(config)\n        return cls(**config)\n    @model_validator(mode = 'after')\n    def check_has_embeddings(self, m):\n        # Makes sure that enough information is provided to get the embeddings specified for training\n        values = dict(self)\n        data_config, decoder_config = values.get('data'), values.get('decoder')\n        if not exists(data_config) or not exists(decoder_config):\n            # Then something else errored and we should just pass through",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:331-361"
+    },
+    "621": {
+        "file_id": 14,
+        "content": "This code defines two classes, \"DecoderEvaluateConfig\" and \"TrainDecoderConfig\", which inherit from the \"BaseModel\" class. The \"DecoderEvaluateConfig\" class specifies evaluation metrics like FID, IS, KID, and LPIPS, while the \"TrainDecoderConfig\" class combines various configuration elements including a decoder, data, training settings, evaluation settings, tracker, and seed. The \"from_json_path\" method loads configuration from a JSON file, and the \"check_has_embeddings\" validator ensures that enough information is provided to get the embeddings for training.",
+        "type": "comment"
+    },
+    "622": {
+        "file_id": 14,
+        "content": "            return values\n        using_text_embeddings = any([unet.cond_on_text_encodings for unet in decoder_config.unets])\n        using_clip = exists(decoder_config.clip)\n        img_emb_url = data_config.img_embeddings_url\n        text_emb_url = data_config.text_embeddings_url\n        if using_text_embeddings:\n            # Then we need some way to get the embeddings\n            assert using_clip or exists(text_emb_url), 'If text conditioning, either clip or text_embeddings_url must be provided'\n        if using_clip:\n            if using_text_embeddings:\n                assert not exists(text_emb_url) or not exists(img_emb_url), 'Loaded clip, but also provided text_embeddings_url and img_embeddings_url. This is redundant. Remove the clip model or the text embeddings'\n            else:\n                assert not exists(img_emb_url), 'Loaded clip, but also provided img_embeddings_url. This is redundant. Remove the clip model or the embeddings'\n        if text_emb_url:\n            assert using_te",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:362-380"
+    },
+    "623": {
+        "file_id": 14,
+        "content": "This code checks if the text embeddings and/or CLIP model are being used, ensuring that only one of these is provided to avoid redundancy. It asserts that either the CLIP or text embeddings URL must be present if text conditioning is enabled, and if only the CLIP model is loaded, it asserts that neither the text embeddings nor image embeddings URL should be provided.",
+        "type": "comment"
+    },
+    "624": {
+        "file_id": 14,
+        "content": "xt_embeddings, \"Text embeddings are being loaded, but text embeddings are not being conditioned on. This will slow down the dataloader for no reason.\"\n        return m",
+        "type": "code",
+        "location": "/dalle2_pytorch/train_configs.py:380-382"
+    },
+    "625": {
+        "file_id": 14,
+        "content": "This code snippet indicates that text embeddings are being loaded but are not necessary for the task, causing unnecessary slowdown in the dataloader. It is recommended to remove this step for efficiency.",
+        "type": "comment"
+    },
+    "626": {
+        "file_id": 15,
+        "content": "/dalle2_pytorch/trainer.py",
+        "type": "filepath"
+    },
+    "627": {
+        "file_id": 15,
+        "content": "The code initializes DeepSpeed's trainer, sets model parameters, distributes the model, and handles precision. It also initializes optimizers and schedulers, prepares dataloaders, validates compatibility, performs computations, and returns total loss.",
+        "type": "summary"
+    },
+    "628": {
+        "file_id": 15,
+        "content": "import time\nimport copy\nfrom pathlib import Path\nfrom math import ceil\nfrom functools import partial, wraps\nfrom contextlib import nullcontext\nfrom collections.abc import Iterable\nimport torch\nimport torch.nn.functional as F\nfrom torch import nn\nfrom torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR\nfrom torch.cuda.amp import autocast, GradScaler\nfrom dalle2_pytorch.dalle2_pytorch import Decoder, DiffusionPrior\nfrom dalle2_pytorch.optimizer import get_optimizer\nfrom dalle2_pytorch.version import __version__\nfrom packaging import version\nimport pytorch_warmup as warmup\nfrom ema_pytorch import EMA\nfrom accelerate import Accelerator, DistributedType\nimport numpy as np\n# helper functions\ndef exists(val):\n    return val is not None\ndef default(val, d):\n    if exists(val):\n        return val\n    return d() if callable(d) else d\ndef cast_tuple(val, length = 1):\n    return val if isinstance(val, tuple) else ((val,) * length)\ndef pick_and_pop(keys, d):\n    values = list(map(lambda key: d.pop(key), keys))\n    return dict(zip(keys, values))",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:1-43"
+    },
+    "629": {
+        "file_id": 15,
+        "content": "The code imports various libraries and defines several utility functions for working with tensors, learning rates, optimizers, and distributed training. It also includes helper functions to handle default values and handle dictionaries. These utilities are likely used throughout the codebase to train and evaluate models efficiently.",
+        "type": "comment"
+    },
+    "630": {
+        "file_id": 15,
+        "content": "def group_dict_by_key(cond, d):\n    return_val = [dict(),dict()]\n    for key in d.keys():\n        match = bool(cond(key))\n        ind = int(not match)\n        return_val[ind][key] = d[key]\n    return (*return_val,)\ndef string_begins_with(prefix, str):\n    return str.startswith(prefix)\ndef group_by_key_prefix(prefix, d):\n    return group_dict_by_key(partial(string_begins_with, prefix), d)\ndef groupby_prefix_and_trim(prefix, d):\n    kwargs_with_prefix, kwargs = group_dict_by_key(partial(string_begins_with, prefix), d)\n    kwargs_without_prefix = dict(map(lambda x: (x[0][len(prefix):], x[1]), tuple(kwargs_with_prefix.items())))\n    return kwargs_without_prefix, kwargs\ndef num_to_groups(num, divisor):\n    groups = num // divisor\n    remainder = num % divisor\n    arr = [divisor] * groups\n    if remainder > 0:\n        arr.append(remainder)\n    return arr\n# decorators\ndef cast_torch_tensor(fn):\n    @wraps(fn)\n    def inner(model, *args, **kwargs):\n        device = kwargs.pop('_device', next(model.parameters()).device)\n        cast_device = kwargs.pop('_cast_device', True)",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:45-78"
+    },
+    "631": {
+        "file_id": 15,
+        "content": "group_dict_by_key: Creates two dictionaries, one for keys that match the condition and another for those that do not, grouping by key.\nstring_begins_with: Returns a boolean value indicating whether a given string starts with a specified prefix.\ngroup_by_key_prefix: Groups dictionary items based on whether their keys start with a certain prefix.\ngroupby_prefix_and_trim: Similar to group_by_key_prefix, but also trims the common prefix from the keys and returns two dictionaries.\nnum_to_groups: Divides a given number into groups based on a specified divisor, appending any remainder to the last group.\ncast_torch_tensor: A decorator that wraps a function to cast its input and output tensors to specific devices.",
+        "type": "comment"
+    },
+    "632": {
+        "file_id": 15,
+        "content": "        cast_deepspeed_precision = kwargs.pop('_cast_deepspeed_precision', True)\n        kwargs_keys = kwargs.keys()\n        all_args = (*args, *kwargs.values())\n        split_kwargs_index = len(all_args) - len(kwargs_keys)\n        all_args = tuple(map(lambda t: torch.from_numpy(t) if exists(t) and isinstance(t, np.ndarray) else t, all_args))\n        if cast_device:\n            all_args = tuple(map(lambda t: t.to(device) if exists(t) and isinstance(t, torch.Tensor) else t, all_args))\n        if cast_deepspeed_precision:\n            try:\n                accelerator = model.accelerator\n                if accelerator is not None and accelerator.distributed_type == DistributedType.DEEPSPEED:\n                    cast_type_map = {\n                        \"fp16\": torch.half,\n                        \"bf16\": torch.bfloat16,\n                        \"no\": torch.float\n                    }\n                    precision_type = cast_type_map[accelerator.mixed_precision]\n                    all_args = tuple(map(lambda t: t.to(precision_type) if exists(t) and isinstance(t, torch.Tensor) else t, all_args))",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:79-99"
+    },
+    "633": {
+        "file_id": 15,
+        "content": "This code handles argument casting and device assignment for a DeepSpeed-accelerated PyTorch model. It first checks if arguments are DeepSpeed precision types, then casts the tensors to the appropriate type if necessary. This ensures that the model's arguments are correctly prepared for training or evaluation within a DeepSpeed framework.",
+        "type": "comment"
+    },
+    "634": {
+        "file_id": 15,
+        "content": "            except AttributeError:\n                # Then this model doesn't have an accelerator\n                pass\n        args, kwargs_values = all_args[:split_kwargs_index], all_args[split_kwargs_index:]\n        kwargs = dict(tuple(zip(kwargs_keys, kwargs_values)))\n        out = fn(model, *args, **kwargs)\n        return out\n    return inner\n# gradient accumulation functions\ndef split_iterable(it, split_size):\n    accum = []\n    for ind in range(ceil(len(it) / split_size)):\n        start_index = ind * split_size\n        accum.append(it[start_index: (start_index + split_size)])\n    return accum\ndef split(t, split_size = None):\n    if not exists(split_size):\n        return t\n    if isinstance(t, torch.Tensor):\n        return t.split(split_size, dim = 0)\n    if isinstance(t, Iterable):\n        return split_iterable(t, split_size)\n    return TypeError\ndef find_first(cond, arr):\n    for el in arr:\n        if cond(el):\n            return el\n    return None\ndef split_args_and_kwargs(*args, split_size = None, **kwargs):",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:100-138"
+    },
+    "635": {
+        "file_id": 15,
+        "content": "This code defines functions for splitting arguments and keywords, as well as handling gradient accumulation. It includes a function to split an iterable into chunks of specified size (`split_iterable`), a `split` function for tensors and iterables, and a `find_first` function to find the first item in an array that meets a given condition. The last function defined is `split_args_and_kwargs`, which splits arguments and keywords based on a specified size.",
+        "type": "comment"
+    },
+    "636": {
+        "file_id": 15,
+        "content": "    all_args = (*args, *kwargs.values())\n    len_all_args = len(all_args)\n    first_tensor = find_first(lambda t: isinstance(t, torch.Tensor), all_args)\n    assert exists(first_tensor)\n    batch_size = len(first_tensor)\n    split_size = default(split_size, batch_size)\n    num_chunks = ceil(batch_size / split_size)\n    dict_len = len(kwargs)\n    dict_keys = kwargs.keys()\n    split_kwargs_index = len_all_args - dict_len\n    split_all_args = [split(arg, split_size = split_size) if exists(arg) and isinstance(arg, (torch.Tensor, Iterable)) else ((arg,) * num_chunks) for arg in all_args]\n    chunk_sizes = tuple(map(len, split_all_args[0]))\n    for (chunk_size, *chunked_all_args) in tuple(zip(chunk_sizes, *split_all_args)):\n        chunked_args, chunked_kwargs_values = chunked_all_args[:split_kwargs_index], chunked_all_args[split_kwargs_index:]\n        chunked_kwargs = dict(tuple(zip(dict_keys, chunked_kwargs_values)))\n        chunk_size_frac = chunk_size / batch_size\n        yield chunk_size_frac, (chunked_args, chunked_kwargs)",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:139-159"
+    },
+    "637": {
+        "file_id": 15,
+        "content": "This code splits the input arguments and keyword arguments into chunks based on batch size, split size, and dictionary keys. It then yields the chunk size fraction and the split chunked arguments and keyword arguments for further processing.",
+        "type": "comment"
+    },
+    "638": {
+        "file_id": 15,
+        "content": "# diffusion prior trainer\ndef prior_sample_in_chunks(fn):\n    @wraps(fn)\n    def inner(self, *args, max_batch_size = None, **kwargs):\n        if not exists(max_batch_size):\n            return fn(self, *args, **kwargs)\n        outputs = [fn(self, *chunked_args, **chunked_kwargs) for _, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs)]\n        return torch.cat(outputs, dim = 0)\n    return inner\nclass DiffusionPriorTrainer(nn.Module):\n    def __init__(\n        self,\n        diffusion_prior,\n        accelerator = None,\n        use_ema = True,\n        lr = 3e-4,\n        wd = 1e-2,\n        eps = 1e-6,\n        max_grad_norm = None,\n        group_wd_params = True,\n        warmup_steps = None,\n        cosine_decay_max_steps = None,\n        **kwargs\n    ):\n        super().__init__()\n        assert isinstance(diffusion_prior, DiffusionPrior)\n        ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)\n        accelerator_kwargs, kwargs = groupby_prefix_and_trim('accelerator_', kwargs)",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:161-192"
+    },
+    "639": {
+        "file_id": 15,
+        "content": "This code defines a `DiffusionPriorTrainer` class that takes in a `diffusion_prior`, and allows for training with different batch sizes by splitting arguments and keywords into chunks. It also supports optional accelerator, learning rate, weight decay, epsilon, max gradient norm, grouped weight decay parameters, warmup steps, and cosine decay maximum steps.",
+        "type": "comment"
+    },
+    "640": {
+        "file_id": 15,
+        "content": "        if not exists(accelerator):\n            accelerator = Accelerator(**accelerator_kwargs)\n        # assign some helpful member vars\n        self.accelerator = accelerator\n        self.text_conditioned = diffusion_prior.condition_on_text_encodings\n        # setting the device\n        self.device = accelerator.device\n        diffusion_prior.to(self.device)\n        # save model\n        self.diffusion_prior = diffusion_prior\n        # mixed precision checks\n        if (\n            exists(self.accelerator) \n            and self.accelerator.distributed_type == DistributedType.DEEPSPEED \n            and self.diffusion_prior.clip is not None\n            ):\n            # Then we need to make sure clip is using the correct precision or else deepspeed will error\n            cast_type_map = {\n                \"fp16\": torch.half,\n                \"bf16\": torch.bfloat16,\n                \"no\": torch.float\n            }\n            precision_type = cast_type_map[accelerator.mixed_precision]\n            assert precision",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:194-225"
+    },
+    "641": {
+        "file_id": 15,
+        "content": "Checking if an accelerator is specified, assigning member variables for helpful operations, setting device and transferring model to that device, saving the diffusion prior model, and checking mixed precision settings if applicable.",
+        "type": "comment"
+    },
+    "642": {
+        "file_id": 15,
+        "content": "_type == torch.float, \"DeepSpeed currently only supports float32 precision when using on the fly embedding generation from clip\"\n            self.diffusion_prior.clip.to(precision_type)\n        # optimizer stuff\n        self.optim_kwargs = dict(lr=lr, wd=wd, eps=eps, group_wd_params=group_wd_params)\n        self.optimizer = get_optimizer(\n            self.diffusion_prior.parameters(),\n            **self.optim_kwargs,\n            **kwargs\n        )\n        if exists(cosine_decay_max_steps):\n            self.scheduler = CosineAnnealingLR(self.optimizer, T_max = cosine_decay_max_steps)\n        else:\n            self.scheduler = LambdaLR(self.optimizer, lr_lambda = lambda _: 1.0)\n        self.warmup_scheduler = warmup.LinearWarmup(self.optimizer, warmup_period = warmup_steps) if exists(warmup_steps) else None\n        # distribute the model if using HFA\n        self.diffusion_prior, self.optimizer, self.scheduler = self.accelerator.prepare(self.diffusion_prior, self.optimizer, self.scheduler)\n        # exponential moving average stuff",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:225-249"
+    },
+    "643": {
+        "file_id": 15,
+        "content": "This code initializes the trainer for DeepSpeed, setting precision, optimizer, and scheduler. It checks if on-the-fly embedding generation from CLIP is supported and changes precision accordingly. It also distributes the model using HFA and applies exponential moving average techniques.",
+        "type": "comment"
+    },
+    "644": {
+        "file_id": 15,
+        "content": "        self.use_ema = use_ema\n        if self.use_ema:\n            self.ema_diffusion_prior = EMA(self.accelerator.unwrap_model(self.diffusion_prior), **ema_kwargs)\n        # gradient clipping if needed\n        self.max_grad_norm = max_grad_norm\n        # track steps internally\n        self.register_buffer('step', torch.tensor([0], device = self.device))\n    # utility\n    def save(self, path, overwrite = True, **kwargs):\n        # only save on the main process\n        if self.accelerator.is_main_process:\n            print(f\"Saving checkpoint at step: {self.step.item()}\")\n            path = Path(path)\n            assert not (path.exists() and not overwrite)\n            path.parent.mkdir(parents = True, exist_ok = True)\n            # FIXME: LambdaLR can't be saved due to pickling issues\n            save_obj = dict(\n                optimizer = self.optimizer.state_dict(),\n                scheduler = self.scheduler.state_dict(),\n                warmup_scheduler = self.warmup_scheduler,\n                model = self.accelerator.unwrap_model(self.diffusion_prior).state_dict(),",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:251-280"
+    },
+    "645": {
+        "file_id": 15,
+        "content": "The code snippet initializes a trainer object with an option for exponential moving average (EMA), gradient clipping, and tracks steps internally. It also defines a save method to save the optimizer, scheduler, model state dictionaries, and warmup scheduler on the main process. Note that LambdaLR cannot be saved due to pickling issues.",
+        "type": "comment"
+    },
+    "646": {
+        "file_id": 15,
+        "content": "                version = version.parse(__version__),\n                step = self.step,\n                **kwargs\n            )\n            if self.use_ema:\n                save_obj = {\n                    **save_obj,\n                    'ema': self.ema_diffusion_prior.state_dict(),\n                    'ema_model': self.ema_diffusion_prior.ema_model.state_dict() # save the ema model specifically for easy ema-only reload\n                }\n            torch.save(save_obj, str(path))\n    def load(self, path_or_state, overwrite_lr = True, strict = True):\n        \"\"\"\n        Load a checkpoint of a diffusion prior trainer.\n        Will load the entire trainer, including the optimizer and EMA.\n        Params:\n            - path_or_state (str | torch): a path to the DiffusionPriorTrainer checkpoint file\n            - overwrite_lr (bool): wether or not to overwrite the stored LR with the LR specified in the new trainer\n            - strict (bool): kwarg for `torch.nn.Module.load_state_dict`, will force an exact checkpoint match",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:281-304"
+    },
+    "647": {
+        "file_id": 15,
+        "content": "This code saves and loads a checkpoint for a diffusion prior trainer. It also handles saving the EMA (Exponential Moving Average) model separately for easy ema-only reload, and allows overwriting the learning rate if needed. The `load` method loads an entire trainer, including its optimizer and EMA.",
+        "type": "comment"
+    },
+    "648": {
+        "file_id": 15,
+        "content": "        Returns:\n            loaded_obj (dict): The loaded checkpoint dictionary\n        \"\"\"\n        # all processes need to load checkpoint. no restriction here\n        if isinstance(path_or_state, str):\n            path = Path(path_or_state)\n            assert path.exists()\n            loaded_obj = torch.load(str(path), map_location=self.device)\n        elif isinstance(path_or_state, dict):\n            loaded_obj = path_or_state\n        if version.parse(__version__) != loaded_obj['version']:\n            print(f'loading saved diffusion prior at version {loaded_obj[\"version\"]} but current package version is at {__version__}')\n        # unwrap the model when loading from checkpoint\n        self.accelerator.unwrap_model(self.diffusion_prior).load_state_dict(loaded_obj['model'], strict = strict)\n        self.step.copy_(torch.ones_like(self.step, device=self.device) * loaded_obj['step'].to(self.device))\n        self.optimizer.load_state_dict(loaded_obj['optimizer'])\n        self.scheduler.load_state_dict(loaded_obj['scheduler'])",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:306-327"
+    },
+    "649": {
+        "file_id": 15,
+        "content": "This function loads a checkpoint from a specified path or dictionary, handling both string paths and existing dictionaries. It checks if the loaded version matches the current package version, then unwraps and loads the model's state dict, sets step values, and loads optimizer and scheduler states as well.",
+        "type": "comment"
+    },
+    "650": {
+        "file_id": 15,
+        "content": "        # set warmupstep\n        if exists(self.warmup_scheduler):\n            self.warmup_scheduler.last_step = self.step.item()\n        # ensure new lr is used if different from old one\n        if overwrite_lr:\n            new_lr = self.optim_kwargs[\"lr\"]\n            for group in self.optimizer.param_groups:\n                group[\"lr\"] = new_lr if group[\"lr\"] > 0.0 else 0.0\n        if self.use_ema:\n            assert 'ema' in loaded_obj\n            self.ema_diffusion_prior.load_state_dict(loaded_obj['ema'], strict = strict)\n            # below might not be necessary, but I had a suspicion that this wasn't being loaded correctly\n            self.ema_diffusion_prior.ema_model.load_state_dict(loaded_obj[\"ema_model\"])\n        return loaded_obj\n    # model functionality\n    def update(self):\n        if exists(self.max_grad_norm):\n            self.accelerator.clip_grad_norm_(self.diffusion_prior.parameters(), self.max_grad_norm)\n        self.optimizer.step()\n        self.optimizer.zero_grad()\n        # accelerator will ocassionally skip optimizer steps in a \"dynamic loss scaling strategy\"",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:329-358"
+    },
+    "651": {
+        "file_id": 15,
+        "content": "This function handles the warmup step, updating the learning rate if needed, loading EMA diffusion prior state from a checkpoint, and performing model update with optimization.",
+        "type": "comment"
+    },
+    "652": {
+        "file_id": 15,
+        "content": "        if not self.accelerator.optimizer_step_was_skipped:\n            sched_context = self.warmup_scheduler.dampening if exists(self.warmup_scheduler) else nullcontext\n            with sched_context():\n                self.scheduler.step()\n        if self.use_ema:\n            self.ema_diffusion_prior.update()\n        self.step += 1\n    @torch.no_grad()\n    @cast_torch_tensor\n    @prior_sample_in_chunks\n    def p_sample_loop(self, *args, **kwargs):\n        model = self.ema_diffusion_prior.ema_model if self.use_ema else self.diffusion_prior\n        return model.p_sample_loop(*args, **kwargs)\n    @torch.no_grad()\n    @cast_torch_tensor\n    @prior_sample_in_chunks\n    def sample(self, *args, **kwargs):\n        model = self.ema_diffusion_prior.ema_model if self.use_ema else self.diffusion_prior\n        return model.sample(*args, **kwargs)\n    @torch.no_grad()\n    def sample_batch_size(self, *args, **kwargs):\n        model = self.ema_diffusion_prior.ema_model if self.use_ema else self.diffusion_prior\n        return model.sample_batch_size(*args, **kwargs)",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:359-386"
+    },
+    "653": {
+        "file_id": 15,
+        "content": "The code defines several methods for using the diffusion prior model to generate samples. It uses exponential moving average (EMA) for model averaging, if `use_ema` is enabled. The `p_sample_loop`, `sample`, and `sample_batch_size` methods use `torch.no_grad()` for performance optimization, and `cast_torch_tensor` and `prior_sample_in_chunks` decorators are used to process data in chunks.",
+        "type": "comment"
+    },
+    "654": {
+        "file_id": 15,
+        "content": "    @torch.no_grad()\n    @cast_torch_tensor\n    @prior_sample_in_chunks\n    def embed_text(self, *args, **kwargs):\n        return self.accelerator.unwrap_model(self.diffusion_prior).clip.embed_text(*args, **kwargs)\n    @cast_torch_tensor\n    def forward(\n        self,\n        *args,\n        max_batch_size = None,\n        **kwargs\n    ):\n        total_loss = 0.\n        for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs):\n            with self.accelerator.autocast():\n                loss = self.diffusion_prior(*chunked_args, **chunked_kwargs)\n                loss = loss * chunk_size_frac\n            total_loss += loss.item()\n            if self.training:\n                self.accelerator.backward(loss)\n        return total_loss\n# decoder trainer\ndef decoder_sample_in_chunks(fn):\n    @wraps(fn)\n    def inner(self, *args, max_batch_size = None, **kwargs):\n        if not exists(max_batch_size):\n            return fn(self, *args, **kwargs)\n        if self.decoder.unconditional:",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:388-423"
+    },
+    "655": {
+        "file_id": 15,
+        "content": "This code defines a trainer with a function `embed_text` that uses the unwrapped model for embedding text, and a `forward` method that performs forward pass in chunks to handle large batch sizes. The `decoder_sample_in_chunks` decorator enables chunking when sample decoding.",
+        "type": "comment"
+    },
+    "656": {
+        "file_id": 15,
+        "content": "            batch_size = kwargs.get('batch_size')\n            batch_sizes = num_to_groups(batch_size, max_batch_size)\n            outputs = [fn(self, *args, **{**kwargs, 'batch_size': sub_batch_size}) for sub_batch_size in batch_sizes]\n        else:\n            outputs = [fn(self, *chunked_args, **chunked_kwargs) for _, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs)]\n        return torch.cat(outputs, dim = 0)\n    return inner\nclass DecoderTrainer(nn.Module):\n    def __init__(\n        self,\n        decoder,\n        accelerator = None,\n        dataloaders = None,\n        use_ema = True,\n        lr = 1e-4,\n        wd = 1e-2,\n        eps = 1e-8,\n        warmup_steps = None,\n        cosine_decay_max_steps = None,\n        max_grad_norm = 0.5,\n        amp = False,\n        group_wd_params = True,\n        **kwargs\n    ):\n        super().__init__()\n        assert isinstance(decoder, Decoder)\n        ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)\n        self.accelerator = default(accelerator, Accelerator)",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:424-454"
+    },
+    "657": {
+        "file_id": 15,
+        "content": "The function is a trainer that takes a decoder, accelerator, and other parameters. It can handle batching the inputs or splitting arguments and keywords to train the decoder in chunks, depending on the size of input data. The returned inner function is used for training the model using the provided configuration.",
+        "type": "comment"
+    },
+    "658": {
+        "file_id": 15,
+        "content": "        self.num_unets = len(decoder.unets)\n        self.use_ema = use_ema\n        self.ema_unets = nn.ModuleList([])\n        self.amp = amp\n        # be able to finely customize learning rate, weight decay\n        # per unet\n        lr, wd, eps, warmup_steps, cosine_decay_max_steps = map(partial(cast_tuple, length = self.num_unets), (lr, wd, eps, warmup_steps, cosine_decay_max_steps))\n        assert all([unet_lr <= 1e-2 for unet_lr in lr]), 'your learning rate is too high, recommend sticking with 1e-4, at most 5e-4'\n        optimizers = []\n        schedulers = []\n        warmup_schedulers = []\n        for unet, unet_lr, unet_wd, unet_eps, unet_warmup_steps, unet_cosine_decay_max_steps in zip(decoder.unets, lr, wd, eps, warmup_steps, cosine_decay_max_steps):\n            if isinstance(unet, nn.Identity):\n                optimizers.append(None)\n                schedulers.append(None)\n                warmup_schedulers.append(None)\n            else:\n                optimizer = get_optimizer(\n                    unet.parameters(),",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:456-481"
+    },
+    "659": {
+        "file_id": 15,
+        "content": "The code initializes the trainer with specific configurations for each UNET in the decoder. It checks learning rate, weight decay, warmup steps, and cosine decay max steps for each UNET. If a UNET is an identity, it assigns no optimizer or scheduler. Otherwise, it gets an appropriate optimizer for the UNET's parameters.",
+        "type": "comment"
+    },
+    "660": {
+        "file_id": 15,
+        "content": "                    lr = unet_lr,\n                    wd = unet_wd,\n                    eps = unet_eps,\n                    group_wd_params = group_wd_params,\n                    **kwargs\n                )\n                optimizers.append(optimizer)\n                if exists(unet_cosine_decay_max_steps):\n                    scheduler = CosineAnnealingLR(optimizer, T_max = unet_cosine_decay_max_steps)\n                else:\n                    scheduler = LambdaLR(optimizer, lr_lambda = lambda step: 1.0)\n                warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period = unet_warmup_steps) if exists(unet_warmup_steps) else None\n                warmup_schedulers.append(warmup_scheduler)\n                schedulers.append(scheduler)\n            if self.use_ema:\n                self.ema_unets.append(EMA(unet, **ema_kwargs))\n        # gradient clipping if needed\n        self.max_grad_norm = max_grad_norm\n        self.register_buffer('steps', torch.tensor([0] * self.num_unets))\n        if self.accelerator.distributed_type == DistributedType.DEEPSPEED and decoder.clip is not None:",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:482-510"
+    },
+    "661": {
+        "file_id": 15,
+        "content": "The code initializes optimizers, optionally schedulers for learning rate adjustments, and an exponential moving average (EMA) for the UNETs. It also registers a buffer for tracking steps and handles gradient clipping if needed based on distributed type.",
+        "type": "comment"
+    },
+    "662": {
+        "file_id": 15,
+        "content": "            # Then we need to make sure clip is using the correct precision or else deepspeed will error\n            cast_type_map = {\n                \"fp16\": torch.half,\n                \"bf16\": torch.bfloat16,\n                \"no\": torch.float\n            }\n            precision_type = cast_type_map[accelerator.mixed_precision]\n            assert precision_type == torch.float, \"DeepSpeed currently only supports float32 precision when using on the fly embedding generation from clip\"\n            clip = decoder.clip\n            clip.to(precision_type)\n        decoder, *optimizers = list(self.accelerator.prepare(decoder, *optimizers))\n        self.decoder = decoder\n        # prepare dataloaders\n        train_loader = val_loader = None\n        if exists(dataloaders):\n            train_loader, val_loader = self.accelerator.prepare(dataloaders[\"train\"], dataloaders[\"val\"])\n        self.train_loader = train_loader\n        self.val_loader = val_loader\n        # store optimizers\n        for opt_ind, optimizer in zip(range(len(optimizers)), optimizers):",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:511-537"
+    },
+    "663": {
+        "file_id": 15,
+        "content": "This code ensures that the correct precision is used by DeepSpeed and prepares the decoder, optimizers, and dataloaders for training. It converts the clip to the specified precision type, then prepares them using DeepSpeed's accelerator. The train_loader and val_loader are stored for later use.",
+        "type": "comment"
+    },
+    "664": {
+        "file_id": 15,
+        "content": "            setattr(self, f'optim{opt_ind}', optimizer)\n        # store schedulers\n        for sched_ind, scheduler in zip(range(len(schedulers)), schedulers):\n            setattr(self, f'sched{sched_ind}', scheduler)\n        # store warmup schedulers\n        self.warmup_schedulers = warmup_schedulers\n    def validate_and_return_unet_number(self, unet_number = None):\n        if self.num_unets == 1:\n            unet_number = default(unet_number, 1)\n        assert exists(unet_number) and 1 <= unet_number <= self.num_unets\n        return unet_number\n    def num_steps_taken(self, unet_number = None):\n        unet_number = self.validate_and_return_unet_number(unet_number)\n        return self.steps[unet_number - 1].item()\n    def save(self, path, overwrite = True, **kwargs):\n        path = Path(path)\n        assert not (path.exists() and not overwrite)\n        path.parent.mkdir(parents = True, exist_ok = True)\n        save_obj = dict(\n            model = self.accelerator.unwrap_model(self.decoder).state_dict(),",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:538-566"
+    },
+    "665": {
+        "file_id": 15,
+        "content": "This code defines a class with optimizers, schedulers, and warmup schedulers. It also validates the unet number and returns the number of steps taken by a specific unet. The save function saves the model's state dict to a specified path.",
+        "type": "comment"
+    },
+    "666": {
+        "file_id": 15,
+        "content": "            version = __version__,\n            steps = self.steps.cpu(),\n            **kwargs\n        )\n        for ind in range(0, self.num_unets):\n            optimizer_key = f'optim{ind}'\n            scheduler_key = f'sched{ind}'\n            optimizer = getattr(self, optimizer_key)\n            scheduler = getattr(self, scheduler_key)\n            optimizer_state_dict = optimizer.state_dict() if exists(optimizer) else None\n            scheduler_state_dict = scheduler.state_dict() if exists(scheduler) else None\n            save_obj = {**save_obj, optimizer_key: optimizer_state_dict, scheduler_key: scheduler_state_dict}\n        if self.use_ema:\n            save_obj = {**save_obj, 'ema': self.ema_unets.state_dict()}\n        self.accelerator.save(save_obj, str(path))\n    def load_state_dict(self, loaded_obj, only_model = False, strict = True):\n        if version.parse(__version__) != version.parse(loaded_obj['version']):\n            self.accelerator.print(f'loading saved decoder at version {loaded_obj[\"version\"]}, but current package version is {__version__}')",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:567-591"
+    },
+    "667": {
+        "file_id": 15,
+        "content": "This code snippet saves the model state, optimizer state, and scheduler state if they exist, and an optional Exponential Moving Average (EMA) state. It checks the version compatibility before loading the saved state dictionary.",
+        "type": "comment"
+    },
+    "668": {
+        "file_id": 15,
+        "content": "        self.accelerator.unwrap_model(self.decoder).load_state_dict(loaded_obj['model'], strict = strict)\n        self.steps.copy_(loaded_obj['steps'])\n        if only_model:\n            return loaded_obj\n        for ind, last_step in zip(range(0, self.num_unets), self.steps.tolist()):\n            optimizer_key = f'optim{ind}'\n            optimizer = getattr(self, optimizer_key)\n            scheduler_key = f'sched{ind}'\n            scheduler = getattr(self, scheduler_key)\n            warmup_scheduler = self.warmup_schedulers[ind]\n            if exists(optimizer):\n                optimizer.load_state_dict(loaded_obj[optimizer_key])\n            if exists(scheduler):\n                scheduler.load_state_dict(loaded_obj[scheduler_key])\n            if exists(warmup_scheduler):\n                warmup_scheduler.last_step = last_step\n        if self.use_ema:\n            assert 'ema' in loaded_obj\n            self.ema_unets.load_state_dict(loaded_obj['ema'], strict = strict)\n    def load(self, path, only_model = False, strict = True):",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:593-622"
+    },
+    "669": {
+        "file_id": 15,
+        "content": "This code loads a model and its associated optimizers, schedulers, and warmup schedulers from the given path. It also checks if early-stopping (ema) was used and loads that as well. The function returns the loaded state of each component if only_model is True, otherwise it continues with training.",
+        "type": "comment"
+    },
+    "670": {
+        "file_id": 15,
+        "content": "        path = Path(path)\n        assert path.exists()\n        loaded_obj = torch.load(str(path), map_location = 'cpu')\n        self.load_state_dict(loaded_obj, only_model = only_model, strict = strict)\n        return loaded_obj\n    @property\n    def unets(self):\n        return nn.ModuleList([ema.ema_model for ema in self.ema_unets])\n    def increment_step(self, unet_number):\n        assert 1 <= unet_number <= self.num_unets\n        unet_index_tensor = torch.tensor(unet_number - 1, device = self.steps.device)\n        self.steps += F.one_hot(unet_index_tensor, num_classes = len(self.steps))\n    def update(self, unet_number = None):\n        unet_number = self.validate_and_return_unet_number(unet_number)\n        index = unet_number - 1\n        optimizer = getattr(self, f'optim{index}')\n        scheduler = getattr(self, f'sched{index}')\n        if exists(self.max_grad_norm):\n            self.accelerator.clip_grad_norm_(self.decoder.parameters(), self.max_grad_norm)  # Automatically unscales gradients\n        optimizer.step()",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:623-652"
+    },
+    "671": {
+        "file_id": 15,
+        "content": "This function loads a saved state and returns it. It also provides access to the unets (U-Nets) in the model and allows incrementing the step of a specific unet. The update method updates the optimizer and scheduler for a specified unet.",
+        "type": "comment"
+    },
+    "672": {
+        "file_id": 15,
+        "content": "        optimizer.zero_grad()\n        warmup_scheduler = self.warmup_schedulers[index]\n        scheduler_context = warmup_scheduler.dampening if exists(warmup_scheduler) else nullcontext\n        with scheduler_context():\n            scheduler.step()\n        if self.use_ema:\n            ema_unet = self.ema_unets[index]\n            ema_unet.update()\n        self.increment_step(unet_number)\n    @torch.no_grad()\n    @cast_torch_tensor\n    @decoder_sample_in_chunks\n    def sample(self, *args, **kwargs):\n        distributed = self.accelerator.num_processes > 1\n        base_decoder = self.accelerator.unwrap_model(self.decoder)\n        was_training = base_decoder.training\n        base_decoder.eval()\n        if kwargs.pop('use_non_ema', False) or not self.use_ema:\n            out = base_decoder.sample(*args, **kwargs, distributed = distributed)\n            base_decoder.train(was_training)\n            return out\n        trainable_unets = self.accelerator.unwrap_model(self.decoder).unets\n        base_decoder.unets = self.unets                  # swap in exponential moving averaged unets for sampling",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:653-683"
+    },
+    "673": {
+        "file_id": 15,
+        "content": "This code is responsible for the sampling process in a specific model. It uses gradient descent to optimize the model and updates the exponential moving average (EMA) unets if ema is enabled. The sample function enables evaluation mode, handles non-ema usage or disabled use_ema, and returns the output based on the input arguments. The distributed argument is used for multi-process sampling.",
+        "type": "comment"
+    },
+    "674": {
+        "file_id": 15,
+        "content": "        output = base_decoder.sample(*args, **kwargs, distributed = distributed)\n        base_decoder.unets = trainable_unets             # restore original training unets\n        # cast the ema_model unets back to original device\n        for ema in self.ema_unets:\n            ema.restore_ema_model_device()\n        base_decoder.train(was_training)\n        return output\n    @torch.no_grad()\n    @cast_torch_tensor\n    @prior_sample_in_chunks\n    def embed_text(self, *args, **kwargs):\n        return self.accelerator.unwrap_model(self.decoder).clip.embed_text(*args, **kwargs)\n    @torch.no_grad()\n    @cast_torch_tensor\n    @prior_sample_in_chunks\n    def embed_image(self, *args, **kwargs):\n        return self.accelerator.unwrap_model(self.decoder).clip.embed_image(*args, **kwargs)\n    @cast_torch_tensor\n    def forward(\n        self,\n        *args,\n        unet_number = None,\n        max_batch_size = None,\n        return_lowres_cond_image=False,\n        **kwargs\n    ):\n        unet_number = self.validate_and_return_unet_number(unet_number)",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:685-717"
+    },
+    "675": {
+        "file_id": 15,
+        "content": "This code defines a function for embedding text and image using the decoder's CLIP module. It also restores the original training unets, casts torch tensors, validates and returns the correct unet number, and allows for conditional lowres image return.",
+        "type": "comment"
+    },
+    "676": {
+        "file_id": 15,
+        "content": "        total_loss = 0.\n        cond_images = []\n        for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size = max_batch_size, **kwargs):\n            with self.accelerator.autocast():\n                loss_obj = self.decoder(*chunked_args, unet_number = unet_number, return_lowres_cond_image=return_lowres_cond_image, **chunked_kwargs)\n                # loss_obj may be a tuple with loss and cond_image\n                if return_lowres_cond_image:\n                    loss, cond_image = loss_obj\n                else:\n                    loss = loss_obj\n                    cond_image = None\n                loss = loss * chunk_size_frac\n                if cond_image is not None:\n                    cond_images.append(cond_image)\n            total_loss += loss.item()\n            if self.training:\n                self.accelerator.backward(loss)\n        if return_lowres_cond_image:\n            return total_loss, torch.stack(cond_images)\n        else:\n            return total_loss",
+        "type": "code",
+        "location": "/dalle2_pytorch/trainer.py:719-742"
+    },
+    "677": {
+        "file_id": 15,
+        "content": "This code chunk splits the input arguments and keywords into multiple smaller chunks, then iterates over them to perform computations with auto-cast enabled. The resulting losses are accumulated, and if conditional images are returned, they are stacked together. Finally, the total loss is returned.",
+        "type": "comment"
+    },
+    "678": {
+        "file_id": 16,
+        "content": "/dalle2_pytorch/utils.py",
+        "type": "filepath"
+    },
+    "679": {
+        "file_id": 16,
+        "content": "This code snippet includes helper functions for time, print, and import operations. It defines a Timer class for measuring elapsed time, a print_ribbon function to format print statements with a banner, and an import_or_print_error function to handle module imports, displaying an error message if necessary and exiting the program.",
+        "type": "summary"
+    },
+    "680": {
+        "file_id": 16,
+        "content": "import time\nimport importlib\n# helper functions\ndef exists(val):\n    return val is not None\n# time helpers\nclass Timer:\n    def __init__(self):\n        self.reset()\n    def reset(self):\n        self.last_time = time.time()\n    def elapsed(self):\n        return time.time() - self.last_time\n# print helpers\ndef print_ribbon(s, symbol = '=', repeat = 40):\n    flank = symbol * repeat\n    return f'{flank} {s} {flank}'\n# import helpers\ndef import_or_print_error(pkg_name, err_str = None):\n    try:\n        return importlib.import_module(pkg_name)\n    except ModuleNotFoundError as e:\n        if exists(err_str):\n            print(err_str)\n        exit()",
+        "type": "code",
+        "location": "/dalle2_pytorch/utils.py:1-35"
+    },
+    "681": {
+        "file_id": 16,
+        "content": "This code snippet includes helper functions for time, print, and import operations. It defines a Timer class for measuring elapsed time, a print_ribbon function to format print statements with a banner, and an import_or_print_error function to handle module imports, displaying an error message if necessary and exiting the program.",
+        "type": "comment"
+    },
+    "682": {
+        "file_id": 17,
+        "content": "/dalle2_pytorch/version.py",
+        "type": "filepath"
+    },
+    "683": {
+        "file_id": 17,
+        "content": "This code defines the version number of the DALLE2-pytorch library, currently set as '1.15.6'.",
+        "type": "summary"
+    },
+    "684": {
+        "file_id": 17,
+        "content": "__version__ = '1.15.6'",
+        "type": "code",
+        "location": "/dalle2_pytorch/version.py:1-1"
+    },
+    "685": {
+        "file_id": 17,
+        "content": "This code defines the version number of the DALLE2-pytorch library, currently set as '1.15.6'.",
+        "type": "comment"
+    },
+    "686": {
+        "file_id": 18,
+        "content": "/dalle2_pytorch/vqgan_vae.py",
+        "type": "filepath"
+    },
+    "687": {
+        "file_id": 18,
+        "content": "Code describes VQGAN-VAE and Vision Transformer architectures for image generation models, including convolutional layers, self-attention mechanisms, layer normalization, initializes model, calculates losses, determines adaptive weight, applies clamp function, calculates combined loss, returns reconstructed feature maps if required.",
+        "type": "summary"
+    },
+    "688": {
+        "file_id": 18,
+        "content": "import copy\nimport math\nfrom math import sqrt\nfrom functools import partial, wraps\nfrom vector_quantize_pytorch import VectorQuantize as VQ\nimport torch\nfrom torch import nn, einsum\nimport torch.nn.functional as F\nfrom torch.autograd import grad as torch_grad\nimport torchvision\nfrom einops import rearrange, reduce, repeat, pack, unpack\nfrom einops.layers.torch import Rearrange\n# constants\nMList = nn.ModuleList\n# helper functions\ndef exists(val):\n    return val is not None\ndef default(val, d):\n    return val if exists(val) else d\n# decorators\ndef eval_decorator(fn):\n    def inner(model, *args, **kwargs):\n        was_training = model.training\n        model.eval()\n        out = fn(model, *args, **kwargs)\n        model.train(was_training)\n        return out\n    return inner\ndef remove_vgg(fn):\n    @wraps(fn)\n    def inner(self, *args, **kwargs):\n        has_vgg = hasattr(self, 'vgg')\n        if has_vgg:\n            vgg = self.vgg\n            delattr(self, 'vgg')\n        out = fn(self, *args, **kwargs)\n        if has_vgg:\n            self.vgg = vgg",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:1-51"
+    },
+    "689": {
+        "file_id": 18,
+        "content": "This code imports various libraries and defines several constants, helper functions, and decorators for use in a deep learning model. It also sets up a class for a Vector Quantize module using PyTorch, with functionality to evaluate the model and remove the VGG feature if present.",
+        "type": "comment"
+    },
+    "690": {
+        "file_id": 18,
+        "content": "        return out\n    return inner\n# keyword argument helpers\ndef pick_and_pop(keys, d):\n    values = list(map(lambda key: d.pop(key), keys))\n    return dict(zip(keys, values))\ndef group_dict_by_key(cond, d):\n    return_val = [dict(),dict()]\n    for key in d.keys():\n        match = bool(cond(key))\n        ind = int(not match)\n        return_val[ind][key] = d[key]\n    return (*return_val,)\ndef string_begins_with(prefix, string_input):\n    return string_input.startswith(prefix)\ndef group_by_key_prefix(prefix, d):\n    return group_dict_by_key(partial(string_begins_with, prefix), d)\ndef groupby_prefix_and_trim(prefix, d):\n    kwargs_with_prefix, kwargs = group_dict_by_key(partial(string_begins_with, prefix), d)\n    kwargs_without_prefix = dict(map(lambda x: (x[0][len(prefix):], x[1]), tuple(kwargs_with_prefix.items())))\n    return kwargs_without_prefix, kwargs\n# tensor helper functions\ndef log(t, eps = 1e-10):\n    return torch.log(t + eps)\ndef gradient_penalty(images, output, weight = 10):\n    batch_size = images.shape[0]",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:53-87"
+    },
+    "691": {
+        "file_id": 18,
+        "content": "This code contains various utility functions. \"pick_and_pop\" removes and returns keys from a dictionary, \"group_dict_by_key\" groups dictionary items by key condition, \"string_begins_with\" checks if a string begins with a given prefix, \"group_by_key_prefix\" groups dictionary items based on a key prefix, and \"groupby_prefix_and_trim\" trims key prefixes before grouping. Lastly, the \"log\" function calculates the natural logarithm of an input tensor, and the \"gradient_penalty\" function is used to calculate a gradient penalty for image generation tasks.",
+        "type": "comment"
+    },
+    "692": {
+        "file_id": 18,
+        "content": "    gradients = torch_grad(outputs = output, inputs = images,\n                           grad_outputs = torch.ones(output.size(), device = images.device),\n                           create_graph = True, retain_graph = True, only_inputs = True)[0]\n    gradients = rearrange(gradients, 'b ... -> b (...)')\n    return weight * ((gradients.norm(2, dim = 1) - 1) ** 2).mean()\ndef l2norm(t):\n    return F.normalize(t, dim = -1)\ndef leaky_relu(p = 0.1):\n    return nn.LeakyReLU(0.1)\ndef stable_softmax(t, dim = -1, alpha = 32 ** 2):\n    t = t / alpha\n    t = t - torch.amax(t, dim = dim, keepdim = True).detach()\n    return (t * alpha).softmax(dim = dim)\ndef safe_div(numer, denom, eps = 1e-8):\n    return numer / (denom + eps)\n# gan losses\ndef hinge_discr_loss(fake, real):\n    return (F.relu(1 + fake) + F.relu(1 - real)).mean()\ndef hinge_gen_loss(fake):\n    return -fake.mean()\ndef bce_discr_loss(fake, real):\n    return (-log(1 - torch.sigmoid(fake)) - log(torch.sigmoid(real))).mean()\ndef bce_gen_loss(fake):\n    return -log(torch.sigmoid(fake)).mean()",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:88-121"
+    },
+    "693": {
+        "file_id": 18,
+        "content": "This code contains several utility functions and loss functions used in the VQ-VAE-GAN model. It includes functions for gradient calculations, normalization, activation functions, and various GAN losses. The functions are defined to be reusable throughout the codebase.",
+        "type": "comment"
+    },
+    "694": {
+        "file_id": 18,
+        "content": "def grad_layer_wrt_loss(loss, layer):\n    return torch_grad(\n        outputs = loss,\n        inputs = layer,\n        grad_outputs = torch.ones_like(loss),\n        retain_graph = True\n    )[0].detach()\n# vqgan vae\nclass LayerNormChan(nn.Module):\n    def __init__(\n        self,\n        dim,\n        eps = 1e-5\n    ):\n        super().__init__()\n        self.eps = eps\n        self.gamma = nn.Parameter(torch.ones(1, dim, 1, 1))\n    def forward(self, x):\n        var = torch.var(x, dim = 1, unbiased = False, keepdim = True)\n        mean = torch.mean(x, dim = 1, keepdim = True)\n        return (x - mean) / (var + self.eps).sqrt() * self.gamma\n# discriminator\nclass Discriminator(nn.Module):\n    def __init__(\n        self,\n        dims,\n        channels = 3,\n        groups = 16,\n        init_kernel_size = 5\n    ):\n        super().__init__()\n        dim_pairs = zip(dims[:-1], dims[1:])\n        self.layers = MList([nn.Sequential(nn.Conv2d(channels, dims[0], init_kernel_size, padding = init_kernel_size // 2), leaky_relu())])\n        for dim_in, dim_out in dim_pairs:",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:123-163"
+    },
+    "695": {
+        "file_id": 18,
+        "content": "The code defines a function to compute gradients of a layer wrt the loss, and introduces two custom modules: LayerNormChan for layer normalization and Discriminator for a convolutional network. The discriminator consists of multiple layers with decreasing kernel sizes, each followed by a leaky ReLU activation function. These components are part of the VQGAN-VAE architecture in DALLE2-pytorch.",
+        "type": "comment"
+    },
+    "696": {
+        "file_id": 18,
+        "content": "            self.layers.append(nn.Sequential(\n                nn.Conv2d(dim_in, dim_out, 4, stride = 2, padding = 1),\n                nn.GroupNorm(groups, dim_out),\n                leaky_relu()\n            ))\n        dim = dims[-1]\n        self.to_logits = nn.Sequential( # return 5 x 5, for PatchGAN-esque training\n            nn.Conv2d(dim, dim, 1),\n            leaky_relu(),\n            nn.Conv2d(dim, 1, 4)\n        )\n    def forward(self, x):\n        for net in self.layers:\n            x = net(x)\n        return self.to_logits(x)\n# positional encoding\nclass ContinuousPositionBias(nn.Module):\n    \"\"\" from https://arxiv.org/abs/2111.09883 \"\"\"\n    def __init__(self, *, dim, heads, layers = 2):\n        super().__init__()\n        self.net = MList([])\n        self.net.append(nn.Sequential(nn.Linear(2, dim), leaky_relu()))\n        for _ in range(layers - 1):\n            self.net.append(nn.Sequential(nn.Linear(dim, dim), leaky_relu()))\n        self.net.append(nn.Linear(dim, heads))\n        self.register_buffer('rel_pos', None, persistent = False)",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:164-197"
+    },
+    "697": {
+        "file_id": 18,
+        "content": "The code defines a VQGAN-VAE model. It uses convolutional layers and group normalization for downsampling the input image, followed by linear layers and leaky ReLU activation functions in a sequential manner to generate logits. The `ContinuousPositionBias` class is used for positional encoding in the model.",
+        "type": "comment"
+    },
+    "698": {
+        "file_id": 18,
+        "content": "    def forward(self, x):\n        n, device = x.shape[-1], x.device\n        fmap_size = int(sqrt(n))\n        if not exists(self.rel_pos):\n            pos = torch.arange(fmap_size, device = device)\n            grid = torch.stack(torch.meshgrid(pos, pos, indexing = 'ij'))\n            grid = rearrange(grid, 'c i j -> (i j) c')\n            rel_pos = rearrange(grid, 'i c -> i 1 c') - rearrange(grid, 'j c -> 1 j c')\n            rel_pos = torch.sign(rel_pos) * torch.log(rel_pos.abs() + 1)\n            self.register_buffer('rel_pos', rel_pos, persistent = False)\n        rel_pos = self.rel_pos.float()\n        for layer in self.net:\n            rel_pos = layer(rel_pos)\n        bias = rearrange(rel_pos, 'i j h -> h i j')\n        return x + bias\n# resnet encoder / decoder\nclass ResnetEncDec(nn.Module):\n    def __init__(\n        self,\n        dim,\n        *,\n        channels = 3,\n        layers = 4,\n        layer_mults = None,\n        num_resnet_blocks = 1,\n        resnet_groups = 16,\n        first_conv_kernel_size = 5,\n        use_attn = True,",
+        "type": "code",
+        "location": "/dalle2_pytorch/vqgan_vae.py:199-232"
+    },
+    "699": {
+        "file_id": 18,
+        "content": "The code defines a VQ-VAE implementation with a resnet encoder/decoder for image generation. The function calculates relative positional embeddings and applies them to the input, then passes the result through a resnet encoder/decoder network before returning the transformed input. The ResnetEncDec class creates an instance of the resnet encoder/decoder with optional parameters such as dimensions, channels, layers, layer_mults, num_resnet_blocks, resnet_groups, first_conv_kernel_size, and use_attn.",
+        "type": "comment"
+    }
+}

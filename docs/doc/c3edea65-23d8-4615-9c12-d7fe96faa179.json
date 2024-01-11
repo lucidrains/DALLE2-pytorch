@@ -1,0 +1,10 @@
+{
+    "summary": "This code imports necessary classes for ImageEmbeddingDataset and PriorEmbeddingDataset from their respective modules in the DALLE2-pytorch library. These datasets are used to load data for the model's training and inference.",
+    "details": [
+        {
+            "comment": "This code imports necessary classes for ImageEmbeddingDataset and PriorEmbeddingDataset from their respective modules in the DALLE2-pytorch library. These datasets are used to load data for the model's training and inference.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/dataloaders/__init__.py\":0-1",
+            "content": "from dalle2_pytorch.dataloaders.decoder_loader import ImageEmbeddingDataset, create_image_embedding_dataloader\nfrom dalle2_pytorch.dataloaders.prior_loader import make_splits, get_reader, PriorEmbeddingDataset"
+        }
+    ]
+}

@@ -1,0 +1,10 @@
+{
+    "summary": "This code defines two functions, `separate_weight_decayable_params` and `get_optimizer`. The `get_optimizer` function takes parameters, learning rate, weight decay, and other options to create an optimizer object. It filters the parameters based on `requires_grad`, separates weight-decayable parameters, and uses either Adam or AdamW optimizer depending on the weight decay value.",
+    "details": [
+        {
+            "comment": "This code defines two functions, `separate_weight_decayable_params` and `get_optimizer`. The `get_optimizer` function takes parameters, learning rate, weight decay, and other options to create an optimizer object. It filters the parameters based on `requires_grad`, separates weight-decayable parameters, and uses either Adam or AdamW optimizer depending on the weight decay value.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/optimizer.py\":0-33",
+            "content": "from torch.optim import AdamW, Adam\ndef separate_weight_decayable_params(params):\n    wd_params, no_wd_params = [], []\n    for param in params:\n        param_list = no_wd_params if param.ndim < 2 else wd_params\n        param_list.append(param)\n    return wd_params, no_wd_params\ndef get_optimizer(\n    params,\n    lr = 1e-4,\n    wd = 1e-2,\n    betas = (0.9, 0.99),\n    eps = 1e-8,\n    filter_by_requires_grad = False,\n    group_wd_params = True,\n    **kwargs\n):\n    if filter_by_requires_grad:\n        params = list(filter(lambda t: t.requires_grad, params))\n    if wd == 0:\n        return Adam(params, lr = lr, betas = betas, eps = eps)\n    if group_wd_params:\n        wd_params, no_wd_params = separate_weight_decayable_params(params)\n        params = [\n            {'params': wd_params},\n            {'params': no_wd_params, 'weight_decay': 0},\n        ]\n    return AdamW(params, lr = lr, weight_decay = wd, betas = betas, eps = eps)"
+        }
+    ]
+}

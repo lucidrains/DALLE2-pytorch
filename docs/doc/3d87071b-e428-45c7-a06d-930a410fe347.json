@@ -1,0 +1,10 @@
+{
+    "summary": "This code defines the version number of the DALLE2-pytorch library, currently set as '1.15.6'.",
+    "details": [
+        {
+            "comment": "This code defines the version number of the DALLE2-pytorch library, currently set as '1.15.6'.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/version.py\":0-0",
+            "content": "__version__ = '1.15.6'"
+        }
+    ]
+}

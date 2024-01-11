@@ -1,0 +1,550 @@
+{
+    "100": {
+        "file_id": 3,
+        "content": "prompt = \"A corgi wearing sunglasses\"\ntokenized_text = tokenize(prompt)\ntext_embedding = clip_model.encode_text(tokenized_text)\n# Now, pass the text embedding to the decoder\npredicted_image = decoder.sample(text_embedding)\n```\n> **Question**: *Can you spot the issue here?*\n>\n> **Answer**: *We’re trying to generate an image from a text embedding!*\nUnfortunately, we run into the issue previously mentioned--the image embeddings and the text embeddings are not interchangeable! Now let's look at a better solution\n```python\n# Load Models\nprior= Prior(checkpoint=\"prior.pth\") # A decoder trained to go from: text-> clip text emb -> clip img emb\ndecoder = Decoder(checkpoint=\"decoder.pth\") # A decoder trained on CLIP Image embeddings\n# Retrieve prompt from user and encode with a prior\nprompt = \"A corgi wearing sunglasses\"\ntokenized_text = tokenize(prompt)\ntext_embedding = prior.sample(tokenized_text) # <-- now we get an embedding in the same space as images!\n# Now, pass the predicted image embedding to the decoder\npredicted_image = decoder.sample(text_embedding)",
+        "type": "code",
+        "location": "/prior.md:22-47"
+    },
+    "101": {
+        "file_id": 3,
+        "content": "This code snippet demonstrates the process of generating an image from a text prompt using deep learning models. The decoder model is trained to convert text into embeddings that are in the same space as CLIP image embeddings. First, we load two models: Prior and Decoder. Then, we retrieve a user-inputted prompt, tokenize it, and use the Prior model to sample a text embedding in the same space as images. Finally, we pass this text embedding into the Decoder model to generate an image.",
+        "type": "comment"
+    },
+    "102": {
+        "file_id": 3,
+        "content": "```\nWith the prior we are able to successfully generate embeddings *within* CLIP's image space! For this reason, the decoder will perform much better as it receives input that is much closer to its training data.\n> **You may be asking yourself the following question:**\n>\n> *\"Why don't you just train the decoder on clip text embeddings instead of image embeddings?\"*\n>\n> OpenAI covers this topic in their [DALLE-2 paper](https://arxiv.org/abs/2204.06125). The TL;DR is *\"it doesn't work as well as decoders trained on image embeddings\"*...also...its just an example :smile:\n## Usage\nTo utilize a pre-trained prior, it’s quite simple.\n### Loading Checkpoints\n```python\nimport torch\nfrom dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter\nfrom dalle2_pytorch.trainer import DiffusionPriorTrainer\ndef load_diffusion_model(dprior_path):\n    prior_network = DiffusionPriorNetwork(\n        dim=768,\n        depth=24,\n        dim_head=64,\n        heads=32,\n        normformer=True,\n        attn_dropout=5e-2,",
+        "type": "code",
+        "location": "/prior.md:48-76"
+    },
+    "103": {
+        "file_id": 3,
+        "content": "The code demonstrates how to load a pre-trained prior model for use in generating embeddings within CLIP's image space, enhancing the performance of the decoder. The usage section outlines the necessary steps to load a checkpoint from a specific path using `load_diffusion_model()`.",
+        "type": "comment"
+    },
+    "104": {
+        "file_id": 3,
+        "content": "        ff_dropout=5e-2,\n        num_time_embeds=1,\n        num_image_embeds=1,\n        num_text_embeds=1,\n        num_timesteps=1000,\n        ff_mult=4\n    )\n    diffusion_prior = DiffusionPrior(\n        net=prior_network,\n        clip=OpenAIClipAdapter(\"ViT-L/14\"),\n        image_embed_dim=768,\n        timesteps=1000,\n        cond_drop_prob=0.1,\n        loss_type=\"l2\",\n        condition_on_text_encodings=True,\n    )\n    trainer = DiffusionPriorTrainer(\n        diffusion_prior=diffusion_prior,\n        lr=1.1e-4,\n        wd=6.02e-2,\n        max_grad_norm=0.5,\n        amp=False,\n        group_wd_params=True,\n        use_ema=True,\n        device=device,\n        accelerator=None,\n    )\n    trainer.load(dprior_path)\n    return trainer\n```\n Here we instantiate a model matches the configuration it was trained with, and then load the weights (*just like any other PyTorch model!*)\n### Sampling\nOnce we have a pre-trained model, generating embeddings is quite simple!\n```python\n# tokenize the text\ntokenized_text = clip.tokenize(\"<your amazing prompt>\")",
+        "type": "code",
+        "location": "/prior.md:77-119"
+    },
+    "105": {
+        "file_id": 3,
+        "content": "Here, a pre-trained model is instantiated and its weights are loaded. This can be done just like any other PyTorch model. To generate embeddings from text, first tokenize the input text using `clip.tokenize()`.",
+        "type": "comment"
+    },
+    "106": {
+        "file_id": 3,
+        "content": "# predict an embedding\npredicted_embedding = prior.sample(tokenized_text, n_samples_per_batch=2, cond_scale=1.0)\n```\nThe resulting tensor returned from `.sample()` is of the same shape as your training data along the non-batch dimension(s). For example, a prior trained on `ViT-L/14` embeddings will predict an embedding of shape (1, 768).\n> For CLIP priors, this is quite handy as it means that you can use prior.sample(tokenizer_text) as a drop in replacement for clip.encode_text().\n**Some things to note:**\n* It is possible to specify the number of embeddings to sample from (the default suggested by OpenAI is `n=2`). Put simply, the idea here is that you avoid getting unlucky with a bad embedding generation by creating two; and selecting the one with the higher cosine similarity with the prompt.\n* You may specify a higher conditioning scale than the default (`1.0`). It is unclear whether OpenAI uses a higher value for the prior specifically, or only on the decoder. Local testing has shown poor results with anything higher than `1.0` but *ymmv*.",
+        "type": "code",
+        "location": "/prior.md:120-130"
+    },
+    "107": {
+        "file_id": 3,
+        "content": "The code snippet is predicting an embedding using the prior's sample function, which returns a tensor of the same shape as the training data. The number of embeddings to sample can be specified and conditioning scale can be adjusted for better results. It serves as a replacement for clip.encode_text() in CLIP priors.",
+        "type": "comment"
+    },
+    "108": {
+        "file_id": 3,
+        "content": "---\n## Training\n### Overview\nTraining the prior is a relatively straightforward process thanks to the Trainer base class. The major step that is required of you is preparing a dataset in the format that EmbeddingReader expects. Having pre-computed embeddings massively increases training efficiency and is generally recommended as you will likely benefit from having them on hand for other tasks as well. Once you have a dataset, you are ready to move onto configuration\n## Dataset\nTo train the prior, it is highly recommended to use precomputed embeddings for the images. To obtain these for a custom dataset, you can leverage [img2datset](https://github.com/rom1504/img2dataset) to pull images from a list of URLs and [clip_retrieval](https://github.com/rom1504/clip-retrieval#clip-inference) for generating the actual embeddings that can be used in the prior's dataloader.\n## Configuration\nThe configuration file allows for you to easily track and reproduce experiments. It is a simple JSON file that wil",
+        "type": "code",
+        "location": "/prior.md:132-146"
+    },
+    "109": {
+        "file_id": 3,
+        "content": "Training the prior involves preparing a dataset in the format expected by EmbeddingReader. Precomputed embeddings for images significantly increase training efficiency and are beneficial for other tasks as well. To obtain precomputed embeddings, you can use img2dataset and clip_retrieval. The configuration file enables tracking and reproducing experiments.",
+        "type": "comment"
+    },
+    "110": {
+        "file_id": 3,
+        "content": "l specify the architecture, dataset, and training parameters. For more information and specifics please see the configuration README.\n## Distributed Training\nIf you would like to train in a distributed manner we have opted to leverage huggingface’ new Accelerate library. HFA makes it extremely simple to distribute work across multiple GPU’s and nodes. All that is required of you is to follow the simple CLI configuration tool [more information here](https://huggingface.co/docs/accelerate/accelerator).\n## Evaluation\nThere are a variety of metrics available to you when training the prior. You can read a brief description of each in the table below:\n| Metric                              | Description                                                                                                                                                                                                                                                  | Comments                                                ",
+        "type": "code",
+        "location": "/prior.md:146-155"
+    },
+    "111": {
+        "file_id": 3,
+        "content": "This code describes the architecture, dataset, and training parameters for a specific task. It also mentions distributed training using HuggingFace's Accelerate library and various evaluation metrics available during training.",
+        "type": "comment"
+    },
+    "112": {
+        "file_id": 3,
+        "content": "                                                                                                                                                                                                                                                                                                |\n| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n| Online Model Validation             | The validation loss associated ",
+        "type": "code",
+        "location": "/prior.md:155-157"
+    },
+    "113": {
+        "file_id": 3,
+        "content": "This code is for calculating the validation loss associated with the online model validation process. The calculated validation loss will be used to evaluate the performance of the trained model during inference.",
+        "type": "comment"
+    },
+    "114": {
+        "file_id": 3,
+        "content": "with your online model.                                                                                                                                                                                                       | Ideally validation loss will be as low as possible. Using L2 loss, values as low as `0.1` and lower are possible after around 1 Billion samples seen.                                                                                                                                                                                                |\n| EMA Validation                      | This metric measures the validation loss associated with your EMA model.                                                                                                                                                                                     | This will likely lag behind your \"online\" model's validation loss, but should outperform in the long-term.                                 ",
+        "type": "code",
+        "location": "/prior.md:157-158"
+    },
+    "115": {
+        "file_id": 3,
+        "content": "This code is discussing the usage of an Exponential Moving Average (EMA) model in a machine learning context. The EMA model's performance is compared to the online model, specifically focusing on validation loss as a metric. The lower the validation loss, the better the model's performance, with values around 0.1 achievable after billions of samples. However, the EMA validation loss might lag behind but should outperform in the long term.",
+        "type": "comment"
+    },
+    "116": {
+        "file_id": 3,
+        "content": "                                                                                                                                                                                                             |\n| Baseline Similarity                 | Baseline similarity refers to the similarity between your dataset's prompts and associated image embeddings. This will serve as a guide for your prior's performance in cosine similarity.                                                                    | Generally `0.3` is considered a good cosine similarity for caption similarity.                                                                                                                                                                                                                                                                         |\n| Similarity With Original Image      | This metric will measure the cosine similarity between your prior's predicted image embedding and the actual image",
+        "type": "code",
+        "location": "/prior.md:158-160"
+    },
+    "117": {
+        "file_id": 3,
+        "content": "This code snippet is explaining the concept of baseline similarity in the context of DALLE2-pytorch, where it refers to the similarity between dataset prompts and image embeddings. It also mentions that generally, a cosine similarity value of 0.3 is considered good for caption similarity. Additionally, there's information about another metric - similarity with original image, which measures cosine similarity between the prior's predicted image embedding and the actual image.",
+        "type": "comment"
+    },
+    "118": {
+        "file_id": 3,
+        "content": " that the caption was associated with. This is useful for determining wether your prior is generating images with the right contents.      | Values around `0.75`+ are obtainable. This metric should improve rapidly in the early stages of training and plateau with diminishing increases over time. If it takes hundreds of millions of samples to reach above `0.5`/`0.6` similarity--then you likely are suffering from some kind of training error or inefficiency (i.e. not using EMA) |\n| Difference From Baseline Similarity | Sometimes its useful to visualize a metric in another light. This metric will show you how your prior's predicted image embeddings match up with the baseline similarity measured in your dataset.                                                           | This value should float around `0.0` with some room for variation. After a billion samples seen, values are within `0.01`+/- of `0.0`. If this climbs to high, (~>`0.02`) then this may be a sign that your model is overfitting ",
+        "type": "code",
+        "location": "/prior.md:160-161"
+    },
+    "119": {
+        "file_id": 3,
+        "content": "The code provides information about the similarity metric between generated images and captions, as well as the difference from baseline similarity. The values should improve rapidly in early stages of training and plateau over time, while staying around 0 for the difference metric. Values above 0.5/0.6 or climbing to high values may indicate issues with training efficiency or overfitting, respectively.",
+        "type": "comment"
+    },
+    "120": {
+        "file_id": 3,
+        "content": "somehow.                                                                                                       |\n| Similarity With Text                | This metric is your bread and butter cosine similarity between the predicted image embedding and the original caption given to the prior. Monitoring this metric will be on of your main focuses and is probably the second most important behind your loss. | As mentioned, this value should be close to baseline similarity. We have observed early rapid increase with diminishing returns as the prior learns to generate valid image embeddings. If this value increases too far beyond the baseline similarity--it could be an indication that your model is overfitting.                                       |\n| Similarity With Unrelated Caption   | This metric will attempt to exposed an overfit prior by feeding it arbitrary prompts (from your dataset) and then measure the similarity of this predicted embedding with some other image.                     ",
+        "type": "code",
+        "location": "/prior.md:161-163"
+    },
+    "121": {
+        "file_id": 3,
+        "content": "The code measures the cosine similarity between predicted image embeddings and original captions, as well as with unrelated captions to detect overfitting. Monitoring these metrics is crucial for model performance, as they indicate how well the model is learning from captions and generating valid image embeddings.",
+        "type": "comment"
+    },
+    "122": {
+        "file_id": 3,
+        "content": "                                              | Early on we found that a poorly trained/modeled prior could effectively fool CLIP into believing that the cosine similarity between two images were high (when in fact the caption and image were completely unrelated). With this in mind--a low value is ideal, anything below `0.1` is probably safe.                                              |\n## Launching the script\nNow that you’ve done all the prep it’s time for the easy part! 🚀\nTo actually launch the script, you will either use `accelerate launch train_diffusion_prior.py --config_path <path to your config>` to launch with distributed training & huggingface accelerate or `python train_diffusion_prior.py` if you would like to train on your gpu/cpu without huggingface accelerate.\n## Checkpointing\nCheckpoints will be saved to the directory specified in your configuration file.\nAdditionally, a final checkpoint is saved before running the test split. This file will be saved to the same directory and",
+        "type": "code",
+        "location": "/prior.md:163-175"
+    },
+    "123": {
+        "file_id": 3,
+        "content": "The code provides instructions on how to launch the training script for a diffusion model using either distributed training with HuggingFace Accelerate or without it. It also mentions that checkpoints will be saved in the directory specified in the configuration file, and an additional final checkpoint will be saved before running the test split. The prior value should ideally be kept low to avoid fooling CLIP into believing unrelated captions and images have high cosine similarity.",
+        "type": "comment"
+    },
+    "124": {
+        "file_id": 3,
+        "content": " titled “latest.pth”. This is to avoid problems where your `save_every` configuration does not overlap with the number of steps required to do a complete pass through the data.\n## Things To Keep In Mind\nThe prior has not been trained for tasks other than the traditional CLIP embedding translation…at least yet.\nAs we finalize the replication of unCLIP, there will almost assuredly be experiments attempting to apply the prior network to other tasks.\nWith that in mind, you are more or less a pioneer in embedding-translation if you are reading this and attempting something you don’t see documentation for!",
+        "type": "code",
+        "location": "/prior.md:175-183"
+    },
+    "125": {
+        "file_id": 3,
+        "content": "This code snippet is providing information about the \"latest.pth\" file and its purpose to avoid potential problems with `save_every` configuration not overlapping with data requirements. It also mentions that the prior network has not been trained for tasks other than traditional CLIP embedding translation, hinting at future experiments applying the prior network to other tasks.",
+        "type": "comment"
+    },
+    "126": {
+        "file_id": 4,
+        "content": "/setup.py",
+        "type": "filepath"
+    },
+    "127": {
+        "file_id": 4,
+        "content": "This code is a setup script for the dalle2-pytorch package using setuptools, defining project details and dependencies like PyTorch, Torchvision, and more. It's a Python project with beta development status, targeting developers in AI field, licensed under MIT, requires Python 3.6.",
+        "type": "summary"
+    },
+    "128": {
+        "file_id": 4,
+        "content": "from setuptools import setup, find_packages\nexec(open('dalle2_pytorch/version.py').read())\nsetup(\n  name = 'dalle2-pytorch',\n  packages = find_packages(exclude=[]),\n  include_package_data = True,\n  entry_points={\n    'console_scripts': [\n      'dalle2_pytorch = dalle2_pytorch.cli:main',\n      'dream = dalle2_pytorch.cli:dream'\n    ],\n  },\n  version = __version__,\n  license='MIT',\n  description = 'DALL-E 2',\n  author = 'Phil Wang',\n  author_email = 'lucidrains@gmail.com',\n  long_description_content_type = 'text/markdown',\n  url = 'https://github.com/lucidrains/dalle2-pytorch',\n  keywords = [\n    'artificial intelligence',\n    'deep learning',\n    'text to image'\n  ],\n  install_requires=[\n    'accelerate',\n    'click',\n    'open-clip-torch>=2.0.0,<3.0.0',\n    'clip-anytorch>=2.5.2',\n    'coca-pytorch>=0.0.5',\n    'ema-pytorch>=0.0.7',\n    'einops>=0.7.0',\n    'embedding-reader',\n    'kornia>=0.5.4',\n    'numpy',\n    'packaging',\n    'pillow',\n    'pydantic>=2',\n    'pytorch-warmup',\n    'resize-right>=0.0.2',\n    'rotary-embedding-torch',",
+        "type": "code",
+        "location": "/setup.py:1-42"
+    },
+    "129": {
+        "file_id": 4,
+        "content": "This code is a setup script for the dalle2-pytorch package using setuptools. It defines the name, packages, entry points, version, license, description, author, URL, keywords, and install_requires. The script imports necessary modules and sets up dependencies for installation.",
+        "type": "comment"
+    },
+    "130": {
+        "file_id": 4,
+        "content": "    'torch>=1.10',\n    'torchvision',\n    'tqdm',\n    'vector-quantize-pytorch',\n    'x-clip>=0.4.4',\n    'webdataset>=0.2.5',\n    'fsspec>=2022.1.0',\n    'torchmetrics[image]>=0.8.0'\n  ],\n  classifiers=[\n    'Development Status :: 4 - Beta',\n    'Intended Audience :: Developers',\n    'Topic :: Scientific/Engineering :: Artificial Intelligence',\n    'License :: OSI Approved :: MIT License',\n    'Programming Language :: Python :: 3.6',\n  ],\n)",
+        "type": "code",
+        "location": "/setup.py:43-59"
+    },
+    "131": {
+        "file_id": 4,
+        "content": "This is a Python project setup file, using setuptools. It depends on PyTorch >= 1.10, Torchvision, Tqdm, VectorQuantizePytorch, X-Clip >= 0.4.4, Webdataset >= 0.2.5, FSSpec >= 2022.1.0, and TorchMetrics[image] >= 0.8.0. The project has a beta development status, is intended for developers, relates to artificial intelligence, is licensed under MIT, and requires Python 3.6.",
+        "type": "comment"
+    },
+    "132": {
+        "file_id": 5,
+        "content": "/train_decoder.py",
+        "type": "filepath"
+    },
+    "133": {
+        "file_id": 5,
+        "content": "This code divides shards, initializes training, and trains UNet models for DALL-E 2 using PyTorch. It also supports distributed training and executes as a standalone program.",
+        "type": "summary"
+    },
+    "134": {
+        "file_id": 5,
+        "content": "from pathlib import Path\nfrom typing import List\nfrom datetime import timedelta\nfrom dalle2_pytorch.trainer import DecoderTrainer\nfrom dalle2_pytorch.dataloaders import create_image_embedding_dataloader\nfrom dalle2_pytorch.trackers import Tracker\nfrom dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig\nfrom dalle2_pytorch.utils import Timer, print_ribbon\nfrom dalle2_pytorch.dalle2_pytorch import Decoder, resize_image_to\nfrom clip import tokenize\nimport torchvision\nimport torch\nfrom torch import nn\nfrom torchmetrics.image.fid import FrechetInceptionDistance\nfrom torchmetrics.image.inception import InceptionScore\nfrom torchmetrics.image.kid import KernelInceptionDistance\nfrom torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity\nfrom accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGroupKwargs\nfrom accelerate.utils import dataclasses as accelerate_dataclasses\nimport webdataset as wds\nimport click\n# constants\nTRAIN_CALC_LOSS_EVERY_ITERS = 10\nVALID_CALC_LOSS_EVERY_ITERS = 10",
+        "type": "code",
+        "location": "/train_decoder.py:1-28"
+    },
+    "135": {
+        "file_id": 5,
+        "content": "This code imports various modules and defines constants for training a decoder model in the DALLE2-pytorch framework. It uses DecoderTrainer, dataloaders, trackers, train configs, utilities, and models from the dalle2_pytorch package. It also includes metrics such as FrechetInceptionDistance, InceptionScore, KernelInceptionDistance, and LearnedPerceptualImagePatchSimilarity for evaluation. Accelerate is used for accelerated training, and webdataset is used for data loading.",
+        "type": "comment"
+    },
+    "136": {
+        "file_id": 5,
+        "content": "# helpers functions\ndef exists(val):\n    return val is not None\n# main functions\ndef create_dataloaders(\n    available_shards,\n    webdataset_base_url,\n    img_embeddings_url=None,\n    text_embeddings_url=None,\n    shard_width=6,\n    num_workers=4,\n    batch_size=32,\n    n_sample_images=6,\n    shuffle_train=True,\n    resample_train=False,\n    img_preproc = None,\n    index_width=4,\n    train_prop = 0.75,\n    val_prop = 0.15,\n    test_prop = 0.10,\n    seed = 0,\n    **kwargs\n):\n    \"\"\"\n    Randomly splits the available shards into train, val, and test sets and returns a dataloader for each\n    \"\"\"\n    assert train_prop + test_prop + val_prop == 1\n    num_train = round(train_prop*len(available_shards))\n    num_test = round(test_prop*len(available_shards))\n    num_val = len(available_shards) - num_train - num_test\n    assert num_train + num_test + num_val == len(available_shards), f\"{num_train} + {num_test} + {num_val} = {num_train + num_test + num_val} != {len(available_shards)}\"\n    train_split, test_split, val_split =",
+        "type": "code",
+        "location": "/train_decoder.py:30-64"
+    },
+    "137": {
+        "file_id": 5,
+        "content": "This function takes available shards, URLs for embeddings, and other parameters to randomly split them into train, validation, and test sets, then returns dataloaders for each. It asserts that the proportions of splits sum up to 1, calculates the actual number of samples in each split based on the proportion, and checks if the sum of splits matches the total number of available shards.",
+        "type": "comment"
+    },
+    "138": {
+        "file_id": 5,
+        "content": " torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(seed))\n    # The shard number in the webdataset file names has a fixed width. We zero pad the shard numbers so they correspond to a filename.\n    train_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]\n    test_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]\n    val_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]\n    create_dataloader = lambda tar_urls, shuffle=False, resample=False, for_sampling=False: create_image_embedding_dataloader(\n        tar_url=tar_urls,\n        num_workers=num_workers,\n        batch_size=batch_size if not for_sampling else n_sample_images,\n        img_embeddings_url=img_embeddings_url,\n        text_embeddings_url=text_embeddings_url,\n        index_width=index_width,\n        shuffle_num = None,\n        extra_keys= [\"txt\"],\n        shuffle_shards = shuffle,",
+        "type": "code",
+        "location": "/train_decoder.py:64-80"
+    },
+    "139": {
+        "file_id": 5,
+        "content": "This code randomly splits available shards into training, testing, and validation sets. It then generates corresponding URLs for each set by zero-padding the shard numbers to match the filename format. A lambda function is created to handle creating a dataloader for image embeddings using these URLs, considering various parameters like batch size and number of workers.",
+        "type": "comment"
+    },
+    "140": {
+        "file_id": 5,
+        "content": "        resample_shards = resample, \n        img_preproc=img_preproc,\n        handler=wds.handlers.warn_and_continue\n    )\n    train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)\n    train_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)\n    val_dataloader = create_dataloader(val_urls, shuffle=False)\n    test_dataloader = create_dataloader(test_urls, shuffle=False)\n    test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)\n    return {\n        \"train\": train_dataloader,\n        \"train_sampling\": train_sampling_dataloader,\n        \"val\": val_dataloader,\n        \"test\": test_dataloader,\n        \"test_sampling\": test_sampling_dataloader\n    }\ndef get_dataset_keys(dataloader):\n    \"\"\"\n    It is sometimes neccesary to get the keys the dataloader is returning. Since the dataset is burried in the dataloader, we need to do a process to recover it.\n    \"\"\"\n    # If the dataloader is actually a WebLoader, we need to extract the real dataloader",
+        "type": "code",
+        "location": "/train_decoder.py:81-103"
+    },
+    "141": {
+        "file_id": 5,
+        "content": "The code creates multiple data loaders for training, validation, and testing datasets. It returns a dictionary with each dataset's corresponding dataloader. The `get_dataset_keys` function extracts the real dataloader if the input is a WebLoader.",
+        "type": "comment"
+    },
+    "142": {
+        "file_id": 5,
+        "content": "    if isinstance(dataloader, wds.WebLoader):\n        dataloader = dataloader.pipeline[0]\n    return dataloader.dataset.key_map\ndef get_example_data(dataloader, device, n=5):\n    \"\"\"\n    Samples the dataloader and returns a zipped list of examples\n    \"\"\"\n    images = []\n    img_embeddings = []\n    text_embeddings = []\n    captions = []\n    for img, emb, txt in dataloader:\n        img_emb, text_emb = emb.get('img'), emb.get('text')\n        if img_emb is not None:\n            img_emb = img_emb.to(device=device, dtype=torch.float)\n            img_embeddings.extend(list(img_emb))\n        else:\n            # Then we add None img.shape[0] times\n            img_embeddings.extend([None]*img.shape[0])\n        if text_emb is not None:\n            text_emb = text_emb.to(device=device, dtype=torch.float)\n            text_embeddings.extend(list(text_emb))\n        else:\n            # Then we add None img.shape[0] times\n            text_embeddings.extend([None]*img.shape[0])\n        img = img.to(device=device, dtype=torch.float)",
+        "type": "code",
+        "location": "/train_decoder.py:104-130"
+    },
+    "143": {
+        "file_id": 5,
+        "content": "The code samples the dataloader and returns a zipped list of examples. It iterates through each image, extracts its embedding, converts it to the device's format, extends the respective lists for images and text embeddings, and finally returns them.",
+        "type": "comment"
+    },
+    "144": {
+        "file_id": 5,
+        "content": "        images.extend(list(img))\n        captions.extend(list(txt))\n        if len(images) >= n:\n            break\n    return list(zip(images[:n], img_embeddings[:n], text_embeddings[:n], captions[:n]))\ndef generate_samples(trainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=\"\", match_image_size=True):\n    \"\"\"\n    Takes example data and generates images from the embeddings\n    Returns three lists: real images, generated images, and captions\n    \"\"\"\n    real_images, img_embeddings, text_embeddings, txts = zip(*example_data)\n    sample_params = {}\n    if img_embeddings[0] is None:\n        # Generate image embeddings from clip\n        imgs_tensor = torch.stack(real_images)\n        assert clip is not None, \"clip is None, but img_embeddings is None\"\n        imgs_tensor.to(device=device)\n        img_embeddings, img_encoding = clip.embed_image(imgs_tensor)\n        sample_params[\"image_embed\"] = img_embeddings\n    else:\n        # Then we are using precomputed image embeddings",
+        "type": "code",
+        "location": "/train_decoder.py:131-152"
+    },
+    "145": {
+        "file_id": 5,
+        "content": "This function generates samples by taking example data and creating real images, generated images, and captions. If image embeddings are None, it generates them using the clip model. It returns three lists: real images, generated images, and captions.",
+        "type": "comment"
+    },
+    "146": {
+        "file_id": 5,
+        "content": "        img_embeddings = torch.stack(img_embeddings)\n        sample_params[\"image_embed\"] = img_embeddings\n    if condition_on_text_encodings:\n        if text_embeddings[0] is None:\n            # Generate text embeddings from text\n            assert clip is not None, \"clip is None, but text_embeddings is None\"\n            tokenized_texts = tokenize(txts, truncate=True).to(device=device)\n            text_embed, text_encodings = clip.embed_text(tokenized_texts)\n            sample_params[\"text_encodings\"] = text_encodings\n        else:\n            # Then we are using precomputed text embeddings\n            text_embeddings = torch.stack(text_embeddings)\n            sample_params[\"text_encodings\"] = text_embeddings\n    sample_params[\"start_at_unet_number\"] = start_unet\n    sample_params[\"stop_at_unet_number\"] = end_unet\n    if start_unet > 1:\n        # If we are only training upsamplers\n        sample_params[\"image\"] = torch.stack(real_images)\n    if device is not None:\n        sample_params[\"_device\"] = device",
+        "type": "code",
+        "location": "/train_decoder.py:153-172"
+    },
+    "147": {
+        "file_id": 5,
+        "content": "This code is responsible for preparing training samples by stacking image and text embeddings, setting parameters for start and stop U-net layers, and handling the case where real images are provided. If real images exist, it stacks them as part of the sample. The code also considers whether to generate text embeddings or use precomputed ones and ensures everything is on the specified device.",
+        "type": "comment"
+    },
+    "148": {
+        "file_id": 5,
+        "content": "    samples = trainer.sample(**sample_params, _cast_deepspeed_precision=False)  # At sampling time we don't want to cast to FP16\n    generated_images = list(samples)\n    captions = [text_prepend + txt for txt in txts]\n    if match_image_size:\n        generated_image_size = generated_images[0].shape[-1]\n        real_images = [resize_image_to(image, generated_image_size, clamp_range=(0, 1)) for image in real_images]\n    return real_images, generated_images, captions\ndef generate_grid_samples(trainer, examples, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=\"\"):\n    \"\"\"\n    Generates samples and uses torchvision to put them in a side by side grid for easy viewing\n    \"\"\"\n    real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)\n    grid_images = [torchvision.utils.make_grid([original_image, generated_image]) for original_image, generated_image in zip(real_images, generated_images)]",
+        "type": "code",
+        "location": "/train_decoder.py:173-186"
+    },
+    "149": {
+        "file_id": 5,
+        "content": "This function generates samples, combines them with real images in a grid format for easy viewing. It first calls `generate_samples` to get the real and generated images along with their corresponding captions. Then it uses `torchvision.utils.make_grid` to create grids of original and generated images.",
+        "type": "comment"
+    },
+    "150": {
+        "file_id": 5,
+        "content": "    return grid_images, captions\ndef evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=None, condition_on_text_encodings=False, cond_scale=1.0, inference_device=None, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):\n    \"\"\"\n    Computes evaluation metrics for the decoder\n    \"\"\"\n    metrics = {}\n    # Prepare the data\n    examples = get_example_data(dataloader, device, n_evaluation_samples)\n    if len(examples) == 0:\n        print(\"No data to evaluate. Check that your dataloader has shards.\")\n        return metrics\n    real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)\n    real_images = torch.stack(real_images).to(device=device, dtype=torch.float)\n    generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)\n    # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8\n    int_real_images = real_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)",
+        "type": "code",
+        "location": "/train_decoder.py:187-203"
+    },
+    "151": {
+        "file_id": 5,
+        "content": "This function computes evaluation metrics for a decoder. It prepares data, generates samples using the trainer and start/end unets, converts images from [0, 1] to [0, 255], and types them as uint8. The generated and real images are then stored in variables for further evaluation metrics calculations.",
+        "type": "comment"
+    },
+    "152": {
+        "file_id": 5,
+        "content": "    int_generated_images = generated_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)\n    def null_sync(t, *args, **kwargs):\n        return [t]\n    if exists(FID):\n        fid = FrechetInceptionDistance(**FID, dist_sync_fn=null_sync)\n        fid.to(device=device)\n        fid.update(int_real_images, real=True)\n        fid.update(int_generated_images, real=False)\n        metrics[\"FID\"] = fid.compute().item()\n    if exists(IS):\n        inception = InceptionScore(**IS, dist_sync_fn=null_sync)\n        inception.to(device=device)\n        inception.update(int_real_images)\n        is_mean, is_std = inception.compute()\n        metrics[\"IS_mean\"] = is_mean.item()\n        metrics[\"IS_std\"] = is_std.item()\n    if exists(KID):\n        kernel_inception = KernelInceptionDistance(**KID, dist_sync_fn=null_sync)\n        kernel_inception.to(device=device)\n        kernel_inception.update(int_real_images, real=True)\n        kernel_inception.update(int_generated_images, real=False)\n        kid_mean, kid_std = kernel_inception.compute()",
+        "type": "code",
+        "location": "/train_decoder.py:204-227"
+    },
+    "153": {
+        "file_id": 5,
+        "content": "This code calculates and stores metrics for the quality of generated images, including Frechet Inception Distance (FID), Inception Score (IS), and Kernel Inception Distance (KID). It first scales the generated images, then checks if specific configuration files exist for each metric. If they do, it creates an instance of the corresponding metric class, sets it up on the device, updates with real and generated images, and computes the metric values. The computed metrics are stored in the \"metrics\" dictionary.",
+        "type": "comment"
+    },
+    "154": {
+        "file_id": 5,
+        "content": "        metrics[\"KID_mean\"] = kid_mean.item()\n        metrics[\"KID_std\"] = kid_std.item()\n    if exists(LPIPS):\n        # Convert from [0, 1] to [-1, 1]\n        renorm_real_images = real_images.mul(2).sub(1).clamp(-1,1)\n        renorm_generated_images = generated_images.mul(2).sub(1).clamp(-1,1)\n        lpips = LearnedPerceptualImagePatchSimilarity(**LPIPS, dist_sync_fn=null_sync)\n        lpips.to(device=device)\n        lpips.update(renorm_real_images, renorm_generated_images)\n        metrics[\"LPIPS\"] = lpips.compute().item()\n    if trainer.accelerator.num_processes > 1:\n        # Then we should sync the metrics\n        metrics_order = sorted(metrics.keys())\n        metrics_tensor = torch.zeros(1, len(metrics), device=device, dtype=torch.float)\n        for i, metric_name in enumerate(metrics_order):\n            metrics_tensor[0, i] = metrics[metric_name]\n        metrics_tensor = trainer.accelerator.gather(metrics_tensor)\n        metrics_tensor = metrics_tensor.mean(dim=0)\n        for i, metric_name in enumerate(metrics_order):",
+        "type": "code",
+        "location": "/train_decoder.py:228-247"
+    },
+    "155": {
+        "file_id": 5,
+        "content": "This code calculates metrics such as KID and LPIPS for a model's performance. It stores the values in a dictionary, normalizes the images if LPIPS is present, applies the LearnedPerceptualImagePatchSimilarity function, and syncs the calculated metrics across processes using accelerator functions.",
+        "type": "comment"
+    },
+    "156": {
+        "file_id": 5,
+        "content": "            metrics[metric_name] = metrics_tensor[i].item()\n    return metrics\ndef save_trainer(tracker: Tracker, trainer: DecoderTrainer, epoch: int, sample: int, next_task: str, validation_losses: List[float], samples_seen: int, is_latest=True, is_best=False):\n    \"\"\"\n    Logs the model with an appropriate method depending on the tracker\n    \"\"\"\n    tracker.save(trainer, is_best=is_best, is_latest=is_latest, epoch=epoch, sample=sample, next_task=next_task, validation_losses=validation_losses, samples_seen=samples_seen)\ndef recall_trainer(tracker: Tracker, trainer: DecoderTrainer):\n    \"\"\"\n    Loads the model with an appropriate method depending on the tracker\n    \"\"\"\n    trainer.accelerator.print(print_ribbon(f\"Loading model from {type(tracker.loader).__name__}\"))\n    state_dict = tracker.recall()\n    trainer.load_state_dict(state_dict, only_model=False, strict=True)\n    return state_dict.get(\"epoch\", 0), state_dict.get(\"validation_losses\", []), state_dict.get(\"next_task\", \"train\"), state_dict.get(\"sample\", 0), state_dict.get(\"samples_seen\", 0)",
+        "type": "code",
+        "location": "/train_decoder.py:248-264"
+    },
+    "157": {
+        "file_id": 5,
+        "content": "This code contains three functions: 1) `train_decoder`, which updates metrics based on the current metric; 2) `save_trainer`, which logs the model using an appropriate method according to the tracker; and 3) `recall_trainer`, which loads the model using the tracker. The code is part of a larger system that likely involves training a machine learning model, tracking its progress, and recalling it for further use or evaluation.",
+        "type": "comment"
+    },
+    "158": {
+        "file_id": 5,
+        "content": "def train(\n    dataloaders,\n    decoder: Decoder,\n    accelerator: Accelerator,\n    tracker: Tracker,\n    inference_device,\n    clip=None,\n    evaluate_config=None,\n    epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch\n    validation_samples = None,\n    save_immediately=False,\n    epochs = 20,\n    n_sample_images = 5,\n    save_every_n_samples = 100000,\n    unet_training_mask=None,\n    condition_on_text_encodings=False,\n    cond_scale=1.0,\n    **kwargs\n):\n    \"\"\"\n    Trains a decoder on a dataset.\n    \"\"\"\n    is_master = accelerator.process_index == 0\n    if not exists(unet_training_mask):\n        # Then the unet mask should be true for all unets in the decoder\n        unet_training_mask = [True] * len(decoder.unets)\n    assert len(unet_training_mask) == len(decoder.unets), f\"The unet training mask should be the same length as the number of unets in the decoder. Got {len(unet_training_mask)} and {trainer.num_unets}\"\n    trainable_unet_numbers = [i+1 for i, trainable in enumerate(unet_training_mask) if trainable]",
+        "type": "code",
+        "location": "/train_decoder.py:266-294"
+    },
+    "159": {
+        "file_id": 5,
+        "content": "The function trains a decoder on a dataset, using the specified dataloaders, Decoder instance, and Accelerator. It also has optional arguments for clip, evaluate_config, epoch_samples, validation_samples, save_immediately, epochs, n_sample_images, save_every_n_samples, unet_training_mask, condition_on_text_encodings, and cond_scale. The function checks if the unet_training_mask exists and asserts that its length matches the number of unets in the decoder. It also assigns trainable unet numbers to a list.",
+        "type": "comment"
+    },
+    "160": {
+        "file_id": 5,
+        "content": "    first_trainable_unet = trainable_unet_numbers[0]\n    last_trainable_unet = trainable_unet_numbers[-1]\n    def move_unets(unet_training_mask):\n        for i in range(len(decoder.unets)):\n            if not unet_training_mask[i]:\n                # Replace the unet from the module list with a nn.Identity(). This training script never uses unets that aren't being trained so this is fine.\n                decoder.unets[i] = nn.Identity().to(inference_device)\n    # Remove non-trainable unets\n    move_unets(unet_training_mask)\n    trainer = DecoderTrainer(\n        decoder=decoder,\n        accelerator=accelerator,\n        dataloaders=dataloaders,\n        **kwargs\n    )\n    # Set up starting model and parameters based on a recalled state dict\n    start_epoch = 0\n    validation_losses = []\n    next_task = 'train'\n    sample = 0\n    samples_seen = 0\n    val_sample = 0\n    step = lambda: int(trainer.num_steps_taken(unet_number=first_trainable_unet))\n    if tracker.can_recall:\n        start_epoch, validation_losses, next_task, recalled_sample, samples_seen = recall_trainer(tracker, trainer)",
+        "type": "code",
+        "location": "/train_decoder.py:295-322"
+    },
+    "161": {
+        "file_id": 5,
+        "content": "The code is removing non-trainable UNet modules and setting up a trainer for the given task. It also checks if the state can be recalled from a previous training session and updates relevant variables accordingly.",
+        "type": "comment"
+    },
+    "162": {
+        "file_id": 5,
+        "content": "        if next_task == 'train':\n            sample = recalled_sample\n        if next_task == 'val':\n            val_sample = recalled_sample\n        accelerator.print(f\"Loaded model from {type(tracker.loader).__name__} on epoch {start_epoch} having seen {samples_seen} samples with minimum validation loss {min(validation_losses) if len(validation_losses) > 0 else 'N/A'}\")\n        accelerator.print(f\"Starting training from task {next_task} at sample {sample} and validation sample {val_sample}\")\n    trainer.to(device=inference_device)\n    accelerator.print(print_ribbon(\"Generating Example Data\", repeat=40))\n    accelerator.print(\"This can take a while to load the shard lists...\")\n    if is_master:\n        train_example_data = get_example_data(dataloaders[\"train_sampling\"], inference_device, n_sample_images)\n        accelerator.print(\"Generated training examples\")\n        test_example_data = get_example_data(dataloaders[\"test_sampling\"], inference_device, n_sample_images)\n        accelerator.print(\"Generated testing examples\")",
+        "type": "code",
+        "location": "/train_decoder.py:323-337"
+    },
+    "163": {
+        "file_id": 5,
+        "content": "The code loads a model and starts training from the specified task, either 'train' or 'val'. It prints the details of the loaded model, including epoch, samples seen, and minimum validation loss. The trainer is moved to the inference device. Example data for both training and testing is generated using get_example_data function with the specified number of sample images.",
+        "type": "comment"
+    },
+    "164": {
+        "file_id": 5,
+        "content": "    send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]\n    sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)\n    unet_losses_tensor = torch.zeros(TRAIN_CALC_LOSS_EVERY_ITERS, trainer.num_unets, dtype=torch.float, device=inference_device)\n    for epoch in range(start_epoch, epochs):\n        accelerator.print(print_ribbon(f\"Starting epoch {epoch}\", repeat=40))\n        timer = Timer()\n        last_sample = sample\n        last_snapshot = sample\n        if next_task == 'train':\n            for i, (img, emb, txt) in enumerate(dataloaders[\"train\"]):\n                # We want to count the total number of samples across all processes\n                sample_length_tensor[0] = len(img)\n                all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.\n                total_samples = all_samples.sum().item()\n                sample += total_samples\n                samples_seen += total_samples",
+        "type": "code",
+        "location": "/train_decoder.py:339-357"
+    },
+    "165": {
+        "file_id": 5,
+        "content": "Iterating over epochs in training mode, counting the total number of samples across all processes. Gathering sample length tensors using accelerator's gather function and summing them up to get the total samples seen. Updating sample and samples_seen variables accordingly.",
+        "type": "comment"
+    },
+    "166": {
+        "file_id": 5,
+        "content": "                img_emb = emb.get('img')\n                has_img_embedding = img_emb is not None\n                if has_img_embedding:\n                    img_emb, = send_to_device((img_emb,))\n                text_emb = emb.get('text')\n                has_text_embedding = text_emb is not None\n                if has_text_embedding:\n                    text_emb, = send_to_device((text_emb,))\n                img, = send_to_device((img,))\n                trainer.train()\n                for unet in range(1, trainer.num_unets+1):\n                    # Check if this is a unet we are training\n                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1\n                        continue\n                    forward_params = {}\n                    if has_img_embedding:\n                        forward_params['image_embed'] = img_emb\n                    else:\n                        # Forward pass automatically generates embedding\n                        assert clip is not None\n                        img_embed, img_encoding = clip.embed_image(img)",
+        "type": "code",
+        "location": "/train_decoder.py:358-380"
+    },
+    "167": {
+        "file_id": 5,
+        "content": "This code checks if there are image or text embeddings available, sends them to the device, and then trains a model. It also performs a forward pass for image embedding generation if necessary.",
+        "type": "comment"
+    },
+    "168": {
+        "file_id": 5,
+        "content": "                        forward_params['image_embed'] = img_embed\n                    if condition_on_text_encodings:\n                        if has_text_embedding:\n                            forward_params['text_encodings'] = text_emb\n                        else:\n                            # Then we need to pass the text instead\n                            assert clip is not None\n                            tokenized_texts = tokenize(txt, truncate=True).to(inference_device)\n                            assert tokenized_texts.shape[0] == len(img), f\"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(img)})\"\n                            text_embed, text_encodings = clip.embed_text(tokenized_texts)\n                            forward_params['text_encodings'] = text_encodings\n                    loss = trainer.forward(img, **forward_params, unet_number=unet, _device=inference_device)\n                    trainer.update(unet_number=unet)\n                    unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss",
+        "type": "code",
+        "location": "/train_decoder.py:381-394"
+    },
+    "169": {
+        "file_id": 5,
+        "content": "This code chunk is for training the DALL-E 2 model's decoder. It first checks if image and text embeddings are provided, and if not, it tokenizes the text and generates text embeddings using the CLIP model. Then, it passes the required parameters to the trainer and updates the model, storing the loss for each unit in the unet_losses_tensor array.",
+        "type": "comment"
+    },
+    "170": {
+        "file_id": 5,
+        "content": "                samples_per_sec = (sample - last_sample) / timer.elapsed()\n                timer.reset()\n                last_sample = sample\n                if i % TRAIN_CALC_LOSS_EVERY_ITERS == 0:\n                    # We want to average losses across all processes\n                    unet_all_losses = accelerator.gather(unet_losses_tensor)\n                    mask = unet_all_losses != 0\n                    unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)\n                    loss_map = { f\"Unet {index} Training Loss\": loss.item() for index, loss in enumerate(unet_average_loss) if unet_training_mask[index] }\n                    # gather decay rate on each UNet\n                    ema_decay_list = {f\"Unet {index} EMA Decay\": ema_unet.get_current_decay() for index, ema_unet in enumerate(trainer.ema_unets) if unet_training_mask[index]}\n                    log_data = {\n                        \"Epoch\": epoch,\n                        \"Sample\": sample,\n                        \"Step\": i,",
+        "type": "code",
+        "location": "/train_decoder.py:396-413"
+    },
+    "171": {
+        "file_id": 5,
+        "content": "This code is calculating the samples per second and resetting timers, then averaging the losses across all processes for a UNet model. It gathers the decay rate on each UNet, logs epoch, sample, and step information.",
+        "type": "comment"
+    },
+    "172": {
+        "file_id": 5,
+        "content": "                        \"Samples per second\": samples_per_sec,\n                        \"Samples Seen\": samples_seen,\n                        **ema_decay_list,\n                        **loss_map\n                    }\n                    if is_master:\n                        tracker.log(log_data, step=step())\n                if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope\n                    # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master\n                    print(\"Saving snapshot\")\n                    last_snapshot = sample\n                    # We need to know where the model should be saved\n                    save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)\n                    if exists(n_sample_images) and n_sample_images > 0:\n                        trainer.eval()\n             ",
+        "type": "code",
+        "location": "/train_decoder.py:414-431"
+    },
+    "173": {
+        "file_id": 5,
+        "content": "This code snippet is logging data and saving a snapshot of the model at specific intervals. It logs samples per second, samples seen, EMA decay parameters, and loss metrics. The snapshot is saved if the current sample meets certain conditions or every time an immediate save command is issued. The code prints \"Saving snapshot\" when a snapshot is taken.",
+        "type": "comment"
+    },
+    "174": {
+        "file_id": 5,
+        "content": "           train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, \"Train: \")\n                        tracker.log_images(train_images, captions=train_captions, image_section=\"Train Samples\", step=step())\n                if epoch_samples is not None and sample >= epoch_samples:\n                    break\n            next_task = 'val'\n            sample = 0\n        all_average_val_losses = None\n        if next_task == 'val':\n            trainer.eval()\n            accelerator.print(print_ribbon(f\"Starting Validation {epoch}\", repeat=40))\n            last_val_sample = val_sample\n            val_sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)\n            average_val_loss_tensor = torch.zeros(1, trainer.num_unets, dtype=torch.float, device=inference_device)\n            timer = Timer()\n            accelerator.wait_for_everyone()\n            i = 0",
+        "type": "code",
+        "location": "/train_decoder.py:431-448"
+    },
+    "175": {
+        "file_id": 5,
+        "content": "This code is used for training a model and validating it. It generates samples from the training dataset, logs them, checks if it should stop based on sample count, switches to validation mode, and initializes variables for validation.",
+        "type": "comment"
+    },
+    "176": {
+        "file_id": 5,
+        "content": "            for i, (img, emb, txt) in enumerate(dataloaders['val']):  # Use the accelerate prepared loader\n                val_sample_length_tensor[0] = len(img)\n                all_samples = accelerator.gather(val_sample_length_tensor)\n                total_samples = all_samples.sum().item()\n                val_sample += total_samples\n                img_emb = emb.get('img')\n                has_img_embedding = img_emb is not None\n                if has_img_embedding:\n                    img_emb, = send_to_device((img_emb,))\n                text_emb = emb.get('text')\n                has_text_embedding = text_emb is not None\n                if has_text_embedding:\n                    text_emb, = send_to_device((text_emb,))\n                img, = send_to_device((img,))\n                for unet in range(1, len(decoder.unets)+1):\n                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1\n                        # No need to evaluate an unchanging unet\n                        continue",
+        "type": "code",
+        "location": "/train_decoder.py:449-467"
+    },
+    "177": {
+        "file_id": 5,
+        "content": "This code is part of the DALLE2-pytorch training process. It iterates over the validation dataloader, gathers sample lengths, calculates total samples, and checks for image and text embeddings. If available, it sends these embeddings along with images to the device for further processing. This code ensures that all necessary data is properly prepared and sent to the device for evaluation.",
+        "type": "comment"
+    },
+    "178": {
+        "file_id": 5,
+        "content": "                    forward_params = {}\n                    if has_img_embedding:\n                        forward_params['image_embed'] = img_emb.float()\n                    else:\n                        # Forward pass automatically generates embedding\n                        assert clip is not None\n                        img_embed, img_encoding = clip.embed_image(img)\n                        forward_params['image_embed'] = img_embed\n                    if condition_on_text_encodings:\n                        if has_text_embedding:\n                            forward_params['text_encodings'] = text_emb.float()\n                        else:\n                            # Then we need to pass the text instead\n                            assert clip is not None\n                            tokenized_texts = tokenize(txt, truncate=True).to(device=inference_device)\n                            assert tokenized_texts.shape[0] == len(img), f\"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(img)})\"",
+        "type": "code",
+        "location": "/train_decoder.py:469-484"
+    },
+    "179": {
+        "file_id": 5,
+        "content": "This code segment checks if image and text embeddings are provided. If not, it automatically generates image embedding or passes the text instead based on the condition. It also asserts the number of texts should be equal to the number of images for consistency.",
+        "type": "comment"
+    },
+    "180": {
+        "file_id": 5,
+        "content": "                            text_embed, text_encodings = clip.embed_text(tokenized_texts)\n                            forward_params['text_encodings'] = text_encodings\n                    loss = trainer.forward(img.float(), **forward_params, unet_number=unet, _device=inference_device)\n                    average_val_loss_tensor[0, unet-1] += loss\n                if i % VALID_CALC_LOSS_EVERY_ITERS == 0:\n                    samples_per_sec = (val_sample - last_val_sample) / timer.elapsed()\n                    timer.reset()\n                    last_val_sample = val_sample\n                    accelerator.print(f\"Epoch {epoch}/{epochs} Val Step {i} -  Sample {val_sample} - {samples_per_sec:.2f} samples/sec\")\n                    accelerator.print(f\"Loss: {(average_val_loss_tensor / (i+1))}\")\n                    accelerator.print(\"\")\n                if validation_samples is not None and val_sample >= validation_samples:\n                    break\n            print(f\"Rank {accelerator.state.process_index} finished validation after {i} steps\")",
+        "type": "code",
+        "location": "/train_decoder.py:485-500"
+    },
+    "181": {
+        "file_id": 5,
+        "content": "This code snippet is part of a larger model training process. It calculates the loss based on input images and text, updates the average validation loss, prints validation progress including samples per second and loss, and eventually breaks the loop when the specified number of validation samples have been processed. The code uses the PyTorch framework and the DALLE2 library for embedding text.",
+        "type": "comment"
+    },
+    "182": {
+        "file_id": 5,
+        "content": "            accelerator.wait_for_everyone()\n            average_val_loss_tensor /= i+1\n            # Gather all the average loss tensors\n            all_average_val_losses = accelerator.gather(average_val_loss_tensor)\n            if is_master:\n                unet_average_val_loss = all_average_val_losses.mean(dim=0)\n                val_loss_map = { f\"Unet {index} Validation Loss\": loss.item() for index, loss in enumerate(unet_average_val_loss) if loss != 0 }\n                tracker.log(val_loss_map, step=step())\n            next_task = 'eval'\n        if next_task == 'eval':\n            if exists(evaluate_config):\n                accelerator.print(print_ribbon(f\"Starting Evaluation {epoch}\", repeat=40))\n                evaluation = evaluate_trainer(trainer, dataloaders[\"val\"], inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.model_dump(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)\n                if is_master:",
+        "type": "code",
+        "location": "/train_decoder.py:501-515"
+    },
+    "183": {
+        "file_id": 5,
+        "content": "This code is used for averaging the validation losses and logging them during training. It also starts the evaluation process if it's time to do so, printing a message to indicate this. The average_val_loss_tensor is gathered by the accelerator, and then the mean of all the average loss tensors is calculated if the current task is 'eval'. If there are no zeros in the unet_average_val_loss, the validation losses are logged.",
+        "type": "comment"
+    },
+    "184": {
+        "file_id": 5,
+        "content": "                    tracker.log(evaluation, step=step())\n            next_task = 'sample'\n            val_sample = 0\n        if next_task == 'sample':\n            if is_master:\n                # Generate examples and save the model if we are the master\n                # Generate sample images\n                print(print_ribbon(f\"Sampling Set {epoch}\", repeat=40))\n                test_images, test_captions = generate_grid_samples(trainer, test_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, \"Test: \")\n                train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, \"Train: \")\n                tracker.log_images(test_images, captions=test_captions, image_section=\"Test Samples\", step=step())\n                tracker.log_images(train_images, captions=train_captions, image_section=\"Train Samples\", step=step())",
+        "type": "code",
+        "location": "/train_decoder.py:516-528"
+    },
+    "185": {
+        "file_id": 5,
+        "content": "The code is generating sample images and saving the model if it is the master process. It prints a ribbon and then generates grid samples from both train and test example data, conditioning on text encodings. Finally, it logs the generated images using the tracker, with labels indicating whether they are test or train samples.",
+        "type": "comment"
+    },
+    "186": {
+        "file_id": 5,
+        "content": "                print(print_ribbon(f\"Starting Saving {epoch}\", repeat=40))\n                is_best = False\n                if all_average_val_losses is not None:\n                    average_loss = all_average_val_losses.mean(dim=0).sum() / sum(unet_training_mask)\n                    if len(validation_losses) == 0 or average_loss < min(validation_losses):\n                        is_best = True\n                    validation_losses.append(average_loss)\n                save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen, is_best=is_best)\n            next_task = 'train'\ndef create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_path: str, dummy: bool = False) -> Tracker:\n    tracker_config = config.tracker\n    accelerator_config = {\n        \"Distributed\": accelerator.distributed_type != accelerate_dataclasses.DistributedType.NO,\n        \"DistributedType\": accelerator.distributed_type,\n        \"NumProcesses\": accelerator.num_processes,\n        \"MixedPrecision\": accelerator.mixed_precision",
+        "type": "code",
+        "location": "/train_decoder.py:530-546"
+    },
+    "187": {
+        "file_id": 5,
+        "content": "The code checks if the average validation loss is lower than previous min, and saves the trainer if it's a new minimum. It's part of a function called create_tracker that creates a tracker object with accelerator, config, and dummy parameters.",
+        "type": "comment"
+    },
+    "188": {
+        "file_id": 5,
+        "content": "    }\n    accelerator.wait_for_everyone()  # If nodes arrive at this point at different times they might try to autoresume the current run which makes no sense and will cause errors\n    tracker: Tracker = tracker_config.create(config, accelerator_config, dummy_mode=dummy)\n    tracker.save_config(config_path, config_name='decoder_config.json')\n    tracker.add_save_metadata(state_dict_key='config', metadata=config.model_dump())\n    return tracker\ndef initialize_training(config: TrainDecoderConfig, config_path):\n    # Make sure if we are not loading, distributed models are initialized to the same values\n    torch.manual_seed(config.seed)\n    # Set up accelerator for configurable distributed training\n    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters, static_graph=config.train.static_graph)\n    init_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=60*60))\n    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs, init_kwargs])\n    if accelerator.num_processes > 1:",
+        "type": "code",
+        "location": "/train_decoder.py:547-563"
+    },
+    "189": {
+        "file_id": 5,
+        "content": "This code initializes distributed training for DALLE2, sets manual seed, and creates an accelerator for parallel processing with optional arguments. The function returns a tracker object to save configuration.",
+        "type": "comment"
+    },
+    "190": {
+        "file_id": 5,
+        "content": "        # We are using distributed training and want to immediately ensure all can connect\n        accelerator.print(\"Waiting for all processes to connect...\")\n        accelerator.wait_for_everyone()\n        accelerator.print(\"All processes online and connected\")\n    # If we are in deepspeed fp16 mode, we must ensure learned variance is off\n    if accelerator.mixed_precision == \"fp16\" and accelerator.distributed_type == accelerate_dataclasses.DistributedType.DEEPSPEED and config.decoder.learned_variance:\n        raise ValueError(\"DeepSpeed fp16 mode does not support learned variance\")\n    # Set up data\n    all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))\n    world_size = accelerator.num_processes\n    rank = accelerator.process_index\n    shards_per_process = len(all_shards) // world_size\n    assert shards_per_process > 0, \"Not enough shards to split evenly\"\n    my_shards = all_shards[rank * shards_per_process: (rank + 1) * shards_per_process]\n    dataloaders = create_dataloaders (",
+        "type": "code",
+        "location": "/train_decoder.py:564-581"
+    },
+    "191": {
+        "file_id": 5,
+        "content": "This code snippet is part of a distributed training process where it checks the accelerator settings, data sharding, and creates dataloaders for training. It ensures all processes are connected, handles DeepSpeed mixed precision mode without learned variance, splits data shards evenly across processes, and finally creates the necessary dataloaders for the training process.",
+        "type": "comment"
+    },
+    "192": {
+        "file_id": 5,
+        "content": "        available_shards=my_shards,\n        img_preproc = config.data.img_preproc,\n        train_prop = config.data.splits.train,\n        val_prop = config.data.splits.val,\n        test_prop = config.data.splits.test,\n        n_sample_images=config.train.n_sample_images,\n        **config.data.model_dump(),\n        rank = rank,\n        seed = config.seed,\n    )\n    # If clip is in the model, we need to remove it for compatibility with deepspeed\n    clip = None\n    if config.decoder.clip is not None:\n        clip = config.decoder.clip.create()  # Of course we keep it to use it during training, just not in the decoder as that causes issues\n        config.decoder.clip = None\n    # Create the decoder model and print basic info\n    decoder = config.decoder.create()\n    get_num_parameters = lambda model, only_training=False: sum(p.numel() for p in model.parameters() if (p.requires_grad or not only_training))\n    # Create and initialize the tracker if we are the master\n    tracker = create_tracker(accelerator, config, config_path, dummy = rank!=0)",
+        "type": "code",
+        "location": "/train_decoder.py:582-603"
+    },
+    "193": {
+        "file_id": 5,
+        "content": "The code initializes the decoder model with specified parameters, removes clip if present for compatibility, and creates a tracker if the current rank is not the master. It also calculates the number of parameters in the model and prepares it for training.",
+        "type": "comment"
+    },
+    "194": {
+        "file_id": 5,
+        "content": "    has_img_embeddings = config.data.img_embeddings_url is not None\n    has_text_embeddings = config.data.text_embeddings_url is not None\n    conditioning_on_text = any([unet.cond_on_text_encodings for unet in config.decoder.unets])\n    has_clip_model = clip is not None\n    data_source_string = \"\"\n    if has_img_embeddings:\n        data_source_string += \"precomputed image embeddings\"\n    elif has_clip_model:\n        data_source_string += \"clip image embeddings generation\"\n    else:\n        raise ValueError(\"No image embeddings source specified\")\n    if conditioning_on_text:\n        if has_text_embeddings:\n            data_source_string += \" and precomputed text embeddings\"\n        elif has_clip_model:\n            data_source_string += \" and clip text encoding generation\"\n        else:\n            raise ValueError(\"No text embeddings source specified\")\n    accelerator.print(print_ribbon(\"Loaded Config\", repeat=40))\n    accelerator.print(f\"Running training with {accelerator.num_processes} processes and {accelerator.distributed_type} distributed training\")",
+        "type": "code",
+        "location": "/train_decoder.py:605-627"
+    },
+    "195": {
+        "file_id": 5,
+        "content": "This code checks if image and/or text embeddings are available, either precomputed or generated using CLIP model. It then prints a message indicating the source of embeddings used for training.",
+        "type": "comment"
+    },
+    "196": {
+        "file_id": 5,
+        "content": "    accelerator.print(f\"Training using {data_source_string}. {'conditioned on text' if conditioning_on_text else 'not conditioned on text'}\")\n    accelerator.print(f\"Number of parameters: {get_num_parameters(decoder)} total; {get_num_parameters(decoder, only_training=True)} training\")\n    for i, unet in enumerate(decoder.unets):\n        accelerator.print(f\"Unet {i} has {get_num_parameters(unet)} total; {get_num_parameters(unet, only_training=True)} training\")\n    train(dataloaders, decoder, accelerator,\n        clip=clip,\n        tracker=tracker,\n        inference_device=accelerator.device,\n        evaluate_config=config.evaluate,\n        condition_on_text_encodings=conditioning_on_text,\n        **config.train.model_dump(),\n    )\n# Create a simple click command line interface to load the config and start the training\n@click.command()\n@click.option(\"--config_file\", default=\"./train_decoder_config.json\", help=\"Path to config file\")\ndef main(config_file):\n    config_file_path = Path(config_file)\n    config = TrainDecoderConfig.from_json_path(str(config_file_path))",
+        "type": "code",
+        "location": "/train_decoder.py:628-647"
+    },
+    "197": {
+        "file_id": 5,
+        "content": "Training of the decoder is being executed using the specified data source, with or without conditioning on text. The number of parameters in total and for training are displayed, along with similar information for each Unet. The train function is called with dataloaders, decoder, accelerator, clip, tracker, inference_device, evaluate_config, and condition_on_text_encodings as arguments. A simple click command line interface is created to load the config and start training, using a default configuration file path and allowing for an alternative path to be specified with the --config_file option.",
+        "type": "comment"
+    },
+    "198": {
+        "file_id": 5,
+        "content": "    initialize_training(config, config_path=config_file_path)\nif __name__ == \"__main__\":\n    main()",
+        "type": "code",
+        "location": "/train_decoder.py:648-651"
+    },
+    "199": {
+        "file_id": 5,
+        "content": "This code snippet initializes training and then calls the main function if the script is run directly. It ensures proper execution when running the script as a standalone program.",
+        "type": "comment"
+    }
+}

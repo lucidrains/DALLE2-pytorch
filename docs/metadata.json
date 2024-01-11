@@ -1,0 +1,135 @@
+{
+    "url": {
+        "full": "https://github.com/lucidrains/DALLE2-pytorch",
+        "partial": "lucidrains/DALLE2-pytorch"
+    },
+    "file_mapping": {
+        "0": {
+            "filepath": "/MANIFEST.in",
+            "entry_id": 0,
+            "language_id": "text"
+        },
+        "1": {
+            "filepath": "/Makefile",
+            "entry_id": 4,
+            "language_id": "makefile"
+        },
+        "2": {
+            "filepath": "/README.md",
+            "entry_id": 8,
+            "language_id": "markdown"
+        },
+        "3": {
+            "filepath": "/prior.md",
+            "entry_id": 96,
+            "language_id": "markdown"
+        },
+        "4": {
+            "filepath": "/setup.py",
+            "entry_id": 126,
+            "language_id": "python"
+        },
+        "5": {
+            "filepath": "/train_decoder.py",
+            "entry_id": 132,
+            "language_id": "python"
+        },
+        "6": {
+            "filepath": "/train_diffusion_prior.py",
+            "entry_id": 200,
+            "language_id": "python"
+        },
+        "7": {
+            "filepath": "/configs/README.md",
+            "entry_id": 246,
+            "language_id": "plain-text"
+        },
+        "8": {
+            "filepath": "/dalle2_pytorch/__init__.py",
+            "entry_id": 272,
+            "language_id": "python"
+        },
+        "9": {
+            "filepath": "/dalle2_pytorch/cli.py",
+            "entry_id": 276,
+            "language_id": "python"
+        },
+        "10": {
+            "filepath": "/dalle2_pytorch/dalle2_pytorch.py",
+            "entry_id": 282,
+            "language_id": "python"
+        },
+        "11": {
+            "filepath": "/dalle2_pytorch/optimizer.py",
+            "entry_id": 522,
+            "language_id": "python"
+        },
+        "12": {
+            "filepath": "/dalle2_pytorch/tokenizer.py",
+            "entry_id": 526,
+            "language_id": "python"
+        },
+        "13": {
+            "filepath": "/dalle2_pytorch/trackers.py",
+            "entry_id": 542,
+            "language_id": "python"
+        },
+        "14": {
+            "filepath": "/dalle2_pytorch/train_configs.py",
+            "entry_id": 596,
+            "language_id": "python"
+        },
+        "15": {
+            "filepath": "/dalle2_pytorch/trainer.py",
+            "entry_id": 626,
+            "language_id": "python"
+        },
+        "16": {
+            "filepath": "/dalle2_pytorch/utils.py",
+            "entry_id": 678,
+            "language_id": "python"
+        },
+        "17": {
+            "filepath": "/dalle2_pytorch/version.py",
+            "entry_id": 682,
+            "language_id": "python"
+        },
+        "18": {
+            "filepath": "/dalle2_pytorch/vqgan_vae.py",
+            "entry_id": 686,
+            "language_id": "python"
+        },
+        "19": {
+            "filepath": "/dalle2_pytorch/vqgan_vae_trainer.py",
+            "entry_id": 730,
+            "language_id": "python"
+        },
+        "20": {
+            "filepath": "/dalle2_pytorch/dataloaders/README.md",
+            "entry_id": 748,
+            "language_id": "markdown"
+        },
+        "21": {
+            "filepath": "/dalle2_pytorch/dataloaders/__init__.py",
+            "entry_id": 760,
+            "language_id": "python"
+        },
+        "22": {
+            "filepath": "/dalle2_pytorch/dataloaders/decoder_loader.py",
+            "entry_id": 764,
+            "language_id": "python"
+        },
+        "23": {
+            "filepath": "/dalle2_pytorch/dataloaders/prior_loader.py",
+            "entry_id": 794,
+            "language_id": "python"
+        },
+        "24": {
+            "filepath": "/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py",
+            "entry_id": 814,
+            "language_id": "python"
+        }
+    },
+    "project_name": "DALLE2-pytorch",
+    "split_count": 9
+}

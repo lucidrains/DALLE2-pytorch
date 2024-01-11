@@ -1,0 +1,547 @@
+{
+    "200": {
+        "file_id": 6,
+        "content": "/train_diffusion_prior.py",
+        "type": "filepath"
+    },
+    "201": {
+        "file_id": 6,
+        "content": "This code trains a Diffusion Prior model using PyTorch and DALLE2-pytorch library, with functions for creating the model, training, data loading, acceleration, evaluation, text-image similarity comparison, backpropagation, logging, saving best models, measuring speed, resetting validation timers, handling errors, saving models, and initializing training with data loaders and HFA setup.",
+        "type": "summary"
+    },
+    "202": {
+        "file_id": 6,
+        "content": "import click\nimport torch\nfrom torch import nn\nfrom typing import List\nfrom accelerate import Accelerator\nfrom accelerate.utils import set_seed\nfrom torch.utils.data import DataLoader\nfrom embedding_reader import EmbeddingReader\nfrom accelerate.utils import dataclasses as accelerate_dataclasses\nfrom dalle2_pytorch.utils import Timer\nfrom dalle2_pytorch.trackers import Tracker\nfrom dalle2_pytorch import DiffusionPriorTrainer\nfrom dalle2_pytorch.dataloaders import get_reader, make_splits\nfrom dalle2_pytorch.train_configs import (\n    DiffusionPriorConfig,\n    DiffusionPriorTrainConfig,\n    TrainDiffusionPriorConfig,\n)\n# helpers\ncos = nn.CosineSimilarity(dim=1, eps=1e-6)\ndef exists(val):\n    return val is not None\ndef all_between(values: list, lower_bound, upper_bound):\n    for value in values:\n        if value < lower_bound or value > upper_bound:\n            return False\n    return True\ndef make_model(\n    prior_config: DiffusionPriorConfig,\n    train_config: DiffusionPriorTrainConfig,\n    device: str = None,\n    accelerator: Accelerator = None,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:1-45"
+    },
+    "203": {
+        "file_id": 6,
+        "content": "This code is for training a Diffusion Prior model using PyTorch and the DALLE2-pytorch library. It defines functions to create the model, configure the training process, and load data. The cosine similarity function is used for comparison, and there are helper functions to check if values exist and if they fall within specified bounds. The code also uses accelerate for efficient training and allows for device specification (CPU or GPU) and an optional accelerator instance for further optimization.",
+        "type": "comment"
+    },
+    "204": {
+        "file_id": 6,
+        "content": "):\n    # create model from config\n    diffusion_prior = prior_config.create()\n    # instantiate the trainer\n    trainer = DiffusionPriorTrainer(\n        diffusion_prior=diffusion_prior,\n        lr=train_config.lr,\n        wd=train_config.wd,\n        max_grad_norm=train_config.max_grad_norm,\n        amp=train_config.amp,\n        use_ema=train_config.use_ema,\n        device=device,\n        accelerator=accelerator,\n        warmup_steps=train_config.warmup_steps,\n    )\n    return trainer\ndef create_tracker(\n    accelerator: Accelerator,\n    config: TrainDiffusionPriorConfig,\n    config_path: str,\n    dummy: bool = False,\n) -> Tracker:\n    tracker_config = config.tracker\n    accelerator_config = {\n        \"Distributed\": accelerator.distributed_type\n        != accelerate_dataclasses.DistributedType.NO,\n        \"DistributedType\": accelerator.distributed_type,\n        \"NumProcesses\": accelerator.num_processes,\n        \"MixedPrecision\": accelerator.mixed_precision,\n    }\n    tracker: Tracker = tracker_config.create(\n        config, accelerator_config, dummy_mode=dummy",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:46-83"
+    },
+    "205": {
+        "file_id": 6,
+        "content": "This code defines a function `create_trainer` that takes in a `prior_config`, and creates a `DiffusionPriorTrainer` object with specified parameters. It also defines the `create_tracker` function, which creates a `Tracker` object based on the provided configuration. The functions return the created objects.",
+        "type": "comment"
+    },
+    "206": {
+        "file_id": 6,
+        "content": "    )\n    tracker.save_config(config_path, config_name=\"prior_config.json\")\n    return tracker\ndef pad_gather_reduce(trainer: DiffusionPriorTrainer, x, method=\"mean\"):\n    \"\"\"\n    pad a value or tensor across all processes and gather\n    params:\n        - trainer: a trainer that carries an accelerator object\n        - x: a number or torch tensor to reduce\n        - method: \"mean\", \"sum\", \"max\", \"min\"\n    return:\n        - the average tensor after maskin out 0's\n        - None if the gather resulted in an empty tensor\n    \"\"\"\n    assert method in [\n        \"mean\",\n        \"sum\",\n        \"max\",\n        \"min\",\n    ], \"This function has limited capabilities [sum, mean, max, min]\"\n    assert type(x) is not None, \"Cannot reduce a None type object\"\n    # wait for everyone to arrive here before gathering\n    if type(x) is not torch.Tensor:\n        x = torch.tensor([x])\n    # verify that the tensor is on the proper device\n    x = x.to(trainer.device)\n    # pad across processes\n    padded_x = trainer.accelerator.pad_across_processes(x, dim=0)",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:84-122"
+    },
+    "207": {
+        "file_id": 6,
+        "content": "This function pads a value or tensor across all processes, gathers them and reduces them to a single average. It works with tensors of type \"mean\", \"sum\", \"max\", and \"min\". If the resulting tensor is empty, it returns None. It first waits for everyone to arrive before gathering, converts the input to a tensor if it's not already, and ensures that the tensor is on the proper device.",
+        "type": "comment"
+    },
+    "208": {
+        "file_id": 6,
+        "content": "    # gather across all procesess\n    gathered_x = trainer.accelerator.gather(padded_x)\n    # mask out zeros\n    masked_x = gathered_x[gathered_x != 0]\n    # if the tensor is empty, warn and return None\n    if len(masked_x) == 0:\n        click.secho(\n            f\"The call to this method resulted in an empty tensor after masking out zeros. The gathered tensor was this: {gathered_x} and the original value passed was: {x}.\",\n            fg=\"red\",\n        )\n        return None\n    if method == \"mean\":\n        return torch.mean(masked_x)\n    elif method == \"sum\":\n        return torch.sum(masked_x)\n    elif method == \"max\":\n        return torch.max(masked_x)\n    elif method == \"min\":\n        return torch.min(masked_x)\ndef save_trainer(\n    tracker: Tracker,\n    trainer: DiffusionPriorTrainer,\n    is_latest: bool,\n    is_best: bool,\n    epoch: int,\n    samples_seen: int,\n    best_validation_loss: float,\n):\n    \"\"\"\n    Logs the model with an appropriate method depending on the tracker\n    \"\"\"\n    trainer.accelerator.wait_for_everyone()",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:124-160"
+    },
+    "209": {
+        "file_id": 6,
+        "content": "The code gathers tensor data across all processes, masks out zeros, and handles empty tensors. It then calculates the mean, sum, maximum, or minimum of the masked tensor depending on the method specified. The save_trainer function logs the model with an appropriate method based on the tracker.",
+        "type": "comment"
+    },
+    "210": {
+        "file_id": 6,
+        "content": "    if trainer.accelerator.is_main_process:\n        click.secho(\n            f\"RANK:{trainer.accelerator.process_index} | Saving Model | Best={is_best} | Latest={is_latest}\",\n            fg=\"magenta\",\n        )\n    tracker.save(\n        trainer=trainer,\n        is_best=is_best,\n        is_latest=is_latest,\n        epoch=int(epoch),\n        samples_seen=int(samples_seen),\n        best_validation_loss=best_validation_loss,\n    )\ndef recall_trainer(tracker: Tracker, trainer: DiffusionPriorTrainer):\n    \"\"\"\n    Loads the model with an appropriate method depending on the tracker\n    \"\"\"\n    if trainer.accelerator.is_main_process:\n        click.secho(f\"Loading model from {type(tracker.loader).__name__}\", fg=\"yellow\")\n    state_dict = tracker.recall()\n    trainer.load(state_dict, strict=True)\n    return (\n        int(state_dict.get(\"epoch\", 0)),\n        state_dict.get(\"best_validation_loss\", 0),\n        int(state_dict.get(\"samples_seen\", 0)),\n    )\n# eval functions\ndef report_validation_loss(\n    trainer: DiffusionPriorTrainer,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:162-201"
+    },
+    "211": {
+        "file_id": 6,
+        "content": "This code is part of a model training process. It saves the model at certain intervals and loads it later depending on the tracker type. The save function reports whether the saved model is best or latest, and the recall_trainer function loads the model with an appropriate method based on the tracker's loader type. Additionally, there are functions for evaluating validation loss.",
+        "type": "comment"
+    },
+    "212": {
+        "file_id": 6,
+        "content": "    dataloader: DataLoader,\n    text_conditioned: bool,\n    use_ema: bool,\n    tracker: Tracker,\n    split: str,\n    tracker_folder: str,\n    loss_type: str,\n):\n    \"\"\"\n    Compute the validation loss on a given subset of data.\n    \"\"\"\n    if trainer.accelerator.is_main_process:\n        click.secho(\n            f\"Measuring performance on {use_ema}-{split} split\",\n            fg=\"green\",\n            blink=True,\n        )\n    total_loss = torch.zeros(1, dtype=torch.float, device=trainer.device)\n    for image_embeddings, text_data in dataloader:\n        image_embeddings = image_embeddings.to(trainer.device)\n        text_data = text_data.to(trainer.device)\n        input_args = dict(image_embed=image_embeddings)\n        if text_conditioned:\n            input_args = dict(**input_args, text=text_data)\n        else:\n            input_args = dict(**input_args, text_embed=text_data)\n        if use_ema:\n            loss = trainer.ema_diffusion_prior(**input_args)\n        else:\n            loss = trainer(**input_args)\n        total_loss += loss",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:202-239"
+    },
+    "213": {
+        "file_id": 6,
+        "content": "This code measures validation loss on a given data subset, using an optional EMA model and text conditioning. It iterates through a dataloader, computes losses for each batch, accumulates them in total_loss, and finally returns the average loss. The progress is echoed if the process is the main one.",
+        "type": "comment"
+    },
+    "214": {
+        "file_id": 6,
+        "content": "    # compute the average loss across all processes\n    avg_loss = pad_gather_reduce(trainer, total_loss, method=\"mean\")\n    stats = {f\"{tracker_folder}/{loss_type}-loss\": avg_loss}\n    # print and log results on main process\n    tracker.log(stats, step=trainer.step.item() + 1)\n    return avg_loss\ndef report_cosine_sims(\n    trainer: DiffusionPriorTrainer,\n    dataloader: DataLoader,\n    text_conditioned: bool,\n    tracker: Tracker,\n    split: str,\n    timesteps: int,\n    tracker_folder: str,\n):\n    trainer.eval()\n    if trainer.accelerator.is_main_process:\n        click.secho(\n            f\"Measuring Cosine-Similarity on {split} split with {timesteps} timesteps\",\n            fg=\"green\",\n            blink=True,\n        )\n    for test_image_embeddings, text_data in dataloader:\n        test_image_embeddings = test_image_embeddings.to(trainer.device)\n        text_data = text_data.to(trainer.device)\n        # we are text conditioned, we produce an embedding from the tokenized text\n        if text_conditioned:\n            text_embedding, text_encodings = trainer.embed_text(text_data)",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:241-275"
+    },
+    "215": {
+        "file_id": 6,
+        "content": "This code measures the cosine similarity on a given split with specified timesteps. It first sets the trainer to evaluation mode and then iterates through each batch of data from the dataloader. Within this loop, it moves both test image embeddings and text data to the device used by the trainer. If the model is text-conditioned, it generates an embedding from the tokenized text using the `embed_text` function provided by the trainer. This information can be useful for understanding how this code measures cosine similarity in a given context.",
+        "type": "comment"
+    },
+    "216": {
+        "file_id": 6,
+        "content": "            text_cond = dict(text_embed=text_embedding, text_encodings=text_encodings)\n        else:\n            text_embedding = text_data\n            text_cond = dict(text_embed=text_embedding)\n        # make a copy of the text embeddings for shuffling\n        text_embed_shuffled = text_embedding.clone()\n        # roll the text to simulate \"unrelated\" captions\n        rolled_idx = torch.roll(torch.arange(text_embedding.shape[0]), 1)\n        text_embed_shuffled = text_embed_shuffled[rolled_idx]\n        text_embed_shuffled = text_embed_shuffled / text_embed_shuffled.norm(\n            dim=1, keepdim=True\n        )\n        if text_conditioned:\n            text_encodings_shuffled = text_encodings[rolled_idx]\n        else:\n            text_encodings_shuffled = None\n        text_cond_shuffled = dict(\n            text_embed=text_embed_shuffled, text_encodings=text_encodings_shuffled\n        )\n        # prepare the text embedding\n        text_embed = text_embedding / text_embedding.norm(dim=1, keepdim=True)\n        # prepare image embeddings",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:276-303"
+    },
+    "217": {
+        "file_id": 6,
+        "content": "This code shuffles text embeddings and encodings to simulate \"unrelated\" captions for training the diffusion model. If text-conditioned, it also shuffles the text condition. It prepares both text and image embeddings.",
+        "type": "comment"
+    },
+    "218": {
+        "file_id": 6,
+        "content": "        test_image_embeddings = test_image_embeddings / test_image_embeddings.norm(\n            dim=1, keepdim=True\n        )\n        # predict on the unshuffled text embeddings\n        predicted_image_embeddings = trainer.p_sample_loop(\n            test_image_embeddings.shape,\n            text_cond,\n            timesteps=timesteps,\n        )\n        predicted_image_embeddings = (\n            predicted_image_embeddings\n            / predicted_image_embeddings.norm(dim=1, keepdim=True)\n        )\n        # predict on the shuffled embeddings\n        predicted_unrelated_embeddings = trainer.p_sample_loop(\n            test_image_embeddings.shape,\n            text_cond_shuffled,\n            timesteps=timesteps,\n        )\n        predicted_unrelated_embeddings = (\n            predicted_unrelated_embeddings\n            / predicted_unrelated_embeddings.norm(dim=1, keepdim=True)\n        )\n        # calculate similarities\n        orig_sim = pad_gather_reduce(\n            trainer, cos(text_embed, test_image_embeddings), method=\"mean\"",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:304-334"
+    },
+    "219": {
+        "file_id": 6,
+        "content": "This code calculates the similarity between text embeddings and image embeddings, then shuffles the text embeddings to create unrelated pairs. It uses diffusion models for prediction and normalizes the embeddings. The final step is calculating the similarities using cosine similarity and mean reduction method.",
+        "type": "comment"
+    },
+    "220": {
+        "file_id": 6,
+        "content": "        )\n        pred_sim = pad_gather_reduce(\n            trainer, cos(text_embed, predicted_image_embeddings), method=\"mean\"\n        )\n        unrel_sim = pad_gather_reduce(\n            trainer, cos(text_embed, predicted_unrelated_embeddings), method=\"mean\"\n        )\n        pred_img_sim = pad_gather_reduce(\n            trainer,\n            cos(test_image_embeddings, predicted_image_embeddings),\n            method=\"mean\",\n        )\n        stats = {\n            f\"{tracker_folder}/baseline similarity [steps={timesteps}]\": orig_sim,\n            f\"{tracker_folder}/similarity with text [steps={timesteps}]\": pred_sim,\n            f\"{tracker_folder}/similarity with original image [steps={timesteps}]\": pred_img_sim,\n            f\"{tracker_folder}/similarity with unrelated caption [steps={timesteps}]\": unrel_sim,\n            f\"{tracker_folder}/difference from baseline similarity [steps={timesteps}]\": pred_sim\n            - orig_sim,\n        }\n        tracker.log(stats, step=trainer.step.item() + 1)\ndef eval_model(",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:335-360"
+    },
+    "221": {
+        "file_id": 6,
+        "content": "This code calculates similarity scores between embeddings of text, predicted images, and original images. It then logs these scores for various steps in the training process to track progress.",
+        "type": "comment"
+    },
+    "222": {
+        "file_id": 6,
+        "content": "    trainer: DiffusionPriorTrainer,\n    dataloader: DataLoader,\n    text_conditioned: bool,\n    split: str,\n    tracker: Tracker,\n    use_ema: bool,\n    report_cosine: bool,\n    report_loss: bool,\n    timesteps: List[int],\n    loss_type: str = None,\n):\n    \"\"\"\n    Run evaluation on a model and track metrics\n    returns: loss if requested\n    \"\"\"\n    trainer.eval()\n    use_ema = \"ema\" if use_ema else \"online\"\n    tracker_folder = f\"metrics/{use_ema}-{split}\"\n    # detemine if valid timesteps are passed\n    min_timesteps = trainer.accelerator.unwrap_model(\n        trainer.diffusion_prior\n    ).sample_timesteps\n    max_timesteps = trainer.accelerator.unwrap_model(\n        trainer.diffusion_prior\n    ).noise_scheduler.num_timesteps\n    assert all_between(\n        timesteps, lower_bound=min_timesteps, upper_bound=max_timesteps\n    ), f\"all timesteps values must be between {min_timesteps} and {max_timesteps}: got {timesteps}\"\n    # measure cosine metrics across various eta and timesteps\n    if report_cosine:\n        for timestep in timesteps:",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:361-398"
+    },
+    "223": {
+        "file_id": 6,
+        "content": "This function runs evaluation on a model, tracks metrics, and returns the loss if requested. It uses DiffusionPriorTrainer and DataLoader. The use_ema parameter is used to differentiate between an Exponential Moving Average (EMA) model and an online (current) model. It checks whether the timesteps are valid for the model's noise scheduler. It also measures cosine metrics across various eta and timesteps if report_cosine is set to True.",
+        "type": "comment"
+    },
+    "224": {
+        "file_id": 6,
+        "content": "            report_cosine_sims(\n                trainer,\n                dataloader=dataloader,\n                text_conditioned=text_conditioned,\n                tracker=tracker,\n                split=split,\n                timesteps=timestep,\n                tracker_folder=tracker_folder,\n            )\n    # measure loss on a seperate split of data\n    if report_loss:\n        loss = report_validation_loss(\n            trainer=trainer,\n            dataloader=dataloader,\n            text_conditioned=text_conditioned,\n            use_ema=use_ema,\n            tracker=tracker,\n            split=split,\n            tracker_folder=tracker_folder,\n            loss_type=loss_type,\n        )\n        return loss\n# training script\ndef train(\n    trainer: DiffusionPriorTrainer,\n    tracker: Tracker,\n    train_loader: DataLoader,\n    eval_loader: DataLoader,\n    test_loader: DataLoader,\n    config: DiffusionPriorTrainConfig,\n):\n    # init timers\n    save_timer = Timer()  # when to save\n    samples_timer = Timer()  # samples/sec\n    validation_profiler = Timer()  # how long is validation taking",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:399-440"
+    },
+    "225": {
+        "file_id": 6,
+        "content": "This code measures cosine similarity on a separate dataset and reports the loss on another split of data in a training script. It also initializes timers for saving, measuring samples per second, and tracking validation time.",
+        "type": "comment"
+    },
+    "226": {
+        "file_id": 6,
+        "content": "    validation_countdown = Timer()  # when to perform evalutation\n    # keep track of best validation loss\n    best_validation_loss = config.train.best_validation_loss\n    samples_seen = config.train.num_samples_seen\n    # do training\n    start_epoch = config.train.current_epoch\n    for epoch in range(start_epoch, config.train.epochs):\n        # if we finished out an old epoch, reset the distribution to be a full epoch\n        tracker.log({\"tracking/epoch\": epoch}, step=trainer.step.item())\n        if train_loader.dataset.get_start() > 0 and epoch == start_epoch+1:\n            if trainer.accelerator.is_main_process:\n                click.secho(f\"Finished resumed epoch...resetting dataloader.\")\n            train_loader.dataset.set_start(0)\n        for img, txt in train_loader:\n            # setup things every step\n            trainer.train()\n            current_step = trainer.step.item()\n            samples_timer.reset()\n            # place data on device\n            img = img.to(trainer.device)\n            txt = txt.to(trainer.device)",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:441-471"
+    },
+    "227": {
+        "file_id": 6,
+        "content": "The code sets up a training loop that iterates over epochs and resets the dataloader if it was paused mid-epoch. It places data on the device, tracks the best validation loss, and keeps track of samples seen.",
+        "type": "comment"
+    },
+    "228": {
+        "file_id": 6,
+        "content": "            # pass to model\n            loss = trainer(text=txt, image_embed=img)\n            # perform backprop & apply EMA updates\n            trainer.update()\n            # gather info about training step\n            all_loss = pad_gather_reduce(trainer, loss, method=\"mean\")\n            num_samples = pad_gather_reduce(trainer, len(txt), method=\"sum\")\n            samples_per_sec = num_samples / samples_timer.elapsed()\n            samples_seen += num_samples\n            ema_decay = trainer.ema_diffusion_prior.get_current_decay()\n            # log\n            tracker.log(\n                {\n                    \"tracking/samples-sec\": samples_per_sec,\n                    \"tracking/samples-seen\": samples_seen,\n                    \"tracking/ema-decay\": ema_decay,\n                    f\"tracking/training-{config.prior.loss_type}\": all_loss,\n                },\n                step=current_step,\n            )\n            # Metric Tracking @ Timed Intervals\n            eval_delta = pad_gather_reduce(\n                trainer, validation_countdown.elapsed(), method=\"min\"",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:473-504"
+    },
+    "229": {
+        "file_id": 6,
+        "content": "This code is performing backpropagation, updating the exponential moving average (EMA), logging training metrics, and tracking evaluation intervals. It calculates the loss from text and image embeddings using the trainer model and updates the EMA diffusion prior. Metrics like samples per second, number of samples seen, EMA decay, and a specific loss type are logged at each step, while evaluating the validation countdown time interval for metrics tracking.",
+        "type": "comment"
+    },
+    "230": {
+        "file_id": 6,
+        "content": "            )\n            if eval_delta != None and eval_delta > config.data.eval_every_seconds:\n                # begin timing how long this takes\n                validation_profiler.reset()\n                # package kwargs for evaluation\n                eval_kwargs = {\n                    \"trainer\": trainer,\n                    \"tracker\": tracker,\n                    \"text_conditioned\": config.prior.condition_on_text_encodings,\n                    \"timesteps\": config.train.eval_timesteps,\n                }\n                # ONLINE MODEL : COSINE : LOSS : VALIDATION SPLIT\n                eval_model(\n                    dataloader=eval_loader,\n                    loss_type=config.prior.loss_type,\n                    split=\"validation\",\n                    use_ema=False,\n                    report_cosine=False,\n                    report_loss=True,\n                    **eval_kwargs,\n                )\n                # EMA MODEL : COSINE : LOSS : VALIDATION DATA\n                ema_val_loss = eval_model(\n                    dataloader=eval_loader,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:505-536"
+    },
+    "231": {
+        "file_id": 6,
+        "content": "This code is evaluating the model on validation data with specified options. It checks if it's time to evaluate, resets the profiler for timing, packages evaluation kwargs, and calls eval_model function with dataloader, loss type, split (validation), use_ema, report_cosine, report_loss, and eval_kwargs. It also evaluates the ema model separately.",
+        "type": "comment"
+    },
+    "232": {
+        "file_id": 6,
+        "content": "                    loss_type=config.prior.loss_type,\n                    split=\"validation\",\n                    use_ema=True,\n                    report_cosine=True,\n                    report_loss=True,\n                    **eval_kwargs,\n                )\n                tracker.log(\n                    {\n                        \"tracking/validation length (minutes)\": validation_profiler.elapsed()\n                        / 60\n                    }\n                )\n                # check if the ema validation is the lowest seen yet\n                if ema_val_loss < best_validation_loss:\n                    best_validation_loss = ema_val_loss\n                    #  go save the model as best\n                    save_trainer(\n                        trainer=trainer,\n                        tracker=tracker,\n                        is_best=True,\n                        is_latest=False,\n                        samples_seen=samples_seen,\n                        epoch=epoch,\n                        best_validation_loss=best_validation_loss,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:537-566"
+    },
+    "233": {
+        "file_id": 6,
+        "content": "In this code, a validation process is executed using ema (exponential moving average) to calculate the loss. The lowest ema validation loss seen so far is stored in `best_validation_loss` and if the current validation loss is lower than the previous best, the model is saved as the 'best' model. This code also logs the time taken for the validation process.",
+        "type": "comment"
+    },
+    "234": {
+        "file_id": 6,
+        "content": "                    )\n                # reset timer for validaiton\n                validation_countdown.reset()\n            elif eval_delta is None:\n                click.secho(\n                    f\"Error occured reading the eval time on rank: {trainer.device}\",\n                    fg=\"yellow\",\n                )\n            # save as latest model on schedule\n            save_delta = pad_gather_reduce(trainer, save_timer.elapsed(), method=\"min\")\n            if save_delta != None and save_delta >= config.train.save_every_seconds:\n                save_trainer(\n                    trainer=trainer,\n                    tracker=tracker,\n                    is_best=False,\n                    is_latest=True,\n                    samples_seen=samples_seen,\n                    epoch=epoch,\n                    best_validation_loss=best_validation_loss,\n                )\n                save_timer.reset()\n            elif save_delta is None:\n                click.secho(\n                    f\"Error occured reading the save time on rank: {trainer.device}\",",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:567-598"
+    },
+    "235": {
+        "file_id": 6,
+        "content": "This code segment resets the validation timer and handles errors in reading eval and save times. It saves the latest model if the elapsed time meets a certain condition, and resets the save timer. This helps keep track of the training progress and ensures timely saving of models for later use.",
+        "type": "comment"
+    },
+    "236": {
+        "file_id": 6,
+        "content": "                    fg=\"yellow\",\n                )\n    # evaluate on test data\n    if trainer.accelerator.is_main_process:\n        click.secho(f\"Starting Test\", fg=\"red\")\n    # save one last time as latest before beginning validation\n    save_trainer(\n        tracker=tracker,\n        trainer=trainer,\n        is_best=False,\n        is_latest=True,\n        samples_seen=samples_seen,\n        epoch=epoch,\n        best_validation_loss=best_validation_loss,\n    )\n    test_loss = eval_model(\n        trainer=trainer,\n        dataloader=test_loader,\n        text_conditioned=config.prior.condition_on_text_encodings,\n        split=\"test\",\n        tracker=tracker,\n        use_ema=True,\n        report_cosine=False,\n        report_loss=True,\n        timesteps=config.train.eval_timesteps,\n        loss_type=config.prior.loss_type,\n    )\n    if test_loss < best_validation_loss:\n        best_validation_loss = test_loss\n        #  go save the model as best\n        save_trainer(\n            trainer=trainer,\n            tracker=tracker,\n            is_best=True,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:599-640"
+    },
+    "237": {
+        "file_id": 6,
+        "content": "Starting test phase and saving the last model as latest before validation. If test loss is lower than previous best validation loss, it will be saved as the new best model.",
+        "type": "comment"
+    },
+    "238": {
+        "file_id": 6,
+        "content": "            is_latest=False,\n            samples_seen=samples_seen,\n            epoch=epoch,\n            best_validation_loss=test_loss,\n        )\ndef initialize_training(config_file, accelerator):\n    \"\"\"\n    Parse the configuration file, and prepare everything necessary for training\n    \"\"\"\n    # load the configuration file\n    if accelerator.is_main_process:\n        click.secho(f\"Loading configuration from {config_file}\", fg=\"green\")\n    config = TrainDiffusionPriorConfig.from_json_path(config_file)\n    # seed\n    set_seed(config.train.random_seed)\n    # get a device\n    device = accelerator.device\n    # make the trainer (will automatically distribute if possible & configured)\n    trainer: DiffusionPriorTrainer = make_model(\n        config.prior, config.train, device, accelerator\n    ).to(device)\n    # create a tracker\n    tracker = create_tracker(\n        accelerator, config, config_file, dummy=accelerator.process_index != 0\n    )\n    # reload from chcekpoint\n    if tracker.can_recall:\n        current_epoch, best_validation_loss, samples_seen = recall_trainer(",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:641-681"
+    },
+    "239": {
+        "file_id": 6,
+        "content": "The function initialize_training is responsible for loading the configuration file, setting the seed, getting a device, making the trainer, and creating a tracker. The trainer is automatically distributed if possible and configured. Additionally, the function checks whether it can recall from a checkpoint.",
+        "type": "comment"
+    },
+    "240": {
+        "file_id": 6,
+        "content": "            tracker=tracker, trainer=trainer\n        )\n        # display best values\n        if trainer.accelerator.is_main_process:\n            click.secho(f\"Current Epoch: {current_epoch} | Best Val Loss: {best_validation_loss} | Samples Seen: {samples_seen}\", fg=\"yellow\")\n        # update config to reflect recalled values\n        config.train.num_samples_seen = samples_seen\n        config.train.current_epoch = current_epoch\n        config.train.best_validation_loss = best_validation_loss\n    # fetch and prepare data\n    if trainer.accelerator.is_main_process:\n        click.secho(\"Grabbing data...\", fg=\"blue\", blink=True)\n    trainer.accelerator.wait_for_everyone()\n    img_reader = get_reader(\n        text_conditioned=trainer.text_conditioned,\n        img_url=config.data.image_url,\n        meta_url=config.data.meta_url,\n    )\n    # calculate start point within epoch\n    trainer.accelerator.wait_for_everyone()\n    train_loader, eval_loader, test_loader = make_splits(\n        text_conditioned=trainer.text_conditioned,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:682-711"
+    },
+    "241": {
+        "file_id": 6,
+        "content": "This code block displays the current epoch, best validation loss, and samples seen, updates configuration with recalled values, fetches and prepares data for training by creating a loader, and calculates the start point within the epoch.",
+        "type": "comment"
+    },
+    "242": {
+        "file_id": 6,
+        "content": "        batch_size=config.data.batch_size,\n        num_data_points=config.data.num_data_points,\n        train_split=config.data.splits.train,\n        eval_split=config.data.splits.val,\n        image_reader=img_reader,\n        rank=accelerator.state.process_index,\n        world_size=accelerator.state.num_processes,\n        start=0,\n    )\n    # update the start point to finish out the epoch on a resumed run\n    if tracker.can_recall:\n        samples_seen = config.train.num_samples_seen\n        length = (\n            config.data.num_data_points\n            if samples_seen <= img_reader.count\n            else img_reader.count\n        )\n        scaled_samples = length * config.train.current_epoch\n        start_point = (\n            scaled_samples - samples_seen if scaled_samples > samples_seen else samples_seen\n        )\n        if trainer.accelerator.is_main_process:\n            click.secho(f\"Resuming at sample: {start_point}\", fg=\"yellow\")\n        train_loader.dataset.set_start(start_point)\n    # start training\n    if trainer.accelerator.is_main_process:",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:712-743"
+    },
+    "243": {
+        "file_id": 6,
+        "content": "This code initializes a data loader and sets the start point for resuming training if necessary. It ensures that the training continues from where it left off in a previous run by adjusting the number of samples seen based on the total number of data points and the current epoch. The main process prints a message indicating the resumption sample count.",
+        "type": "comment"
+    },
+    "244": {
+        "file_id": 6,
+        "content": "        click.secho(\n            f\"Beginning Prior Training : Distributed={accelerator.state.distributed_type != accelerate_dataclasses.DistributedType.NO}\",\n            fg=\"yellow\",\n        )\n    train(\n        trainer=trainer,\n        tracker=tracker,\n        train_loader=train_loader,\n        eval_loader=eval_loader,\n        test_loader=test_loader,\n        config=config,\n    )\n@click.command()\n@click.option(\"--config_file\", default=\"configs/train_prior_config.example.json\")\ndef main(config_file):\n    # start HFA\n    accelerator = Accelerator()\n    # setup training\n    initialize_training(config_file, accelerator)\nif __name__ == \"__main__\":\n    main()",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:744-770"
+    },
+    "245": {
+        "file_id": 6,
+        "content": "Beginning Prior Training message with distributed status. Then, initiates training process using provided configurations and loaders for trainer, tracker, train_loader, eval_loader, and test_loader. Finally, executes main function with the specified config file to start Heterogeneous Fusion Acceleration (HFA) and set up the training environment.",
+        "type": "comment"
+    },
+    "246": {
+        "file_id": 7,
+        "content": "/configs/README.md",
+        "type": "filepath"
+    },
+    "247": {
+        "file_id": 7,
+        "content": "This code configures DALLE2 model training and logging options in PyTorch, with customizable settings for Unet and Decoder, dataloader, preprocessing, hyperparameters, image metrics, and experiment tracking. It supports various configurations based on selected logger and storage types.",
+        "type": "summary"
+    },
+    "248": {
+        "file_id": 7,
+        "content": "## DALLE2 Training Configurations\nFor more complex configuration, we provide the option of using a configuration file instead of command line arguments.\n### Decoder Trainer\nThe decoder trainer has 7 main configuration options. A full example of their use can be found in the [example decoder configuration](train_decoder_config.example.json).\n**<ins>Unet</ins>:**\nThis is a single unet config, which belongs as an array nested under the decoder config as a list of `unets`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `dim`  | Yes      | N/A     | The starting channels of the unet. |\n| `image_embed_dim` | Yes | N/A | The dimension of the image embeddings. |\n| `dim_mults` | No | `(1, 2, 4, 8)` | The growth factors of the channels. |\nAny parameter from the `Unet` constructor can also be given here.\n**<ins>Decoder</ins>:**\nDefines the configuration options for the decoder model. The unets defined above will automatically be inserted.\n| Option | Required | Default | Description |",
+        "type": "code",
+        "location": "/configs/README.md:1-24"
+    },
+    "249": {
+        "file_id": 7,
+        "content": "This code provides details on configuring training for DALLE2, a complex model that requires various settings. It includes sections for Unet and Decoder configurations with optional parameters. An example configuration file is also mentioned for easier understanding.",
+        "type": "comment"
+    },
+    "250": {
+        "file_id": 7,
+        "content": "| ------ | -------- | ------- | ----------- |\n| `unets` | Yes | N/A | A list of unets, using the configuration above |\n| `image_sizes` | Yes | N/A | The resolution of the image after each upsampling step. The length of this array should be the number of unets defined. |\n| `image_size` | Yes | N/A | Not used. Can be any number. |\n| `timesteps` | No | `1000` | The number of diffusion timesteps used for generation. |\n| `loss_type` | No | `l2` | The loss function. Options are `l1`, `huber`, or `l2`. |\n| `beta_schedule` | No | `cosine` | The noising schedule. Options are `cosine`, `linear`, `quadratic`, `jsd`, or `sigmoid`. |\n| `learned_variance` | No | `True` | Whether to learn the variance. |\n| `clip` | No | `None` | The clip model to use if embeddings are being generated on the fly. Takes keys `make` and `model` with defaults `openai` and `ViT-L/14`. |\nAny parameter from the `Decoder` constructor can also be given here.\n**<ins>Data</ins>:**\nSettings for creation of the dataloaders.\n| Option | Required | Default | Description |",
+        "type": "code",
+        "location": "/configs/README.md:25-40"
+    },
+    "251": {
+        "file_id": 7,
+        "content": "This code appears to be defining the configuration for a machine learning model, specifically one using U-Nets. The configuration includes options for the number of unets, image resolution, timesteps, loss function type, noise schedule, and learned variance. Additionally, there are settings for creating dataloaders for the model's data. The code also notes that any parameter from the `Decoder` constructor can be included in this configuration.",
+        "type": "comment"
+    },
+    "252": {
+        "file_id": 7,
+        "content": "| ------ | -------- | ------- | ----------- |\n| `webdataset_base_url` | Yes | N/A | The url of a shard in the webdataset with the shard replaced with `{}`[^1]. |\n| `img_embeddings_url` | No | `None` | The url of the folder containing image embeddings shards. Not required if embeddings are in webdataset or clip is being used. |\n| `text_embeddings_url` | No | `None` | The url of the folder containing text embeddings shards. Not required if embeddings are in webdataset or clip is being used. |\n| `num_workers` | No | `4` | The number of workers used in the dataloader. |\n| `batch_size` | No | `64` | The batch size. |\n| `start_shard` | No | `0` | Defines the start of the shard range the dataset will recall. |\n| `end_shard` | No | `9999999` | Defines the end of the shard range the dataset will recall. |\n| `shard_width` | No | `6` | Defines the width of one webdataset shard number[^2]. |\n| `index_width` | No | `4` | Defines the width of the index of a file inside a shard[^3]. |\n| `splits` | No | `{ \"tra",
+        "type": "code",
+        "location": "/configs/README.md:41-51"
+    },
+    "253": {
+        "file_id": 7,
+        "content": "This code defines various configuration options for a dataloader, including webdataset and embeddings urls, worker numbers, batch size, shard range, and file indexing. The config allows flexibility in handling different types of datasets, with optional embeddings or use of the webdataset library.",
+        "type": "comment"
+    },
+    "254": {
+        "file_id": 7,
+        "content": "in\": 0.75, \"val\": 0.15, \"test\": 0.1 }` | Defines the proportion of shards that will be allocated to the training, validation, and testing datasets. |\n| `shuffle_train` | No | `True` | Whether to shuffle the shards of the training dataset. |\n| `resample_train` | No | `False` | If true, shards will be randomly sampled with replacement from the datasets making the epoch length infinite if a limit is not set. Cannot be enabled if `shuffle_train` is enabled. |\n| `preprocessing` | No | `{ \"ToTensor\": True }` | Defines preprocessing applied to images from the datasets. |\n[^1]: If your shard files have the paths `protocol://path/to/shard/00104.tar`, then the base url would be `protocol://path/to/shard/{}.tar`. If you are using a protocol like `s3`, you need to pipe the tars. For example `pipe:s3cmd get s3://bucket/path/{}.tar -`.\n[^2]: This refers to the string length of the shard number for your webdataset shards. For instance, if your webdataset shard has the filename `00104.tar`, your shard length is 5.",
+        "type": "code",
+        "location": "/configs/README.md:51-58"
+    },
+    "255": {
+        "file_id": 7,
+        "content": "This code defines the proportion of shards allocated to training, validation, and testing datasets as well as whether to shuffle training dataset, preprocessing applied to images from datasets, and details for downloading shard files. It also provides information on how to use protocols like `s3` and calculating the shard length based on filename.",
+        "type": "comment"
+    },
+    "256": {
+        "file_id": 7,
+        "content": "[^3]: Inside the webdataset `tar`, you have files named something like `001045945.jpg`. 5 of these characters refer to the shard, and 4 refer to the index of the file in the webdataset (shard is `001041` and index is `5945`). The `index_width` in this case is 4.\n**<ins>Train</ins>:**\nSettings for controlling the training hyperparameters.\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `epochs` | No | `20` | The number of epochs in the training run. |\n| `lr` | No | `1e-4` | The learning rate. |\n| `wd` | No | `0.01` | The weight decay. |\n| `max_grad_norm`| No | `0.5` | The grad norm clipping. |\n| `save_every_n_samples` | No | `100000` | Samples will be generated and a checkpoint will be saved every `save_every_n_samples` samples. |\n| `cond_scale` | No | `1.0` | Conditioning scale to use for sampling. Can also be an array of values, one for each unet. |\n| `device` | No | `cuda:0` | The device to train on. |\n| `epoch_samples` | No | `None` | Limits the num",
+        "type": "code",
+        "location": "/configs/README.md:60-74"
+    },
+    "257": {
+        "file_id": 7,
+        "content": "The code provides settings for controlling training hyperparameters, such as the number of epochs, learning rate, weight decay, and grad norm clipping. It also allows saving checkpoints at specific intervals and specifying the device to train on. The conditioning scale can be customized for each unet if desired.",
+        "type": "comment"
+    },
+    "258": {
+        "file_id": 7,
+        "content": "ber of samples iterated through in each epoch. This must be set if resampling. None means no limit. |\n| `validation_samples` | No | `None` | The number of samples to use for validation. None mean the entire validation set. |\n| `use_ema` | No | `True` | Whether to use exponential moving average models for sampling. |\n| `ema_beta` | No | `0.99` | The ema coefficient. |\n| `unet_training_mask` | No | `None` | A boolean array of the same length as the number of unets. If false, the unet is frozen. A value of `None` trains all unets. |\n**<ins>Evaluate</ins>:**\nDefines which evaluation metrics will be used to test the model.\nEach metric can be enabled by setting its configuration. The configuration keys for each metric are defined by the torchmetrics constructors which will be linked.\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `n_evaluation_samples` | No | `1000` | The number of samples to generate to test the model. |\n| `FID` | No | `None` | Setting to",
+        "type": "code",
+        "location": "/configs/README.md:74-87"
+    },
+    "259": {
+        "file_id": 7,
+        "content": "The code snippet defines configurations for training a DALLE2 model in PyTorch. It includes settings such as the number of samples iterated through in each epoch, number of validation samples, whether to use exponential moving average models for sampling, and the ema coefficient. Additionally, it allows defining which evaluation metrics will be used to test the model by setting their configurations using torchmetrics constructors. The number of samples generated to test the model is also specified.",
+        "type": "comment"
+    },
+    "260": {
+        "file_id": 7,
+        "content": " an object enables the [Frechet Inception Distance](https://torchmetrics.readthedocs.io/en/stable/image/frechet_inception_distance.html) metric. \n| `IS` | No | `None` | Setting to an object enables the [Inception Score](https://torchmetrics.readthedocs.io/en/stable/image/inception_score.html) metric.\n| `KID` | No | `None` | Setting to an object enables the [Kernel Inception Distance](https://torchmetrics.readthedocs.io/en/stable/image/kernel_inception_distance.html) metric. |\n| `LPIPS` | No | `None` | Setting to an object enables the [Learned Perceptual Image Patch Similarity](https://torchmetrics.readthedocs.io/en/stable/image/learned_perceptual_image_patch_similarity.html) metric. |\n**<ins>Tracker</ins>:**\nSelects how the experiment will be tracked.\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `data_path` | No | `./.tracker-data` | The path to the folder where temporary tracker data will be saved. |\n| `overwrite_data_path` | No | `False` | If true, the data path will be overwritten. Otherwise, you need to delete it yourself. |",
+        "type": "code",
+        "location": "/configs/README.md:87-98"
+    },
+    "261": {
+        "file_id": 7,
+        "content": "This code snippet is from the configs/README.md file of the DALLE2-pytorch project. It describes how to enable different image metrics and set up experiment tracking. The available metrics are Frechet Inception Distance, Inception Score, Kernel Inception Distance, and Learned Perceptual Image Patch Similarity. The tracker can be configured with data_path and overwrite_data_path options for storing temporary tracking data.",
+        "type": "comment"
+    },
+    "262": {
+        "file_id": 7,
+        "content": "| `log` | Yes | N/A | Logging configuration. |\n| `load` | No | `None` | Checkpoint loading configuration. |\n| `save` | Yes | N/A | Checkpoint/Model saving configuration. |\nTracking is split up into three sections:\n* Log: Where to save run metadata and image output. Options are `console` or `wandb`.\n* Load: Where to load a checkpoint from. Options are `local`, `url`, or `wandb`.\n* Save: Where to save a checkpoint to. Options are `local`, `huggingface`, or `wandb`.\n**Logging:**\nAll loggers have the following keys:\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `log_type` | Yes | N/A | The type of logger class to use. |\n| `resume` | No | `False` | For loggers that have the option to resume an old run, resume it using maually input parameters. |\n| `auto_resume` | No | `False` | If true, the logger will attempt to resume an old run using parameters from that previous run. |\nIf using `console` there is no further configuration than setting `log_type` to `console`.",
+        "type": "code",
+        "location": "/configs/README.md:99-116"
+    },
+    "263": {
+        "file_id": 7,
+        "content": "The code defines configuration settings for logging, loading checkpoints, and saving checkpoints in a DALLE2-pytorch application. The logging section allows specifying where to save run metadata and image output (options: console or wandb). Loading can be from local, URL, or Wandb sources. Saving can be done locally, on HuggingFace, or via Wandb. Loggers have options for resume and auto-resume functions. If using console logging, only the log_type needs to be set as console.",
+        "type": "comment"
+    },
+    "264": {
+        "file_id": 7,
+        "content": "| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `log_type` | Yes | N/A | Must be `console`. |\nIf using `wandb`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `log_type` | Yes | N/A | Must be `wandb`. |\n| `wandb_entity` | Yes | N/A | The wandb entity to log to. |\n| `wandb_project` | Yes | N/A | The wandb project save the run to. |\n| `wandb_run_name` | No | `None` | The wandb run name. |\n| `wandb_run_id` | No | `None` | The wandb run id. Used if resuming an old run. |\n**Loading:**\nAll loaders have the following keys:\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | The type of loader class to use. |\n| `only_auto_resume` | No | `False` | If true, the loader will only load the model if the run is being auto resumed. |\nIf using `local`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | Must be `local`. |",
+        "type": "code",
+        "location": "/configs/README.md:117-141"
+    },
+    "265": {
+        "file_id": 7,
+        "content": "This code is defining the configuration options for logging and loading in a DALLE2-pytorch application. The user has to specify the log type (console or wandb) along with other required and optional parameters depending on the selected logger. The loaders have options to specify the loader class type (e.g., local) and whether to only auto resume if the run is being resumed.",
+        "type": "comment"
+    },
+    "266": {
+        "file_id": 7,
+        "content": "| `file_path` | Yes | N/A | The path to the checkpoint file. |\nIf using `url`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | Must be `url`. |\n| `url` | Yes | N/A | The url of the checkpoint file. |\nIf using `wandb`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | Must be `wandb`. |\n| `wandb_run_path` | No | `None` | The wandb run path. If `None`, uses the run that is being resumed. |\n| `wandb_file_path` | Yes | N/A | The path to the checkpoint file in the W&B file system. |\n**Saving:**\nUnlike `log` and `load`, `save` may be an array of options so that you can save to different locations in a run.\nAll save locations have these configuration options\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `local`, `huggingface`, or `wandb`. |\n| `save_latest_to` | No | `None` | Sets the relative path to save the latest model to. |",
+        "type": "code",
+        "location": "/configs/README.md:142-164"
+    },
+    "267": {
+        "file_id": 7,
+        "content": "The code defines the options for loading and saving checkpoint files. It supports loading from a file path, URL or WandB run, with each option having specific required configurations. Saving to different locations is also supported through options like local, huggingface, or wandb, with additional configuration possibilities.",
+        "type": "comment"
+    },
+    "268": {
+        "file_id": 7,
+        "content": "| `save_best_to` | No | `None` | Sets the relative path to save the best model to every time the model has a lower validation loss than all previous models. |\n| `save_meta_to` | No | `None` | The path to save metadata files in. This includes the config files used to start the training. |\n| `save_type` | No | `checkpoint` | The type of save. `checkpoint` saves a checkpoint, `model` saves a model without any fluff (Saves with ema if ema is enabled). |\nIf using `local`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `local`. |\nIf using `huggingface`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `huggingface`. |\n| `huggingface_repo` | Yes | N/A | The huggingface repository to save to. |\n| `token_path` | No | `None` | If logging in with the huggingface cli is not possible, point to a token file instead. |\nIf using `wandb`\n| Option | Required | Default | Description |",
+        "type": "code",
+        "location": "/configs/README.md:165-182"
+    },
+    "269": {
+        "file_id": 7,
+        "content": "This code sets options for saving models and metadata during training. It allows saving to local, huggingface or wandb storage with specific requirements for each option. The save type can be checkpoint or model, and there are additional options like saving best models, token file path, and repository paths.",
+        "type": "comment"
+    },
+    "270": {
+        "file_id": 7,
+        "content": "| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `wandb`. |\n| `wandb_run_path` | No | `None` | The wandb run path. If `None`, uses the current run. You will almost always want this to be `None`. |",
+        "type": "code",
+        "location": "/configs/README.md:183-185"
+    },
+    "271": {
+        "file_id": 7,
+        "content": "The code defines configuration options for saving and interacting with the Weights & Biases (Wandb) run path. If `save_to` is set to `wandb`, the `wandb_run_path` should be `None`. Otherwise, it defaults to the current run if `wandb_run_path` is set to `None`.",
+        "type": "comment"
+    },
+    "272": {
+        "file_id": 8,
+        "content": "/dalle2_pytorch/__init__.py",
+        "type": "filepath"
+    },
+    "273": {
+        "file_id": 8,
+        "content": "This code is importing modules from the DALLE2-pytorch library, which includes the main DALLE2 class, diffusion prior network, unet, decoder, clip adapters, trainer for the decoder and diffusion prior, and VQGanVAE. The x_clip module also appears to be imported, but its purpose is not explicitly described in this chunk of code.",
+        "type": "summary"
+    },
+    "274": {
+        "file_id": 8,
+        "content": "from dalle2_pytorch.version import __version__\nfrom dalle2_pytorch.dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder\nfrom dalle2_pytorch.dalle2_pytorch import OpenAIClipAdapter, OpenClipAdapter\nfrom dalle2_pytorch.trainer import DecoderTrainer, DiffusionPriorTrainer\nfrom dalle2_pytorch.vqgan_vae import VQGanVAE\nfrom x_clip import CLIP",
+        "type": "code",
+        "location": "/dalle2_pytorch/__init__.py:1-7"
+    },
+    "275": {
+        "file_id": 8,
+        "content": "This code is importing modules from the DALLE2-pytorch library, which includes the main DALLE2 class, diffusion prior network, unet, decoder, clip adapters, trainer for the decoder and diffusion prior, and VQGanVAE. The x_clip module also appears to be imported, but its purpose is not explicitly described in this chunk of code.",
+        "type": "comment"
+    },
+    "276": {
+        "file_id": 9,
+        "content": "/dalle2_pytorch/cli.py",
+        "type": "filepath"
+    },
+    "277": {
+        "file_id": 9,
+        "content": "This code imports libraries, defines functions, and parses command-line arguments for model path, conditioning scale, and input text. It loads a DALL-E2 model, generates an image based on the input text, saves it in PIL format, and returns the saved image.",
+        "type": "summary"
+    },
+    "278": {
+        "file_id": 9,
+        "content": "import click\nimport torch\nimport torchvision.transforms as T\nfrom functools import reduce\nfrom pathlib import Path\nfrom dalle2_pytorch import DALLE2, Decoder, DiffusionPrior\ndef safeget(dictionary, keys, default = None):\n    return reduce(lambda d, key: d.get(key, default) if isinstance(d, dict) else default, keys.split('.'), dictionary)\ndef simple_slugify(text, max_length = 255):\n    return text.replace(\"-\", \"_\").replace(\",\", \"\").replace(\" \", \"_\").replace(\"|\", \"--\").strip('-_')[:max_length]\ndef get_pkg_version():\n    from pkg_resources import get_distribution\n    return get_distribution('dalle2_pytorch').version\ndef main():\n    pass\n@click.command()\n@click.option('--model', default = './dalle2.pt', help = 'path to trained DALL-E2 model')\n@click.option('--cond_scale', default = 2, help = 'conditioning scale (classifier free guidance) in decoder')\n@click.argument('text')\ndef dream(\n    model,\n    cond_scale,\n    text\n):\n    model_path = Path(model)\n    full_model_path = str(model_path.resolve())\n    assert model_path.exists(), f'model not found at {full_model_path}'",
+        "type": "code",
+        "location": "/dalle2_pytorch/cli.py:1-33"
+    },
+    "279": {
+        "file_id": 9,
+        "content": "This code imports necessary libraries, defines some utility functions and a main function. It also includes a command-line argument parser with options for model path, conditioning scale, and the text input. The assert statement ensures that the specified model file exists before proceeding.",
+        "type": "comment"
+    },
+    "280": {
+        "file_id": 9,
+        "content": "    loaded = torch.load(str(model_path))\n    version = safeget(loaded, 'version')\n    print(f'loading DALL-E2 from {full_model_path}, saved at version {version} - current package version is {get_pkg_version()}')\n    prior_init_params = safeget(loaded, 'init_params.prior')\n    decoder_init_params = safeget(loaded, 'init_params.decoder')\n    model_params = safeget(loaded, 'model_params')\n    prior = DiffusionPrior(**prior_init_params)\n    decoder = Decoder(**decoder_init_params)\n    dalle2 = DALLE2(prior, decoder)\n    dalle2.load_state_dict(model_params)\n    image = dalle2(text, cond_scale = cond_scale)\n    pil_image = T.ToPILImage()(image)\n    return pil_image.save(f'./{simple_slugify(text)}.png')",
+        "type": "code",
+        "location": "/dalle2_pytorch/cli.py:34-52"
+    },
+    "281": {
+        "file_id": 9,
+        "content": "This code loads a saved DALL-E2 model from a specified path, checks the version, initializes the prior and decoder components, recreates the model using these components, loads its parameters, generates an image based on input text, converts it to PIL format, saves it with a file name derived from the input text, and returns the saved image.",
+        "type": "comment"
+    },
+    "282": {
+        "file_id": 10,
+        "content": "/dalle2_pytorch/dalle2_pytorch.py",
+        "type": "filepath"
+    },
+    "283": {
+        "file_id": 10,
+        "content": "The code uses VQGAN-VAE, CLIP, and CoCa libraries for image generation, and includes helper functions, PyTorch CLIP model, neural networks, DALL-E 2 architecture, self-attention layers with normalization and dropout regularization. It initializes efficient DALL-E 2 and Imagen models, utilizes diffusion models for denoising and inpainting images, and incorporates conditional sampling from DALLE2-pytorch model for low-resolution image generation.",
+        "type": "summary"
+    },
+    "284": {
+        "file_id": 10,
+        "content": "import math\nimport random\nfrom tqdm.auto import tqdm\nfrom functools import partial, wraps\nfrom contextlib import contextmanager\nfrom collections import namedtuple\nfrom pathlib import Path\nimport torch\nimport torch.nn.functional as F\nfrom torch.utils.checkpoint import checkpoint\nfrom torch import nn, einsum\nimport torchvision.transforms as T\nfrom einops import rearrange, repeat, reduce, pack, unpack\nfrom einops.layers.torch import Rearrange\nfrom kornia.filters import gaussian_blur2d\nimport kornia.augmentation as K\nfrom dalle2_pytorch.tokenizer import tokenizer\nfrom dalle2_pytorch.vqgan_vae import NullVQGanVAE, VQGanVAE\nfrom resize_right import resize\n# rotary embeddings\nfrom rotary_embedding_torch import RotaryEmbedding\n# use x-clip\nfrom x_clip import CLIP\nfrom coca_pytorch import CoCa\n# constants\nNAT = 1. / math.log(2.)\nUnetOutput = namedtuple('UnetOutput', ['pred', 'var_interp_frac_unnormalized'])\n# helper functions\ndef exists(val):\n    return val is not None\ndef identity(t, *args, **kwargs):\n    return t\ndef first(arr, d = None):",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1-49"
+    },
+    "285": {
+        "file_id": 10,
+        "content": "This code imports various libraries and defines functions for data processing, including image resizing, Gaussian blurring, and rotary embeddings. It also utilizes the VQGAN-VAE, CLIP model, and CoCa. The code contains namedtuples, helper functions, and constants relevant to the tasks of image generation and language modeling.",
+        "type": "comment"
+    },
+    "286": {
+        "file_id": 10,
+        "content": "    if len(arr) == 0:\n        return d\n    return arr[0]\ndef maybe(fn):\n    @wraps(fn)\n    def inner(x, *args, **kwargs):\n        if not exists(x):\n            return x\n        return fn(x, *args, **kwargs)\n    return inner\ndef default(val, d):\n    if exists(val):\n        return val\n    return d() if callable(d) else d\ndef cast_tuple(val, length = None, validate = True):\n    if isinstance(val, list):\n        val = tuple(val)\n    out = val if isinstance(val, tuple) else ((val,) * default(length, 1))\n    if exists(length) and validate:\n        assert len(out) == length\n    return out\ndef module_device(module):\n    if isinstance(module, nn.Identity):\n        return 'cpu' # It doesn't matter\n    return next(module.parameters()).device\ndef zero_init_(m):\n    nn.init.zeros_(m.weight)\n    if exists(m.bias):\n        nn.init.zeros_(m.bias)\n@contextmanager\ndef null_context(*args, **kwargs):\n    yield\ndef eval_decorator(fn):\n    def inner(model, *args, **kwargs):\n        was_training = model.training\n        model.eval()\n        out = fn(model, *args, **kwargs)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:50-96"
+    },
+    "287": {
+        "file_id": 10,
+        "content": "Function 'if len(arr) == 0: return d' checks if the array is empty and returns the value 'd' if it is.\n'maybe(fn)' function creates a decorator that checks if the input exists, returning it if it does not.\n'default(val, d)' function returns the provided value 'val' if it exists; otherwise, it returns the default value 'd'.\n'cast_tuple(val, length=None, validate=True)' casts its argument to a tuple and optionally checks its length.\n'module_device(module)' retrieves the device of the module, defaulting to CPU for certain types like nn.Identity.\n'zero_init_(m)' initializes the weights and biases of the given module 'm' with zeros.\n'null_context(*args, **kwargs)' is a context manager that does nothing.\n'eval_decorator(fn)' wraps a function to evaluate the model before executing it.",
+        "type": "comment"
+    },
+    "288": {
+        "file_id": 10,
+        "content": "        model.train(was_training)\n        return out\n    return inner\ndef is_float_dtype(dtype):\n    return any([dtype == float_dtype for float_dtype in (torch.float64, torch.float32, torch.float16, torch.bfloat16)])\ndef is_list_str(x):\n    if not isinstance(x, (list, tuple)):\n        return False\n    return all([type(el) == str for el in x])\ndef pad_tuple_to_length(t, length, fillvalue = None):\n    remain_length = length - len(t)\n    if remain_length <= 0:\n        return t\n    return (*t, *((fillvalue,) * remain_length))\n# checkpointing helper function\ndef make_checkpointable(fn, **kwargs):\n    if isinstance(fn, nn.ModuleList):\n        return [maybe(make_checkpointable)(el, **kwargs) for el in fn]\n    condition = kwargs.pop('condition', None)\n    if exists(condition) and not condition(fn):\n        return fn\n    @wraps(fn)\n    def inner(*args):\n        input_needs_grad = any([isinstance(el, torch.Tensor) and el.requires_grad for el in args])\n        if not input_needs_grad:\n            return fn(*args)\n        return checkpoint(fn, *args)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:97-133"
+    },
+    "289": {
+        "file_id": 10,
+        "content": "This code defines several helper functions for processing lists of strings, padding tuples to a specific length, and creating checkpointable versions of Python functions. It also includes a function to determine if a given dtype is a floating point type, and a conditional wrapper for creating a checkpointable version of a function or module list.",
+        "type": "comment"
+    },
+    "290": {
+        "file_id": 10,
+        "content": "    return inner\n# for controlling freezing of CLIP\ndef set_module_requires_grad_(module, requires_grad):\n    for param in module.parameters():\n        param.requires_grad = requires_grad\ndef freeze_all_layers_(module):\n    set_module_requires_grad_(module, False)\ndef unfreeze_all_layers_(module):\n    set_module_requires_grad_(module, True)\ndef freeze_model_and_make_eval_(model):\n    model.eval()\n    freeze_all_layers_(model)\n# tensor helpers\ndef log(t, eps = 1e-12):\n    return torch.log(t.clamp(min = eps))\ndef l2norm(t):\n    return F.normalize(t, dim = -1)\ndef resize_image_to(\n    image,\n    target_image_size,\n    clamp_range = None,\n    nearest = False,\n    **kwargs\n):\n    orig_image_size = image.shape[-1]\n    if orig_image_size == target_image_size:\n        return image\n    if not nearest:\n        scale_factors = target_image_size / orig_image_size\n        out = resize(image, scale_factors = scale_factors, **kwargs)\n    else:\n        out = F.interpolate(image, target_image_size, mode = 'nearest')\n    if exists(clamp_range):",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:135-179"
+    },
+    "291": {
+        "file_id": 10,
+        "content": "The code defines functions for controlling the gradient flow in a module, freezing all layers in a model, and making it evaluate only. It also includes helper functions to log a tensor, normalize a tensor using L2 norm, and resize an image to the specified size with optional interpolation method.",
+        "type": "comment"
+    },
+    "292": {
+        "file_id": 10,
+        "content": "        out = out.clamp(*clamp_range)\n    return out\n# image normalization functions\n# ddpms expect images to be in the range of -1 to 1\n# but CLIP may otherwise\ndef normalize_neg_one_to_one(img):\n    return img * 2 - 1\ndef unnormalize_zero_to_one(normed_img):\n    return (normed_img + 1) * 0.5\n# clip related adapters\nEmbeddedText = namedtuple('EmbedTextReturn', ['text_embed', 'text_encodings'])\nEmbeddedImage = namedtuple('EmbedImageReturn', ['image_embed', 'image_encodings'])\nclass BaseClipAdapter(nn.Module):\n    def __init__(self, clip, **kwargs):\n        super().__init__()\n        self.clip = clip\n        self.overrides = kwargs\n    def validate_and_resize_image(self, image):\n        image_size = image.shape[-1]\n        assert image_size >= self.image_size, f'you are passing in an image of size {image_size} but CLIP requires the image size to be at least {self.image_size}'\n        return resize_image_to(image, self.image_size)\n    @property\n    def dim_latent(self):\n        raise NotImplementedError\n    @property",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:180-214"
+    },
+    "293": {
+        "file_id": 10,
+        "content": "This code defines a function for normalizing an image to the range of -1 to 1, and another for unnormalizing it back to the 0 to 1 range. It also includes a namedtuple for returning embedded text and image data along with their encodings. The code further defines a base class for clip adapters that takes a CLIP model as an argument and provides methods for validating and resizing images to match CLIP's requirements.",
+        "type": "comment"
+    },
+    "294": {
+        "file_id": 10,
+        "content": "    def image_size(self):\n        raise NotImplementedError\n    @property\n    def image_channels(self):\n        raise NotImplementedError\n    @property\n    def max_text_len(self):\n        raise NotImplementedError\n    def embed_text(self, text):\n        raise NotImplementedError\n    def embed_image(self, image):\n        raise NotImplementedError\nclass XClipAdapter(BaseClipAdapter):\n    @property\n    def dim_latent(self):\n        return self.clip.dim_latent\n    @property\n    def image_size(self):\n        return self.clip.image_size\n    @property\n    def image_channels(self):\n        return self.clip.image_channels\n    @property\n    def max_text_len(self):\n        return self.clip.text_seq_len\n    @torch.no_grad()\n    def embed_text(self, text):\n        text = text[..., :self.max_text_len]\n        text_mask = text != 0\n        encoder_output = self.clip.text_transformer(text)\n        encoder_output_is_cls = encoder_output.ndim == 3\n        text_cls, text_encodings = (encoder_output[:, 0], encoder_output[:, 1:]) if encoder_output_is_cls else (encoder_output, None)",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:215-257"
+    },
+    "295": {
+        "file_id": 10,
+        "content": "This code defines a base class `BaseClipAdapter` with four methods that must be implemented by derived classes. The `XClipAdapter` class inherits from `BaseClipAdapter` and provides implementations for the properties of the underlying `clip` object, which is an instance of some clip model. The `embed_text` method takes a text input, truncates it to fit the maximum text length defined by `max_text_len`, applies a text transformer from the `clip` object, and returns the embeddings.",
+        "type": "comment"
+    },
+    "296": {
+        "file_id": 10,
+        "content": "        text_embed = self.clip.to_text_latent(text_cls)\n        if exists(text_encodings):\n            text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)\n        return EmbeddedText(l2norm(text_embed), text_encodings)\n    @torch.no_grad()\n    def embed_image(self, image):\n        image = self.validate_and_resize_image(image)\n        encoder_output = self.clip.visual_transformer(image)\n        image_cls, image_encodings = encoder_output[:, 0], encoder_output[:, 1:]\n        image_embed = self.clip.to_visual_latent(image_cls)\n        return EmbeddedImage(l2norm(image_embed), image_encodings)\nclass CoCaAdapter(BaseClipAdapter):\n    @property\n    def dim_latent(self):\n        return self.clip.dim\n    @property\n    def image_size(self):\n        assert 'image_size' in self.overrides\n        return self.overrides['image_size']\n    @property\n    def image_channels(self):\n        assert 'image_channels' in self.overrides\n        return self.overrides['image_channels']\n    @property\n    def max_text_len(self):",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:258-289"
+    },
+    "297": {
+        "file_id": 10,
+        "content": "This code snippet defines a class called CoCaAdapter, which is a base adapter for the DALL-E 2 PyTorch model. It contains methods to embed text and images, with optional overrides for image size and channels. The dim_latent property returns the dimension of the latent space, while max_text_len is used to set the maximum length for text inputs.",
+        "type": "comment"
+    },
+    "298": {
+        "file_id": 10,
+        "content": "        assert 'max_text_len' in self.overrides\n        return self.overrides['max_text_len']\n    @torch.no_grad()\n    def embed_text(self, text):\n        text = text[..., :self.max_text_len]\n        text_mask = text != 0\n        text_embed, text_encodings = self.clip.embed_text(text)\n        text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)\n        return EmbeddedText(text_embed, text_encodings)\n    @torch.no_grad()\n    def embed_image(self, image):\n        image = self.validate_and_resize_image(image)\n        image_embed, image_encodings = self.clip.embed_image(image)\n        return EmbeddedImage(image_embed, image_encodings)\nclass OpenAIClipAdapter(BaseClipAdapter):\n    def __init__(\n        self,\n        name = 'ViT-B/32'\n    ):\n        import clip\n        openai_clip, preprocess = clip.load(name)\n        super().__init__(openai_clip)\n        self.eos_id = 49407 # for handling 0 being also '!'\n        text_attention_final = self.find_layer('ln_final')\n        self.dim_latent_ = text_attention_final.weight.shape[0]",
+        "type": "code",
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:290-319"
+    },
+    "299": {
+        "file_id": 10,
+        "content": "This code is for a text-to-image model that uses CLIP as its base. It has functions to embed texts and images, with the ability to handle maximum text length. It initializes an OpenAIClipAdapter class using CLIP's 'ViT-B/32' model and finds the layer for text attention final output.",
+        "type": "comment"
+    }
+}

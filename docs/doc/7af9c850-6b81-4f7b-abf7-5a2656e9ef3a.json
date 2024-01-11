@@ -1,0 +1,15 @@
+{
+    "summary": "This code defines a Dataset class and get_images_dataloader function for loading image data. The Dataset class initializes with a folder path, image size, and extensions to consider. The get_images_dataloader function returns a DataLoader object for the specified folder with optional parameters like batch size, shuffle, cycle_dl, and pin_memory.",
+    "details": [
+        {
+            "comment": "This code defines a Dataset class and get_images_dataloader function for loading image data. The Dataset class initializes with a folder path, image size, and extensions to consider. It uses transforms to apply resizing, horizontal flipping, centercropping, and converting images to tensors. The get_images_dataloader function returns a data loader object for the specified folder.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py\":0-46",
+            "content": "from pathlib import Path\nimport torch\nfrom torch.utils import data\nfrom torchvision import transforms, utils\nfrom PIL import Image\n# helpers functions\ndef cycle(dl):\n    while True:\n        for data in dl:\n            yield data\n# dataset and dataloader\nclass Dataset(data.Dataset):\n    def __init__(\n        self,\n        folder,\n        image_size,\n        exts = ['jpg', 'jpeg', 'png']\n    ):\n        super().__init__()\n        self.folder = folder\n        self.image_size = image_size\n        self.paths = [p for ext in exts for p in Path(f'{folder}').glob(f'**/*.{ext}')]\n        self.transform = transforms.Compose([\n            transforms.Resize(image_size),\n            transforms.RandomHorizontalFlip(),\n            transforms.CenterCrop(image_size),\n            transforms.ToTensor()\n        ])\n    def __len__(self):\n        return len(self.paths)\n    def __getitem__(self, index):\n        path = self.paths[index]\n        img = Image.open(path)\n        return self.transform(img)\ndef get_images_dataloader(\n    folder,\n    *,"
+        },
+        {
+            "comment": "This function takes parameters such as folder, batch size, image size, shuffle, cycle_dl, and pin_memory. It creates a dataset from the provided folder using a given image size. Then, it uses DataLoader to create a data loader with the specified batch size, shuffle, and pin memory settings. If cycle_dl is True, it applies cyclic permutations to the data loader. Finally, it returns the data loader.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py\":47-58",
+            "content": "    batch_size,\n    image_size,\n    shuffle = True,\n    cycle_dl = True,\n    pin_memory = True\n):\n    ds = Dataset(folder, image_size)\n    dl = data.DataLoader(ds, batch_size = batch_size, shuffle = shuffle, pin_memory = pin_memory)\n    if cycle_dl:\n        dl = cycle(dl)\n    return dl"
+        }
+    ]
+}

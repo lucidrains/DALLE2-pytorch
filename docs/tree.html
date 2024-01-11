@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="github-markdown.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .directory:hover {
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        :target {
+            background-color: yellow !important;
+        }
+
+        .folded::before {
+            content: '\25B6';
+            margin-right: 8px;
+            /* Add space between marker and text */
+        }
+
+        .expanded::before {
+            content: '\25BC';
+            margin-right: 8px;
+            /* Add space between marker and text */
+        }
+    </style>
+    <script>
+        function toggleVisibility(element) {
+            let mclass = element.getAttribute("class");
+            if (mclass == "expanded") {
+                element.setAttribute('class', 'folded');
+            } else {
+                element.setAttribute('class', 'expanded');
+            }
+            const siblings = element.parentNode.children;
+            for (const sibling of siblings) {
+                if (sibling !== element) {
+                    sibling.style.display = (sibling.style.display === 'none') ? 'block' : 'none';
+                }
+            }
+        }
+    </script>
+    <style>
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }
+
+        @media (max-width: 767px) {
+            .markdown-body {
+                padding: 15px;
+            }
+
+            .partial-repository-url {
+                display: none;
+            }
+        }
+
+        ul {
+            list-style: none;
+        }
+    </style>
+</head>
+
+<body>
+    <article class="markdown-body">
+        <h2>Project Structure<span hierarchy="0" class="partial-repository-url"> of: lucidrains/DALLE2-pytorch</span><div style="float: right;"><a href="index.html"><i class="bi bi-search"></i></a></div></h2>
+<ul>
+<li><span hierarchy="0" class="expanded" onclick="toggleVisibility(this)" ><strong class="directory" id="/"><code>DALLE2-pytorch</code></strong> <em>DALL-E 2: Image generation &amp; testing, with diffusion prior model training code.</em></span><ul>
+<li><a href="index.html?q=/MANIFEST.in" id="/MANIFEST.in"><code>MANIFEST&period;in</code></a> <em>Includes all .txt files in dalle2_pytorch directory.</em></li>
+<li><a href="index.html?q=/Makefile" id="/Makefile"><code>Makefile</code></a> <em>Install pip, project in editable mode, run tests with CUDA.</em></li>
+<li><a href="index.html?q=/README.md" id="/README.md"><code>README&period;md</code></a> <em>Enhance DALL-E 2 with layers, generation, and prior models.</em></li>
+<li><span hierarchy="1" class="expanded" onclick="toggleVisibility(this)" ><strong class="directory" id="/configs/"><code>configs</code></strong></span><ul>
+<li><a href="index.html?q=/configs/README.md" id="/configs/README.md"><code>README&period;md</code></a> <em>Configure DALLE2 model training options in PyTorch</em></li>
+</ul>
+</li>
+<li><span hierarchy="1" class="expanded" onclick="toggleVisibility(this)" ><strong class="directory" id="/dalle2_pytorch/"><code>dalle2&UnderBar;pytorch</code></strong> <em>Trains VAE models with DALL-E 2 image library.</em></span><ul>
+<li><a href="index.html?q=/dalle2_pytorch/__init__.py" id="/dalle2_pytorch/__init__.py"><code>&UnderBar;&UnderBar;init&UnderBar;&UnderBar;&period;py</code></a> <em>DALLE2-pytorch library import for image generation.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/cli.py" id="/dalle2_pytorch/cli.py"><code>cli&period;py</code></a> <em>DALL-E2 CLI PyTorch image generator.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/dalle2_pytorch.py" id="/dalle2_pytorch/dalle2_pytorch.py"><code>dalle2&UnderBar;pytorch&period;py</code></a> <em>DALL-E 2 PyTorch: Image generation using AI libraries.</em></li>
+<li><span hierarchy="2" class="expanded" onclick="toggleVisibility(this)" ><strong class="directory" id="/dalle2_pytorch/dataloaders/"><code>dataloaders</code></strong> <em>Simple image loaders for PyTorch DALL-E 2.</em></span><ul>
+<li><a href="index.html?q=/dalle2_pytorch/dataloaders/README.md" id="/dalle2_pytorch/dataloaders/README.md"><code>README&period;md</code></a> <em>Dataloader for image embeddings with 3 ranks.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/dataloaders/__init__.py" id="/dalle2_pytorch/dataloaders/__init__.py"><code>&UnderBar;&UnderBar;init&UnderBar;&UnderBar;&period;py</code></a> <em>Imports datasets for DALLE2-pytorch data loading.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/dataloaders/decoder_loader.py" id="/dalle2_pytorch/dataloaders/decoder_loader.py"><code>decoder&UnderBar;loader&period;py</code></a> <em>Decoder loader: embeddings, datasets, webdataset exceptions.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/dataloaders/prior_loader.py" id="/dalle2_pytorch/dataloaders/prior_loader.py"><code>prior&UnderBar;loader&period;py</code></a> <em>Efficient DALL-E 2 data retrieval with PyTorch Dataloaders.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py" id="/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py"><code>simple&UnderBar;image&UnderBar;only&UnderBar;dataloader&period;py</code></a> <em>Simple image data loader for PyTorch. Dataset class, DataLoader function.</em></li>
+</ul>
+</li>
+<li><a href="index.html?q=/dalle2_pytorch/optimizer.py" id="/dalle2_pytorch/optimizer.py"><code>optimizer&period;py</code></a> <em>Create optimizer for Adam/AdamW with weight decay filtering.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/tokenizer.py" id="/dalle2_pytorch/tokenizer.py"><code>tokenizer&period;py</code></a> <em>PyTorch BPE tokenizer for DALL-E2, efficient &amp; human-readable.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/trackers.py" id="/dalle2_pytorch/trackers.py"><code>trackers&period;py</code></a> <em>Trackers and loggers initialization, logging, saving, error handling.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/train_configs.py" id="/dalle2_pytorch/train_configs.py"><code>train&UnderBar;configs&period;py</code></a> <em>Trains DALL-E 2 PyTorch with configs and utilities.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/trainer.py" id="/dalle2_pytorch/trainer.py"><code>trainer&period;py</code></a> <em>DeepSpeed Trainer: Model Params, Distrib., Precision &amp; Loss</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/utils.py" id="/dalle2_pytorch/utils.py"><code>utils&period;py</code></a> <em>Helper functions for time, print, and import.</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/version.py" id="/dalle2_pytorch/version.py"><code>version&period;py</code></a> <em>DALLE2-pytorch library version: '1.15.6'</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/vqgan_vae.py" id="/dalle2_pytorch/vqgan_vae.py"><code>vqgan&UnderBar;vae&period;py</code></a> <em>VQGAN-VAE model for image gen. with conv, self-attn, layer norm</em></li>
+<li><a href="index.html?q=/dalle2_pytorch/vqgan_vae_trainer.py" id="/dalle2_pytorch/vqgan_vae_trainer.py"><code>vqgan&UnderBar;vae&UnderBar;trainer&period;py</code></a> <em>Train VAE model using ImageDataset and VQGanVAETrainer classes.</em></li>
+</ul>
+</li>
+<li><a href="index.html?q=/prior.md" id="/prior.md"><code>prior&period;md</code></a> <em>Diffusion-based image generation with CLIP</em></li>
+<li><a href="index.html?q=/setup.py" id="/setup.py"><code>setup&period;py</code></a> <em>Setup script for dalle2-pytorch package, AI developers target.</em></li>
+<li><a href="index.html?q=/train_decoder.py" id="/train_decoder.py"><code>train&UnderBar;decoder&period;py</code></a> <em>Trains DALL-E 2 UNet models with distributed support.</em></li>
+<li><a href="index.html?q=/train_diffusion_prior.py" id="/train_diffusion_prior.py"><code>train&UnderBar;diffusion&UnderBar;prior&period;py</code></a> <em>Diffusion Prior model training code.</em></li>
+</ul>
+</li>
+</ul>
+    </article>
+    <script type="text/javascript">
+        function getQueryParams() {
+            var search = window.location.search.substring(1); // Remove leading '?'
+            var queryParams = {};
+            search.split('&').forEach(function (pair) {
+                var parts = pair.split('=');
+                var key = decodeURIComponent(parts[0]);
+                var value = decodeURIComponent(parts[1]);
+                queryParams[key] = value;
+            });
+            return queryParams;
+        }
+
+        const queryParams = getQueryParams(window.location.search);
+        const show_full = queryParams.full == "true";
+        if (!show_full) {
+            const spans = document.querySelectorAll('span');
+            for (let span of spans) {
+                if (span.getAttribute("hierarchy") == '0') { continue }
+
+                toggleVisibility(span);
+            }
+        }
+    </script>
+</body>
+
+</html>
