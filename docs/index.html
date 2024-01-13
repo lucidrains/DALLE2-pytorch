@@ -994,7 +994,7 @@
                     file_title_elem.appendChild(file_title_span);
                     // location_p.innerHTML = (mylocation);
 
-                    file_title_span.onclick = () => { navigateToPage(it.header.filepath, it.language_id, project_id,searchHighlightTerms) }
+                    file_title_span.onclick = () => { navigateToPage(it.header.filepath, it.language_id, project_id, searchHighlightTerms) }
                     // file_title_span.setAttribute('onclick', `navigateToPage(${JSON.stringify(it.header.filepath)}, ${JSON.stringify(it.language_id)},${JSON.stringify(project_id)})`)
                     // location_p.setAttribute('onclick', `navigateToPage(${JSON.stringify(it.header.filepath)}, ${JSON.stringify(it.language_id)}, ${JSON.stringify(project_id)})`)
                     // search_header.appendChild(location_p);
@@ -1051,7 +1051,7 @@
                         // code_location_p.className = "monospace-text codelink";
                         // code_location_p.innerHTML = (pair_location_text);
                         code_title_span.setAttribute("title", pair_location_text)
-                        code_title_span.onclick = () => {navigateToPage(${JSON.stringify(it.header.filepath)}, ${JSON.stringify(it.language_id)},  ${JSON.stringify(project_id)}, ${JSON.stringify(pair.location)})`)
+                        code_title_span.onclick = () => { navigateToPage(it.header.filepath, it.language_id, project_id, searchHighlightTerms, pair.location) }
                         // code_title_span.setAttribute('onclick', `navigateToPage(${JSON.stringify(it.header.filepath)}, ${JSON.stringify(it.language_id)},  ${JSON.stringify(project_id)}, ${JSON.stringify(pair.location)})`)
                         // code_location_p.setAttribute('onclick', `navigateToPage(${JSON.stringify(it.header.filepath)}, ${JSON.stringify(it.language_id)},  ${JSON.stringify(project_id)}, ${JSON.stringify(pair.location)})`)
                         // pair_left.appendChild(code_location_p);

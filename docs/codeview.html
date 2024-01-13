@@ -515,9 +515,11 @@
                 }
 
                 if (keywordList != undefined) {
-                    const markInstance = new Mark(document.getElementById('code-div'));
-                    markInstance.unmark(); // Clear previous marks
-                    markInstance.mark(keywordList);
+                    setInterval(() => {
+                        const markInstance = new Mark(document.getElementById('code-div'));
+                        markInstance.unmark(); // Clear previous marks
+                        markInstance.mark(keywordList);
+                    }, 1000)
                 }
                 // applyHash();
                 // Prism.highlightElement(pre_elem, () => {applyHash()});
