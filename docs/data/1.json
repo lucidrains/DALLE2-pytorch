@@ -1,550 +1,549 @@
 {
     "100": {
         "file_id": 3,
-        "content": "prompt = \"A corgi wearing sunglasses\"\ntokenized_text = tokenize(prompt)\ntext_embedding = clip_model.encode_text(tokenized_text)\n# Now, pass the text embedding to the decoder\npredicted_image = decoder.sample(text_embedding)\n```\n> **Question**: *Can you spot the issue here?*\n>\n> **Answer**: *We’re trying to generate an image from a text embedding!*\nUnfortunately, we run into the issue previously mentioned--the image embeddings and the text embeddings are not interchangeable! Now let's look at a better solution\n```python\n# Load Models\nprior= Prior(checkpoint=\"prior.pth\") # A decoder trained to go from: text-> clip text emb -> clip img emb\ndecoder = Decoder(checkpoint=\"decoder.pth\") # A decoder trained on CLIP Image embeddings\n# Retrieve prompt from user and encode with a prior\nprompt = \"A corgi wearing sunglasses\"\ntokenized_text = tokenize(prompt)\ntext_embedding = prior.sample(tokenized_text) # <-- now we get an embedding in the same space as images!\n# Now, pass the predicted image embedding to the decoder\npredicted_image = decoder.sample(text_embedding)",
+        "content": "| ------ | -------- | ------- | ----------- |\n| `unets` | Yes | N/A | A list of unets, using the configuration above |\n| `image_sizes` | Yes | N/A | The resolution of the image after each upsampling step. The length of this array should be the number of unets defined. |\n| `image_size` | Yes | N/A | Not used. Can be any number. |\n| `timesteps` | No | `1000` | The number of diffusion timesteps used for generation. |\n| `loss_type` | No | `l2` | The loss function. Options are `l1`, `huber`, or `l2`. |\n| `beta_schedule` | No | `cosine` | The noising schedule. Options are `cosine`, `linear`, `quadratic`, `jsd`, or `sigmoid`. |\n| `learned_variance` | No | `True` | Whether to learn the variance. |\n| `clip` | No | `None` | The clip model to use if embeddings are being generated on the fly. Takes keys `make` and `model` with defaults `openai` and `ViT-L/14`. |\nAny parameter from the `Decoder` constructor can also be given here.\n**<ins>Data</ins>:**\nSettings for creation of the dataloaders.\n| Option | Required | Default | Description |",
         "type": "code",
-        "location": "/prior.md:22-47"
+        "location": "/configs/README.md:25-40"
     },
     "101": {
         "file_id": 3,
-        "content": "This code snippet demonstrates the process of generating an image from a text prompt using deep learning models. The decoder model is trained to convert text into embeddings that are in the same space as CLIP image embeddings. First, we load two models: Prior and Decoder. Then, we retrieve a user-inputted prompt, tokenize it, and use the Prior model to sample a text embedding in the same space as images. Finally, we pass this text embedding into the Decoder model to generate an image.",
+        "content": "This code appears to be defining the configuration for a machine learning model, specifically one using U-Nets. The configuration includes options for the number of unets, image resolution, timesteps, loss function type, noise schedule, and learned variance. Additionally, there are settings for creating dataloaders for the model's data. The code also notes that any parameter from the `Decoder` constructor can be included in this configuration.",
         "type": "comment"
     },
     "102": {
         "file_id": 3,
-        "content": "```\nWith the prior we are able to successfully generate embeddings *within* CLIP's image space! For this reason, the decoder will perform much better as it receives input that is much closer to its training data.\n> **You may be asking yourself the following question:**\n>\n> *\"Why don't you just train the decoder on clip text embeddings instead of image embeddings?\"*\n>\n> OpenAI covers this topic in their [DALLE-2 paper](https://arxiv.org/abs/2204.06125). The TL;DR is *\"it doesn't work as well as decoders trained on image embeddings\"*...also...its just an example :smile:\n## Usage\nTo utilize a pre-trained prior, it’s quite simple.\n### Loading Checkpoints\n```python\nimport torch\nfrom dalle2_pytorch import DiffusionPrior, DiffusionPriorNetwork, OpenAIClipAdapter\nfrom dalle2_pytorch.trainer import DiffusionPriorTrainer\ndef load_diffusion_model(dprior_path):\n    prior_network = DiffusionPriorNetwork(\n        dim=768,\n        depth=24,\n        dim_head=64,\n        heads=32,\n        normformer=True,\n        attn_dropout=5e-2,",
+        "content": "| ------ | -------- | ------- | ----------- |\n| `webdataset_base_url` | Yes | N/A | The url of a shard in the webdataset with the shard replaced with `{}`[^1]. |\n| `img_embeddings_url` | No | `None` | The url of the folder containing image embeddings shards. Not required if embeddings are in webdataset or clip is being used. |\n| `text_embeddings_url` | No | `None` | The url of the folder containing text embeddings shards. Not required if embeddings are in webdataset or clip is being used. |\n| `num_workers` | No | `4` | The number of workers used in the dataloader. |\n| `batch_size` | No | `64` | The batch size. |\n| `start_shard` | No | `0` | Defines the start of the shard range the dataset will recall. |\n| `end_shard` | No | `9999999` | Defines the end of the shard range the dataset will recall. |\n| `shard_width` | No | `6` | Defines the width of one webdataset shard number[^2]. |\n| `index_width` | No | `4` | Defines the width of the index of a file inside a shard[^3]. |\n| `splits` | No | `{ \"tra",
         "type": "code",
-        "location": "/prior.md:48-76"
+        "location": "/configs/README.md:41-51"
     },
     "103": {
         "file_id": 3,
-        "content": "The code demonstrates how to load a pre-trained prior model for use in generating embeddings within CLIP's image space, enhancing the performance of the decoder. The usage section outlines the necessary steps to load a checkpoint from a specific path using `load_diffusion_model()`.",
+        "content": "This code defines various configuration options for a dataloader, including webdataset and embeddings urls, worker numbers, batch size, shard range, and file indexing. The config allows flexibility in handling different types of datasets, with optional embeddings or use of the webdataset library.",
         "type": "comment"
     },
     "104": {
         "file_id": 3,
-        "content": "        ff_dropout=5e-2,\n        num_time_embeds=1,\n        num_image_embeds=1,\n        num_text_embeds=1,\n        num_timesteps=1000,\n        ff_mult=4\n    )\n    diffusion_prior = DiffusionPrior(\n        net=prior_network,\n        clip=OpenAIClipAdapter(\"ViT-L/14\"),\n        image_embed_dim=768,\n        timesteps=1000,\n        cond_drop_prob=0.1,\n        loss_type=\"l2\",\n        condition_on_text_encodings=True,\n    )\n    trainer = DiffusionPriorTrainer(\n        diffusion_prior=diffusion_prior,\n        lr=1.1e-4,\n        wd=6.02e-2,\n        max_grad_norm=0.5,\n        amp=False,\n        group_wd_params=True,\n        use_ema=True,\n        device=device,\n        accelerator=None,\n    )\n    trainer.load(dprior_path)\n    return trainer\n```\n Here we instantiate a model matches the configuration it was trained with, and then load the weights (*just like any other PyTorch model!*)\n### Sampling\nOnce we have a pre-trained model, generating embeddings is quite simple!\n```python\n# tokenize the text\ntokenized_text = clip.tokenize(\"<your amazing prompt>\")",
+        "content": "in\": 0.75, \"val\": 0.15, \"test\": 0.1 }` | Defines the proportion of shards that will be allocated to the training, validation, and testing datasets. |\n| `shuffle_train` | No | `True` | Whether to shuffle the shards of the training dataset. |\n| `resample_train` | No | `False` | If true, shards will be randomly sampled with replacement from the datasets making the epoch length infinite if a limit is not set. Cannot be enabled if `shuffle_train` is enabled. |\n| `preprocessing` | No | `{ \"ToTensor\": True }` | Defines preprocessing applied to images from the datasets. |\n[^1]: If your shard files have the paths `protocol://path/to/shard/00104.tar`, then the base url would be `protocol://path/to/shard/{}.tar`. If you are using a protocol like `s3`, you need to pipe the tars. For example `pipe:s3cmd get s3://bucket/path/{}.tar -`.\n[^2]: This refers to the string length of the shard number for your webdataset shards. For instance, if your webdataset shard has the filename `00104.tar`, your shard length is 5.",
         "type": "code",
-        "location": "/prior.md:77-119"
+        "location": "/configs/README.md:51-58"
     },
     "105": {
         "file_id": 3,
-        "content": "Here, a pre-trained model is instantiated and its weights are loaded. This can be done just like any other PyTorch model. To generate embeddings from text, first tokenize the input text using `clip.tokenize()`.",
+        "content": "This code defines the proportion of shards allocated to training, validation, and testing datasets as well as whether to shuffle training dataset, preprocessing applied to images from datasets, and details for downloading shard files. It also provides information on how to use protocols like `s3` and calculating the shard length based on filename.",
         "type": "comment"
     },
     "106": {
         "file_id": 3,
-        "content": "# predict an embedding\npredicted_embedding = prior.sample(tokenized_text, n_samples_per_batch=2, cond_scale=1.0)\n```\nThe resulting tensor returned from `.sample()` is of the same shape as your training data along the non-batch dimension(s). For example, a prior trained on `ViT-L/14` embeddings will predict an embedding of shape (1, 768).\n> For CLIP priors, this is quite handy as it means that you can use prior.sample(tokenizer_text) as a drop in replacement for clip.encode_text().\n**Some things to note:**\n* It is possible to specify the number of embeddings to sample from (the default suggested by OpenAI is `n=2`). Put simply, the idea here is that you avoid getting unlucky with a bad embedding generation by creating two; and selecting the one with the higher cosine similarity with the prompt.\n* You may specify a higher conditioning scale than the default (`1.0`). It is unclear whether OpenAI uses a higher value for the prior specifically, or only on the decoder. Local testing has shown poor results with anything higher than `1.0` but *ymmv*.",
+        "content": "[^3]: Inside the webdataset `tar`, you have files named something like `001045945.jpg`. 5 of these characters refer to the shard, and 4 refer to the index of the file in the webdataset (shard is `001041` and index is `5945`). The `index_width` in this case is 4.\n**<ins>Train</ins>:**\nSettings for controlling the training hyperparameters.\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `epochs` | No | `20` | The number of epochs in the training run. |\n| `lr` | No | `1e-4` | The learning rate. |\n| `wd` | No | `0.01` | The weight decay. |\n| `max_grad_norm`| No | `0.5` | The grad norm clipping. |\n| `save_every_n_samples` | No | `100000` | Samples will be generated and a checkpoint will be saved every `save_every_n_samples` samples. |\n| `cond_scale` | No | `1.0` | Conditioning scale to use for sampling. Can also be an array of values, one for each unet. |\n| `device` | No | `cuda:0` | The device to train on. |\n| `epoch_samples` | No | `None` | Limits the num",
         "type": "code",
-        "location": "/prior.md:120-130"
+        "location": "/configs/README.md:60-74"
     },
     "107": {
         "file_id": 3,
-        "content": "The code snippet is predicting an embedding using the prior's sample function, which returns a tensor of the same shape as the training data. The number of embeddings to sample can be specified and conditioning scale can be adjusted for better results. It serves as a replacement for clip.encode_text() in CLIP priors.",
+        "content": "The code provides settings for controlling training hyperparameters, such as the number of epochs, learning rate, weight decay, and grad norm clipping. It also allows saving checkpoints at specific intervals and specifying the device to train on. The conditioning scale can be customized for each unet if desired.",
         "type": "comment"
     },
     "108": {
         "file_id": 3,
-        "content": "---\n## Training\n### Overview\nTraining the prior is a relatively straightforward process thanks to the Trainer base class. The major step that is required of you is preparing a dataset in the format that EmbeddingReader expects. Having pre-computed embeddings massively increases training efficiency and is generally recommended as you will likely benefit from having them on hand for other tasks as well. Once you have a dataset, you are ready to move onto configuration\n## Dataset\nTo train the prior, it is highly recommended to use precomputed embeddings for the images. To obtain these for a custom dataset, you can leverage [img2datset](https://github.com/rom1504/img2dataset) to pull images from a list of URLs and [clip_retrieval](https://github.com/rom1504/clip-retrieval#clip-inference) for generating the actual embeddings that can be used in the prior's dataloader.\n## Configuration\nThe configuration file allows for you to easily track and reproduce experiments. It is a simple JSON file that wil",
+        "content": "ber of samples iterated through in each epoch. This must be set if resampling. None means no limit. |\n| `validation_samples` | No | `None` | The number of samples to use for validation. None mean the entire validation set. |\n| `use_ema` | No | `True` | Whether to use exponential moving average models for sampling. |\n| `ema_beta` | No | `0.99` | The ema coefficient. |\n| `unet_training_mask` | No | `None` | A boolean array of the same length as the number of unets. If false, the unet is frozen. A value of `None` trains all unets. |\n**<ins>Evaluate</ins>:**\nDefines which evaluation metrics will be used to test the model.\nEach metric can be enabled by setting its configuration. The configuration keys for each metric are defined by the torchmetrics constructors which will be linked.\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `n_evaluation_samples` | No | `1000` | The number of samples to generate to test the model. |\n| `FID` | No | `None` | Setting to",
         "type": "code",
-        "location": "/prior.md:132-146"
+        "location": "/configs/README.md:74-87"
     },
     "109": {
         "file_id": 3,
-        "content": "Training the prior involves preparing a dataset in the format expected by EmbeddingReader. Precomputed embeddings for images significantly increase training efficiency and are beneficial for other tasks as well. To obtain precomputed embeddings, you can use img2dataset and clip_retrieval. The configuration file enables tracking and reproducing experiments.",
+        "content": "The code snippet defines configurations for training a DALLE2 model in PyTorch. It includes settings such as the number of samples iterated through in each epoch, number of validation samples, whether to use exponential moving average models for sampling, and the ema coefficient. Additionally, it allows defining which evaluation metrics will be used to test the model by setting their configurations using torchmetrics constructors. The number of samples generated to test the model is also specified.",
         "type": "comment"
     },
     "110": {
         "file_id": 3,
-        "content": "l specify the architecture, dataset, and training parameters. For more information and specifics please see the configuration README.\n## Distributed Training\nIf you would like to train in a distributed manner we have opted to leverage huggingface’ new Accelerate library. HFA makes it extremely simple to distribute work across multiple GPU’s and nodes. All that is required of you is to follow the simple CLI configuration tool [more information here](https://huggingface.co/docs/accelerate/accelerator).\n## Evaluation\nThere are a variety of metrics available to you when training the prior. You can read a brief description of each in the table below:\n| Metric                              | Description                                                                                                                                                                                                                                                  | Comments                                                ",
+        "content": " an object enables the [Frechet Inception Distance](https://torchmetrics.readthedocs.io/en/stable/image/frechet_inception_distance.html) metric. \n| `IS` | No | `None` | Setting to an object enables the [Inception Score](https://torchmetrics.readthedocs.io/en/stable/image/inception_score.html) metric.\n| `KID` | No | `None` | Setting to an object enables the [Kernel Inception Distance](https://torchmetrics.readthedocs.io/en/stable/image/kernel_inception_distance.html) metric. |\n| `LPIPS` | No | `None` | Setting to an object enables the [Learned Perceptual Image Patch Similarity](https://torchmetrics.readthedocs.io/en/stable/image/learned_perceptual_image_patch_similarity.html) metric. |\n**<ins>Tracker</ins>:**\nSelects how the experiment will be tracked.\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `data_path` | No | `./.tracker-data` | The path to the folder where temporary tracker data will be saved. |\n| `overwrite_data_path` | No | `False` | If true, the data path will be overwritten. Otherwise, you need to delete it yourself. |",
         "type": "code",
-        "location": "/prior.md:146-155"
+        "location": "/configs/README.md:87-98"
     },
     "111": {
         "file_id": 3,
-        "content": "This code describes the architecture, dataset, and training parameters for a specific task. It also mentions distributed training using HuggingFace's Accelerate library and various evaluation metrics available during training.",
+        "content": "This code snippet is from the configs/README.md file of the DALLE2-pytorch project. It describes how to enable different image metrics and set up experiment tracking. The available metrics are Frechet Inception Distance, Inception Score, Kernel Inception Distance, and Learned Perceptual Image Patch Similarity. The tracker can be configured with data_path and overwrite_data_path options for storing temporary tracking data.",
         "type": "comment"
     },
     "112": {
         "file_id": 3,
-        "content": "                                                                                                                                                                                                                                                                                                |\n| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n| Online Model Validation             | The validation loss associated ",
+        "content": "| `log` | Yes | N/A | Logging configuration. |\n| `load` | No | `None` | Checkpoint loading configuration. |\n| `save` | Yes | N/A | Checkpoint/Model saving configuration. |\nTracking is split up into three sections:\n* Log: Where to save run metadata and image output. Options are `console` or `wandb`.\n* Load: Where to load a checkpoint from. Options are `local`, `url`, or `wandb`.\n* Save: Where to save a checkpoint to. Options are `local`, `huggingface`, or `wandb`.\n**Logging:**\nAll loggers have the following keys:\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `log_type` | Yes | N/A | The type of logger class to use. |\n| `resume` | No | `False` | For loggers that have the option to resume an old run, resume it using maually input parameters. |\n| `auto_resume` | No | `False` | If true, the logger will attempt to resume an old run using parameters from that previous run. |\nIf using `console` there is no further configuration than setting `log_type` to `console`.",
         "type": "code",
-        "location": "/prior.md:155-157"
+        "location": "/configs/README.md:99-116"
     },
     "113": {
         "file_id": 3,
-        "content": "This code is for calculating the validation loss associated with the online model validation process. The calculated validation loss will be used to evaluate the performance of the trained model during inference.",
+        "content": "The code defines configuration settings for logging, loading checkpoints, and saving checkpoints in a DALLE2-pytorch application. The logging section allows specifying where to save run metadata and image output (options: console or wandb). Loading can be from local, URL, or Wandb sources. Saving can be done locally, on HuggingFace, or via Wandb. Loggers have options for resume and auto-resume functions. If using console logging, only the log_type needs to be set as console.",
         "type": "comment"
     },
     "114": {
         "file_id": 3,
-        "content": "with your online model.                                                                                                                                                                                                       | Ideally validation loss will be as low as possible. Using L2 loss, values as low as `0.1` and lower are possible after around 1 Billion samples seen.                                                                                                                                                                                                |\n| EMA Validation                      | This metric measures the validation loss associated with your EMA model.                                                                                                                                                                                     | This will likely lag behind your \"online\" model's validation loss, but should outperform in the long-term.                                 ",
+        "content": "| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `log_type` | Yes | N/A | Must be `console`. |\nIf using `wandb`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `log_type` | Yes | N/A | Must be `wandb`. |\n| `wandb_entity` | Yes | N/A | The wandb entity to log to. |\n| `wandb_project` | Yes | N/A | The wandb project save the run to. |\n| `wandb_run_name` | No | `None` | The wandb run name. |\n| `wandb_run_id` | No | `None` | The wandb run id. Used if resuming an old run. |\n**Loading:**\nAll loaders have the following keys:\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | The type of loader class to use. |\n| `only_auto_resume` | No | `False` | If true, the loader will only load the model if the run is being auto resumed. |\nIf using `local`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | Must be `local`. |",
         "type": "code",
-        "location": "/prior.md:157-158"
+        "location": "/configs/README.md:117-141"
     },
     "115": {
         "file_id": 3,
-        "content": "This code is discussing the usage of an Exponential Moving Average (EMA) model in a machine learning context. The EMA model's performance is compared to the online model, specifically focusing on validation loss as a metric. The lower the validation loss, the better the model's performance, with values around 0.1 achievable after billions of samples. However, the EMA validation loss might lag behind but should outperform in the long term.",
+        "content": "This code is defining the configuration options for logging and loading in a DALLE2-pytorch application. The user has to specify the log type (console or wandb) along with other required and optional parameters depending on the selected logger. The loaders have options to specify the loader class type (e.g., local) and whether to only auto resume if the run is being resumed.",
         "type": "comment"
     },
     "116": {
         "file_id": 3,
-        "content": "                                                                                                                                                                                                             |\n| Baseline Similarity                 | Baseline similarity refers to the similarity between your dataset's prompts and associated image embeddings. This will serve as a guide for your prior's performance in cosine similarity.                                                                    | Generally `0.3` is considered a good cosine similarity for caption similarity.                                                                                                                                                                                                                                                                         |\n| Similarity With Original Image      | This metric will measure the cosine similarity between your prior's predicted image embedding and the actual image",
+        "content": "| `file_path` | Yes | N/A | The path to the checkpoint file. |\nIf using `url`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | Must be `url`. |\n| `url` | Yes | N/A | The url of the checkpoint file. |\nIf using `wandb`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `load_from` | Yes | N/A | Must be `wandb`. |\n| `wandb_run_path` | No | `None` | The wandb run path. If `None`, uses the run that is being resumed. |\n| `wandb_file_path` | Yes | N/A | The path to the checkpoint file in the W&B file system. |\n**Saving:**\nUnlike `log` and `load`, `save` may be an array of options so that you can save to different locations in a run.\nAll save locations have these configuration options\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `local`, `huggingface`, or `wandb`. |\n| `save_latest_to` | No | `None` | Sets the relative path to save the latest model to. |",
         "type": "code",
-        "location": "/prior.md:158-160"
+        "location": "/configs/README.md:142-164"
     },
     "117": {
         "file_id": 3,
-        "content": "This code snippet is explaining the concept of baseline similarity in the context of DALLE2-pytorch, where it refers to the similarity between dataset prompts and image embeddings. It also mentions that generally, a cosine similarity value of 0.3 is considered good for caption similarity. Additionally, there's information about another metric - similarity with original image, which measures cosine similarity between the prior's predicted image embedding and the actual image.",
+        "content": "The code defines the options for loading and saving checkpoint files. It supports loading from a file path, URL or WandB run, with each option having specific required configurations. Saving to different locations is also supported through options like local, huggingface, or wandb, with additional configuration possibilities.",
         "type": "comment"
     },
     "118": {
         "file_id": 3,
-        "content": " that the caption was associated with. This is useful for determining wether your prior is generating images with the right contents.      | Values around `0.75`+ are obtainable. This metric should improve rapidly in the early stages of training and plateau with diminishing increases over time. If it takes hundreds of millions of samples to reach above `0.5`/`0.6` similarity--then you likely are suffering from some kind of training error or inefficiency (i.e. not using EMA) |\n| Difference From Baseline Similarity | Sometimes its useful to visualize a metric in another light. This metric will show you how your prior's predicted image embeddings match up with the baseline similarity measured in your dataset.                                                           | This value should float around `0.0` with some room for variation. After a billion samples seen, values are within `0.01`+/- of `0.0`. If this climbs to high, (~>`0.02`) then this may be a sign that your model is overfitting ",
+        "content": "| `save_best_to` | No | `None` | Sets the relative path to save the best model to every time the model has a lower validation loss than all previous models. |\n| `save_meta_to` | No | `None` | The path to save metadata files in. This includes the config files used to start the training. |\n| `save_type` | No | `checkpoint` | The type of save. `checkpoint` saves a checkpoint, `model` saves a model without any fluff (Saves with ema if ema is enabled). |\nIf using `local`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `local`. |\nIf using `huggingface`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `huggingface`. |\n| `huggingface_repo` | Yes | N/A | The huggingface repository to save to. |\n| `token_path` | No | `None` | If logging in with the huggingface cli is not possible, point to a token file instead. |\nIf using `wandb`\n| Option | Required | Default | Description |",
         "type": "code",
-        "location": "/prior.md:160-161"
+        "location": "/configs/README.md:165-182"
     },
     "119": {
         "file_id": 3,
-        "content": "The code provides information about the similarity metric between generated images and captions, as well as the difference from baseline similarity. The values should improve rapidly in early stages of training and plateau over time, while staying around 0 for the difference metric. Values above 0.5/0.6 or climbing to high values may indicate issues with training efficiency or overfitting, respectively.",
+        "content": "This code sets options for saving models and metadata during training. It allows saving to local, huggingface or wandb storage with specific requirements for each option. The save type can be checkpoint or model, and there are additional options like saving best models, token file path, and repository paths.",
         "type": "comment"
     },
     "120": {
         "file_id": 3,
-        "content": "somehow.                                                                                                       |\n| Similarity With Text                | This metric is your bread and butter cosine similarity between the predicted image embedding and the original caption given to the prior. Monitoring this metric will be on of your main focuses and is probably the second most important behind your loss. | As mentioned, this value should be close to baseline similarity. We have observed early rapid increase with diminishing returns as the prior learns to generate valid image embeddings. If this value increases too far beyond the baseline similarity--it could be an indication that your model is overfitting.                                       |\n| Similarity With Unrelated Caption   | This metric will attempt to exposed an overfit prior by feeding it arbitrary prompts (from your dataset) and then measure the similarity of this predicted embedding with some other image.                     ",
+        "content": "| ------ | -------- | ------- | ----------- |\n| `save_to` | Yes | N/A | Must be `wandb`. |\n| `wandb_run_path` | No | `None` | The wandb run path. If `None`, uses the current run. You will almost always want this to be `None`. |",
         "type": "code",
-        "location": "/prior.md:161-163"
+        "location": "/configs/README.md:183-185"
     },
     "121": {
         "file_id": 3,
-        "content": "The code measures the cosine similarity between predicted image embeddings and original captions, as well as with unrelated captions to detect overfitting. Monitoring these metrics is crucial for model performance, as they indicate how well the model is learning from captions and generating valid image embeddings.",
+        "content": "The code defines configuration options for saving and interacting with the Weights & Biases (Wandb) run path. If `save_to` is set to `wandb`, the `wandb_run_path` should be `None`. Otherwise, it defaults to the current run if `wandb_run_path` is set to `None`.",
         "type": "comment"
     },
     "122": {
-        "file_id": 3,
-        "content": "                                              | Early on we found that a poorly trained/modeled prior could effectively fool CLIP into believing that the cosine similarity between two images were high (when in fact the caption and image were completely unrelated). With this in mind--a low value is ideal, anything below `0.1` is probably safe.                                              |\n## Launching the script\nNow that you’ve done all the prep it’s time for the easy part! 🚀\nTo actually launch the script, you will either use `accelerate launch train_diffusion_prior.py --config_path <path to your config>` to launch with distributed training & huggingface accelerate or `python train_diffusion_prior.py` if you would like to train on your gpu/cpu without huggingface accelerate.\n## Checkpointing\nCheckpoints will be saved to the directory specified in your configuration file.\nAdditionally, a final checkpoint is saved before running the test split. This file will be saved to the same directory and",
-        "type": "code",
-        "location": "/prior.md:163-175"
+        "file_id": 4,
+        "content": "/dalle2_pytorch/__init__.py",
+        "type": "filepath"
     },
     "123": {
-        "file_id": 3,
-        "content": "The code provides instructions on how to launch the training script for a diffusion model using either distributed training with HuggingFace Accelerate or without it. It also mentions that checkpoints will be saved in the directory specified in the configuration file, and an additional final checkpoint will be saved before running the test split. The prior value should ideally be kept low to avoid fooling CLIP into believing unrelated captions and images have high cosine similarity.",
-        "type": "comment"
+        "file_id": 4,
+        "content": "This code is importing modules from the DALLE2-pytorch library, which includes the main DALLE2 class, diffusion prior network, unet, decoder, clip adapters, trainer for the decoder and diffusion prior, and VQGanVAE. The x_clip module also appears to be imported, but its purpose is not explicitly described in this chunk of code.",
+        "type": "summary"
     },
     "124": {
-        "file_id": 3,
-        "content": " titled “latest.pth”. This is to avoid problems where your `save_every` configuration does not overlap with the number of steps required to do a complete pass through the data.\n## Things To Keep In Mind\nThe prior has not been trained for tasks other than the traditional CLIP embedding translation…at least yet.\nAs we finalize the replication of unCLIP, there will almost assuredly be experiments attempting to apply the prior network to other tasks.\nWith that in mind, you are more or less a pioneer in embedding-translation if you are reading this and attempting something you don’t see documentation for!",
+        "file_id": 4,
+        "content": "from dalle2_pytorch.version import __version__\nfrom dalle2_pytorch.dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder\nfrom dalle2_pytorch.dalle2_pytorch import OpenAIClipAdapter, OpenClipAdapter\nfrom dalle2_pytorch.trainer import DecoderTrainer, DiffusionPriorTrainer\nfrom dalle2_pytorch.vqgan_vae import VQGanVAE\nfrom x_clip import CLIP",
         "type": "code",
-        "location": "/prior.md:175-183"
+        "location": "/dalle2_pytorch/__init__.py:1-7"
     },
     "125": {
-        "file_id": 3,
-        "content": "This code snippet is providing information about the \"latest.pth\" file and its purpose to avoid potential problems with `save_every` configuration not overlapping with data requirements. It also mentions that the prior network has not been trained for tasks other than traditional CLIP embedding translation, hinting at future experiments applying the prior network to other tasks.",
+        "file_id": 4,
+        "content": "This code is importing modules from the DALLE2-pytorch library, which includes the main DALLE2 class, diffusion prior network, unet, decoder, clip adapters, trainer for the decoder and diffusion prior, and VQGanVAE. The x_clip module also appears to be imported, but its purpose is not explicitly described in this chunk of code.",
         "type": "comment"
     },
     "126": {
-        "file_id": 4,
-        "content": "/setup.py",
+        "file_id": 5,
+        "content": "/dalle2_pytorch/cli.py",
         "type": "filepath"
     },
     "127": {
-        "file_id": 4,
-        "content": "This code is a setup script for the dalle2-pytorch package using setuptools, defining project details and dependencies like PyTorch, Torchvision, and more. It's a Python project with beta development status, targeting developers in AI field, licensed under MIT, requires Python 3.6.",
+        "file_id": 5,
+        "content": "This code imports libraries, defines functions, and parses command-line arguments for model path, conditioning scale, and input text. It loads a DALL-E2 model, generates an image based on the input text, saves it in PIL format, and returns the saved image.",
         "type": "summary"
     },
     "128": {
-        "file_id": 4,
-        "content": "from setuptools import setup, find_packages\nexec(open('dalle2_pytorch/version.py').read())\nsetup(\n  name = 'dalle2-pytorch',\n  packages = find_packages(exclude=[]),\n  include_package_data = True,\n  entry_points={\n    'console_scripts': [\n      'dalle2_pytorch = dalle2_pytorch.cli:main',\n      'dream = dalle2_pytorch.cli:dream'\n    ],\n  },\n  version = __version__,\n  license='MIT',\n  description = 'DALL-E 2',\n  author = 'Phil Wang',\n  author_email = 'lucidrains@gmail.com',\n  long_description_content_type = 'text/markdown',\n  url = 'https://github.com/lucidrains/dalle2-pytorch',\n  keywords = [\n    'artificial intelligence',\n    'deep learning',\n    'text to image'\n  ],\n  install_requires=[\n    'accelerate',\n    'click',\n    'open-clip-torch>=2.0.0,<3.0.0',\n    'clip-anytorch>=2.5.2',\n    'coca-pytorch>=0.0.5',\n    'ema-pytorch>=0.0.7',\n    'einops>=0.7.0',\n    'embedding-reader',\n    'kornia>=0.5.4',\n    'numpy',\n    'packaging',\n    'pillow',\n    'pydantic>=2',\n    'pytorch-warmup',\n    'resize-right>=0.0.2',\n    'rotary-embedding-torch',",
+        "file_id": 5,
+        "content": "import click\nimport torch\nimport torchvision.transforms as T\nfrom functools import reduce\nfrom pathlib import Path\nfrom dalle2_pytorch import DALLE2, Decoder, DiffusionPrior\ndef safeget(dictionary, keys, default = None):\n    return reduce(lambda d, key: d.get(key, default) if isinstance(d, dict) else default, keys.split('.'), dictionary)\ndef simple_slugify(text, max_length = 255):\n    return text.replace(\"-\", \"_\").replace(\",\", \"\").replace(\" \", \"_\").replace(\"|\", \"--\").strip('-_')[:max_length]\ndef get_pkg_version():\n    from pkg_resources import get_distribution\n    return get_distribution('dalle2_pytorch').version\ndef main():\n    pass\n@click.command()\n@click.option('--model', default = './dalle2.pt', help = 'path to trained DALL-E2 model')\n@click.option('--cond_scale', default = 2, help = 'conditioning scale (classifier free guidance) in decoder')\n@click.argument('text')\ndef dream(\n    model,\n    cond_scale,\n    text\n):\n    model_path = Path(model)\n    full_model_path = str(model_path.resolve())\n    assert model_path.exists(), f'model not found at {full_model_path}'",
         "type": "code",
-        "location": "/setup.py:1-42"
+        "location": "/dalle2_pytorch/cli.py:1-33"
     },
     "129": {
-        "file_id": 4,
-        "content": "This code is a setup script for the dalle2-pytorch package using setuptools. It defines the name, packages, entry points, version, license, description, author, URL, keywords, and install_requires. The script imports necessary modules and sets up dependencies for installation.",
+        "file_id": 5,
+        "content": "This code imports necessary libraries, defines some utility functions and a main function. It also includes a command-line argument parser with options for model path, conditioning scale, and the text input. The assert statement ensures that the specified model file exists before proceeding.",
         "type": "comment"
     },
     "130": {
-        "file_id": 4,
-        "content": "    'torch>=1.10',\n    'torchvision',\n    'tqdm',\n    'vector-quantize-pytorch',\n    'x-clip>=0.4.4',\n    'webdataset>=0.2.5',\n    'fsspec>=2022.1.0',\n    'torchmetrics[image]>=0.8.0'\n  ],\n  classifiers=[\n    'Development Status :: 4 - Beta',\n    'Intended Audience :: Developers',\n    'Topic :: Scientific/Engineering :: Artificial Intelligence',\n    'License :: OSI Approved :: MIT License',\n    'Programming Language :: Python :: 3.6',\n  ],\n)",
+        "file_id": 5,
+        "content": "    loaded = torch.load(str(model_path))\n    version = safeget(loaded, 'version')\n    print(f'loading DALL-E2 from {full_model_path}, saved at version {version} - current package version is {get_pkg_version()}')\n    prior_init_params = safeget(loaded, 'init_params.prior')\n    decoder_init_params = safeget(loaded, 'init_params.decoder')\n    model_params = safeget(loaded, 'model_params')\n    prior = DiffusionPrior(**prior_init_params)\n    decoder = Decoder(**decoder_init_params)\n    dalle2 = DALLE2(prior, decoder)\n    dalle2.load_state_dict(model_params)\n    image = dalle2(text, cond_scale = cond_scale)\n    pil_image = T.ToPILImage()(image)\n    return pil_image.save(f'./{simple_slugify(text)}.png')",
         "type": "code",
-        "location": "/setup.py:43-59"
+        "location": "/dalle2_pytorch/cli.py:34-52"
     },
     "131": {
-        "file_id": 4,
-        "content": "This is a Python project setup file, using setuptools. It depends on PyTorch >= 1.10, Torchvision, Tqdm, VectorQuantizePytorch, X-Clip >= 0.4.4, Webdataset >= 0.2.5, FSSpec >= 2022.1.0, and TorchMetrics[image] >= 0.8.0. The project has a beta development status, is intended for developers, relates to artificial intelligence, is licensed under MIT, and requires Python 3.6.",
+        "file_id": 5,
+        "content": "This code loads a saved DALL-E2 model from a specified path, checks the version, initializes the prior and decoder components, recreates the model using these components, loads its parameters, generates an image based on input text, converts it to PIL format, saves it with a file name derived from the input text, and returns the saved image.",
         "type": "comment"
     },
     "132": {
-        "file_id": 5,
-        "content": "/train_decoder.py",
+        "file_id": 6,
+        "content": "/dalle2_pytorch/dalle2_pytorch.py",
         "type": "filepath"
     },
     "133": {
-        "file_id": 5,
-        "content": "This code divides shards, initializes training, and trains UNet models for DALL-E 2 using PyTorch. It also supports distributed training and executes as a standalone program.",
+        "file_id": 6,
+        "content": "The code uses VQGAN-VAE, CLIP, and CoCa libraries for image generation, and includes helper functions, PyTorch CLIP model, neural networks, DALL-E 2 architecture, self-attention layers with normalization and dropout regularization. It initializes efficient DALL-E 2 and Imagen models, utilizes diffusion models for denoising and inpainting images, and incorporates conditional sampling from DALLE2-pytorch model for low-resolution image generation.",
         "type": "summary"
     },
     "134": {
-        "file_id": 5,
-        "content": "from pathlib import Path\nfrom typing import List\nfrom datetime import timedelta\nfrom dalle2_pytorch.trainer import DecoderTrainer\nfrom dalle2_pytorch.dataloaders import create_image_embedding_dataloader\nfrom dalle2_pytorch.trackers import Tracker\nfrom dalle2_pytorch.train_configs import DecoderConfig, TrainDecoderConfig\nfrom dalle2_pytorch.utils import Timer, print_ribbon\nfrom dalle2_pytorch.dalle2_pytorch import Decoder, resize_image_to\nfrom clip import tokenize\nimport torchvision\nimport torch\nfrom torch import nn\nfrom torchmetrics.image.fid import FrechetInceptionDistance\nfrom torchmetrics.image.inception import InceptionScore\nfrom torchmetrics.image.kid import KernelInceptionDistance\nfrom torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity\nfrom accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGroupKwargs\nfrom accelerate.utils import dataclasses as accelerate_dataclasses\nimport webdataset as wds\nimport click\n# constants\nTRAIN_CALC_LOSS_EVERY_ITERS = 10\nVALID_CALC_LOSS_EVERY_ITERS = 10",
+        "file_id": 6,
+        "content": "import math\nimport random\nfrom tqdm.auto import tqdm\nfrom functools import partial, wraps\nfrom contextlib import contextmanager\nfrom collections import namedtuple\nfrom pathlib import Path\nimport torch\nimport torch.nn.functional as F\nfrom torch.utils.checkpoint import checkpoint\nfrom torch import nn, einsum\nimport torchvision.transforms as T\nfrom einops import rearrange, repeat, reduce, pack, unpack\nfrom einops.layers.torch import Rearrange\nfrom kornia.filters import gaussian_blur2d\nimport kornia.augmentation as K\nfrom dalle2_pytorch.tokenizer import tokenizer\nfrom dalle2_pytorch.vqgan_vae import NullVQGanVAE, VQGanVAE\nfrom resize_right import resize\n# rotary embeddings\nfrom rotary_embedding_torch import RotaryEmbedding\n# use x-clip\nfrom x_clip import CLIP\nfrom coca_pytorch import CoCa\n# constants\nNAT = 1. / math.log(2.)\nUnetOutput = namedtuple('UnetOutput', ['pred', 'var_interp_frac_unnormalized'])\n# helper functions\ndef exists(val):\n    return val is not None\ndef identity(t, *args, **kwargs):\n    return t\ndef first(arr, d = None):",
         "type": "code",
-        "location": "/train_decoder.py:1-28"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1-49"
     },
     "135": {
-        "file_id": 5,
-        "content": "This code imports various modules and defines constants for training a decoder model in the DALLE2-pytorch framework. It uses DecoderTrainer, dataloaders, trackers, train configs, utilities, and models from the dalle2_pytorch package. It also includes metrics such as FrechetInceptionDistance, InceptionScore, KernelInceptionDistance, and LearnedPerceptualImagePatchSimilarity for evaluation. Accelerate is used for accelerated training, and webdataset is used for data loading.",
+        "file_id": 6,
+        "content": "This code imports various libraries and defines functions for data processing, including image resizing, Gaussian blurring, and rotary embeddings. It also utilizes the VQGAN-VAE, CLIP model, and CoCa. The code contains namedtuples, helper functions, and constants relevant to the tasks of image generation and language modeling.",
         "type": "comment"
     },
     "136": {
-        "file_id": 5,
-        "content": "# helpers functions\ndef exists(val):\n    return val is not None\n# main functions\ndef create_dataloaders(\n    available_shards,\n    webdataset_base_url,\n    img_embeddings_url=None,\n    text_embeddings_url=None,\n    shard_width=6,\n    num_workers=4,\n    batch_size=32,\n    n_sample_images=6,\n    shuffle_train=True,\n    resample_train=False,\n    img_preproc = None,\n    index_width=4,\n    train_prop = 0.75,\n    val_prop = 0.15,\n    test_prop = 0.10,\n    seed = 0,\n    **kwargs\n):\n    \"\"\"\n    Randomly splits the available shards into train, val, and test sets and returns a dataloader for each\n    \"\"\"\n    assert train_prop + test_prop + val_prop == 1\n    num_train = round(train_prop*len(available_shards))\n    num_test = round(test_prop*len(available_shards))\n    num_val = len(available_shards) - num_train - num_test\n    assert num_train + num_test + num_val == len(available_shards), f\"{num_train} + {num_test} + {num_val} = {num_train + num_test + num_val} != {len(available_shards)}\"\n    train_split, test_split, val_split =",
+        "file_id": 6,
+        "content": "    if len(arr) == 0:\n        return d\n    return arr[0]\ndef maybe(fn):\n    @wraps(fn)\n    def inner(x, *args, **kwargs):\n        if not exists(x):\n            return x\n        return fn(x, *args, **kwargs)\n    return inner\ndef default(val, d):\n    if exists(val):\n        return val\n    return d() if callable(d) else d\ndef cast_tuple(val, length = None, validate = True):\n    if isinstance(val, list):\n        val = tuple(val)\n    out = val if isinstance(val, tuple) else ((val,) * default(length, 1))\n    if exists(length) and validate:\n        assert len(out) == length\n    return out\ndef module_device(module):\n    if isinstance(module, nn.Identity):\n        return 'cpu' # It doesn't matter\n    return next(module.parameters()).device\ndef zero_init_(m):\n    nn.init.zeros_(m.weight)\n    if exists(m.bias):\n        nn.init.zeros_(m.bias)\n@contextmanager\ndef null_context(*args, **kwargs):\n    yield\ndef eval_decorator(fn):\n    def inner(model, *args, **kwargs):\n        was_training = model.training\n        model.eval()\n        out = fn(model, *args, **kwargs)",
         "type": "code",
-        "location": "/train_decoder.py:30-64"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:50-96"
     },
     "137": {
-        "file_id": 5,
-        "content": "This function takes available shards, URLs for embeddings, and other parameters to randomly split them into train, validation, and test sets, then returns dataloaders for each. It asserts that the proportions of splits sum up to 1, calculates the actual number of samples in each split based on the proportion, and checks if the sum of splits matches the total number of available shards.",
+        "file_id": 6,
+        "content": "Function 'if len(arr) == 0: return d' checks if the array is empty and returns the value 'd' if it is.\n'maybe(fn)' function creates a decorator that checks if the input exists, returning it if it does not.\n'default(val, d)' function returns the provided value 'val' if it exists; otherwise, it returns the default value 'd'.\n'cast_tuple(val, length=None, validate=True)' casts its argument to a tuple and optionally checks its length.\n'module_device(module)' retrieves the device of the module, defaulting to CPU for certain types like nn.Identity.\n'zero_init_(m)' initializes the weights and biases of the given module 'm' with zeros.\n'null_context(*args, **kwargs)' is a context manager that does nothing.\n'eval_decorator(fn)' wraps a function to evaluate the model before executing it.",
         "type": "comment"
     },
     "138": {
-        "file_id": 5,
-        "content": " torch.utils.data.random_split(available_shards, [num_train, num_test, num_val], generator=torch.Generator().manual_seed(seed))\n    # The shard number in the webdataset file names has a fixed width. We zero pad the shard numbers so they correspond to a filename.\n    train_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in train_split]\n    test_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in test_split]\n    val_urls = [webdataset_base_url.format(str(shard).zfill(shard_width)) for shard in val_split]\n    create_dataloader = lambda tar_urls, shuffle=False, resample=False, for_sampling=False: create_image_embedding_dataloader(\n        tar_url=tar_urls,\n        num_workers=num_workers,\n        batch_size=batch_size if not for_sampling else n_sample_images,\n        img_embeddings_url=img_embeddings_url,\n        text_embeddings_url=text_embeddings_url,\n        index_width=index_width,\n        shuffle_num = None,\n        extra_keys= [\"txt\"],\n        shuffle_shards = shuffle,",
+        "file_id": 6,
+        "content": "        model.train(was_training)\n        return out\n    return inner\ndef is_float_dtype(dtype):\n    return any([dtype == float_dtype for float_dtype in (torch.float64, torch.float32, torch.float16, torch.bfloat16)])\ndef is_list_str(x):\n    if not isinstance(x, (list, tuple)):\n        return False\n    return all([type(el) == str for el in x])\ndef pad_tuple_to_length(t, length, fillvalue = None):\n    remain_length = length - len(t)\n    if remain_length <= 0:\n        return t\n    return (*t, *((fillvalue,) * remain_length))\n# checkpointing helper function\ndef make_checkpointable(fn, **kwargs):\n    if isinstance(fn, nn.ModuleList):\n        return [maybe(make_checkpointable)(el, **kwargs) for el in fn]\n    condition = kwargs.pop('condition', None)\n    if exists(condition) and not condition(fn):\n        return fn\n    @wraps(fn)\n    def inner(*args):\n        input_needs_grad = any([isinstance(el, torch.Tensor) and el.requires_grad for el in args])\n        if not input_needs_grad:\n            return fn(*args)\n        return checkpoint(fn, *args)",
         "type": "code",
-        "location": "/train_decoder.py:64-80"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:97-133"
     },
     "139": {
-        "file_id": 5,
-        "content": "This code randomly splits available shards into training, testing, and validation sets. It then generates corresponding URLs for each set by zero-padding the shard numbers to match the filename format. A lambda function is created to handle creating a dataloader for image embeddings using these URLs, considering various parameters like batch size and number of workers.",
+        "file_id": 6,
+        "content": "This code defines several helper functions for processing lists of strings, padding tuples to a specific length, and creating checkpointable versions of Python functions. It also includes a function to determine if a given dtype is a floating point type, and a conditional wrapper for creating a checkpointable version of a function or module list.",
         "type": "comment"
     },
     "140": {
-        "file_id": 5,
-        "content": "        resample_shards = resample, \n        img_preproc=img_preproc,\n        handler=wds.handlers.warn_and_continue\n    )\n    train_dataloader = create_dataloader(train_urls, shuffle=shuffle_train, resample=resample_train)\n    train_sampling_dataloader = create_dataloader(train_urls, shuffle=False, for_sampling=True)\n    val_dataloader = create_dataloader(val_urls, shuffle=False)\n    test_dataloader = create_dataloader(test_urls, shuffle=False)\n    test_sampling_dataloader = create_dataloader(test_urls, shuffle=False, for_sampling=True)\n    return {\n        \"train\": train_dataloader,\n        \"train_sampling\": train_sampling_dataloader,\n        \"val\": val_dataloader,\n        \"test\": test_dataloader,\n        \"test_sampling\": test_sampling_dataloader\n    }\ndef get_dataset_keys(dataloader):\n    \"\"\"\n    It is sometimes neccesary to get the keys the dataloader is returning. Since the dataset is burried in the dataloader, we need to do a process to recover it.\n    \"\"\"\n    # If the dataloader is actually a WebLoader, we need to extract the real dataloader",
+        "file_id": 6,
+        "content": "    return inner\n# for controlling freezing of CLIP\ndef set_module_requires_grad_(module, requires_grad):\n    for param in module.parameters():\n        param.requires_grad = requires_grad\ndef freeze_all_layers_(module):\n    set_module_requires_grad_(module, False)\ndef unfreeze_all_layers_(module):\n    set_module_requires_grad_(module, True)\ndef freeze_model_and_make_eval_(model):\n    model.eval()\n    freeze_all_layers_(model)\n# tensor helpers\ndef log(t, eps = 1e-12):\n    return torch.log(t.clamp(min = eps))\ndef l2norm(t):\n    return F.normalize(t, dim = -1)\ndef resize_image_to(\n    image,\n    target_image_size,\n    clamp_range = None,\n    nearest = False,\n    **kwargs\n):\n    orig_image_size = image.shape[-1]\n    if orig_image_size == target_image_size:\n        return image\n    if not nearest:\n        scale_factors = target_image_size / orig_image_size\n        out = resize(image, scale_factors = scale_factors, **kwargs)\n    else:\n        out = F.interpolate(image, target_image_size, mode = 'nearest')\n    if exists(clamp_range):",
         "type": "code",
-        "location": "/train_decoder.py:81-103"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:135-179"
     },
     "141": {
-        "file_id": 5,
-        "content": "The code creates multiple data loaders for training, validation, and testing datasets. It returns a dictionary with each dataset's corresponding dataloader. The `get_dataset_keys` function extracts the real dataloader if the input is a WebLoader.",
+        "file_id": 6,
+        "content": "The code defines functions for controlling the gradient flow in a module, freezing all layers in a model, and making it evaluate only. It also includes helper functions to log a tensor, normalize a tensor using L2 norm, and resize an image to the specified size with optional interpolation method.",
         "type": "comment"
     },
     "142": {
-        "file_id": 5,
-        "content": "    if isinstance(dataloader, wds.WebLoader):\n        dataloader = dataloader.pipeline[0]\n    return dataloader.dataset.key_map\ndef get_example_data(dataloader, device, n=5):\n    \"\"\"\n    Samples the dataloader and returns a zipped list of examples\n    \"\"\"\n    images = []\n    img_embeddings = []\n    text_embeddings = []\n    captions = []\n    for img, emb, txt in dataloader:\n        img_emb, text_emb = emb.get('img'), emb.get('text')\n        if img_emb is not None:\n            img_emb = img_emb.to(device=device, dtype=torch.float)\n            img_embeddings.extend(list(img_emb))\n        else:\n            # Then we add None img.shape[0] times\n            img_embeddings.extend([None]*img.shape[0])\n        if text_emb is not None:\n            text_emb = text_emb.to(device=device, dtype=torch.float)\n            text_embeddings.extend(list(text_emb))\n        else:\n            # Then we add None img.shape[0] times\n            text_embeddings.extend([None]*img.shape[0])\n        img = img.to(device=device, dtype=torch.float)",
+        "file_id": 6,
+        "content": "        out = out.clamp(*clamp_range)\n    return out\n# image normalization functions\n# ddpms expect images to be in the range of -1 to 1\n# but CLIP may otherwise\ndef normalize_neg_one_to_one(img):\n    return img * 2 - 1\ndef unnormalize_zero_to_one(normed_img):\n    return (normed_img + 1) * 0.5\n# clip related adapters\nEmbeddedText = namedtuple('EmbedTextReturn', ['text_embed', 'text_encodings'])\nEmbeddedImage = namedtuple('EmbedImageReturn', ['image_embed', 'image_encodings'])\nclass BaseClipAdapter(nn.Module):\n    def __init__(self, clip, **kwargs):\n        super().__init__()\n        self.clip = clip\n        self.overrides = kwargs\n    def validate_and_resize_image(self, image):\n        image_size = image.shape[-1]\n        assert image_size >= self.image_size, f'you are passing in an image of size {image_size} but CLIP requires the image size to be at least {self.image_size}'\n        return resize_image_to(image, self.image_size)\n    @property\n    def dim_latent(self):\n        raise NotImplementedError\n    @property",
         "type": "code",
-        "location": "/train_decoder.py:104-130"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:180-214"
     },
     "143": {
-        "file_id": 5,
-        "content": "The code samples the dataloader and returns a zipped list of examples. It iterates through each image, extracts its embedding, converts it to the device's format, extends the respective lists for images and text embeddings, and finally returns them.",
+        "file_id": 6,
+        "content": "This code defines a function for normalizing an image to the range of -1 to 1, and another for unnormalizing it back to the 0 to 1 range. It also includes a namedtuple for returning embedded text and image data along with their encodings. The code further defines a base class for clip adapters that takes a CLIP model as an argument and provides methods for validating and resizing images to match CLIP's requirements.",
         "type": "comment"
     },
     "144": {
-        "file_id": 5,
-        "content": "        images.extend(list(img))\n        captions.extend(list(txt))\n        if len(images) >= n:\n            break\n    return list(zip(images[:n], img_embeddings[:n], text_embeddings[:n], captions[:n]))\ndef generate_samples(trainer, example_data, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=\"\", match_image_size=True):\n    \"\"\"\n    Takes example data and generates images from the embeddings\n    Returns three lists: real images, generated images, and captions\n    \"\"\"\n    real_images, img_embeddings, text_embeddings, txts = zip(*example_data)\n    sample_params = {}\n    if img_embeddings[0] is None:\n        # Generate image embeddings from clip\n        imgs_tensor = torch.stack(real_images)\n        assert clip is not None, \"clip is None, but img_embeddings is None\"\n        imgs_tensor.to(device=device)\n        img_embeddings, img_encoding = clip.embed_image(imgs_tensor)\n        sample_params[\"image_embed\"] = img_embeddings\n    else:\n        # Then we are using precomputed image embeddings",
+        "file_id": 6,
+        "content": "    def image_size(self):\n        raise NotImplementedError\n    @property\n    def image_channels(self):\n        raise NotImplementedError\n    @property\n    def max_text_len(self):\n        raise NotImplementedError\n    def embed_text(self, text):\n        raise NotImplementedError\n    def embed_image(self, image):\n        raise NotImplementedError\nclass XClipAdapter(BaseClipAdapter):\n    @property\n    def dim_latent(self):\n        return self.clip.dim_latent\n    @property\n    def image_size(self):\n        return self.clip.image_size\n    @property\n    def image_channels(self):\n        return self.clip.image_channels\n    @property\n    def max_text_len(self):\n        return self.clip.text_seq_len\n    @torch.no_grad()\n    def embed_text(self, text):\n        text = text[..., :self.max_text_len]\n        text_mask = text != 0\n        encoder_output = self.clip.text_transformer(text)\n        encoder_output_is_cls = encoder_output.ndim == 3\n        text_cls, text_encodings = (encoder_output[:, 0], encoder_output[:, 1:]) if encoder_output_is_cls else (encoder_output, None)",
         "type": "code",
-        "location": "/train_decoder.py:131-152"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:215-257"
     },
     "145": {
-        "file_id": 5,
-        "content": "This function generates samples by taking example data and creating real images, generated images, and captions. If image embeddings are None, it generates them using the clip model. It returns three lists: real images, generated images, and captions.",
+        "file_id": 6,
+        "content": "This code defines a base class `BaseClipAdapter` with four methods that must be implemented by derived classes. The `XClipAdapter` class inherits from `BaseClipAdapter` and provides implementations for the properties of the underlying `clip` object, which is an instance of some clip model. The `embed_text` method takes a text input, truncates it to fit the maximum text length defined by `max_text_len`, applies a text transformer from the `clip` object, and returns the embeddings.",
         "type": "comment"
     },
     "146": {
-        "file_id": 5,
-        "content": "        img_embeddings = torch.stack(img_embeddings)\n        sample_params[\"image_embed\"] = img_embeddings\n    if condition_on_text_encodings:\n        if text_embeddings[0] is None:\n            # Generate text embeddings from text\n            assert clip is not None, \"clip is None, but text_embeddings is None\"\n            tokenized_texts = tokenize(txts, truncate=True).to(device=device)\n            text_embed, text_encodings = clip.embed_text(tokenized_texts)\n            sample_params[\"text_encodings\"] = text_encodings\n        else:\n            # Then we are using precomputed text embeddings\n            text_embeddings = torch.stack(text_embeddings)\n            sample_params[\"text_encodings\"] = text_embeddings\n    sample_params[\"start_at_unet_number\"] = start_unet\n    sample_params[\"stop_at_unet_number\"] = end_unet\n    if start_unet > 1:\n        # If we are only training upsamplers\n        sample_params[\"image\"] = torch.stack(real_images)\n    if device is not None:\n        sample_params[\"_device\"] = device",
+        "file_id": 6,
+        "content": "        text_embed = self.clip.to_text_latent(text_cls)\n        if exists(text_encodings):\n            text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)\n        return EmbeddedText(l2norm(text_embed), text_encodings)\n    @torch.no_grad()\n    def embed_image(self, image):\n        image = self.validate_and_resize_image(image)\n        encoder_output = self.clip.visual_transformer(image)\n        image_cls, image_encodings = encoder_output[:, 0], encoder_output[:, 1:]\n        image_embed = self.clip.to_visual_latent(image_cls)\n        return EmbeddedImage(l2norm(image_embed), image_encodings)\nclass CoCaAdapter(BaseClipAdapter):\n    @property\n    def dim_latent(self):\n        return self.clip.dim\n    @property\n    def image_size(self):\n        assert 'image_size' in self.overrides\n        return self.overrides['image_size']\n    @property\n    def image_channels(self):\n        assert 'image_channels' in self.overrides\n        return self.overrides['image_channels']\n    @property\n    def max_text_len(self):",
         "type": "code",
-        "location": "/train_decoder.py:153-172"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:258-289"
     },
     "147": {
-        "file_id": 5,
-        "content": "This code is responsible for preparing training samples by stacking image and text embeddings, setting parameters for start and stop U-net layers, and handling the case where real images are provided. If real images exist, it stacks them as part of the sample. The code also considers whether to generate text embeddings or use precomputed ones and ensures everything is on the specified device.",
+        "file_id": 6,
+        "content": "This code snippet defines a class called CoCaAdapter, which is a base adapter for the DALL-E 2 PyTorch model. It contains methods to embed text and images, with optional overrides for image size and channels. The dim_latent property returns the dimension of the latent space, while max_text_len is used to set the maximum length for text inputs.",
         "type": "comment"
     },
     "148": {
-        "file_id": 5,
-        "content": "    samples = trainer.sample(**sample_params, _cast_deepspeed_precision=False)  # At sampling time we don't want to cast to FP16\n    generated_images = list(samples)\n    captions = [text_prepend + txt for txt in txts]\n    if match_image_size:\n        generated_image_size = generated_images[0].shape[-1]\n        real_images = [resize_image_to(image, generated_image_size, clamp_range=(0, 1)) for image in real_images]\n    return real_images, generated_images, captions\ndef generate_grid_samples(trainer, examples, clip=None, start_unet=1, end_unet=None, condition_on_text_encodings=False, cond_scale=1.0, device=None, text_prepend=\"\"):\n    \"\"\"\n    Generates samples and uses torchvision to put them in a side by side grid for easy viewing\n    \"\"\"\n    real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, device, text_prepend)\n    grid_images = [torchvision.utils.make_grid([original_image, generated_image]) for original_image, generated_image in zip(real_images, generated_images)]",
+        "file_id": 6,
+        "content": "        assert 'max_text_len' in self.overrides\n        return self.overrides['max_text_len']\n    @torch.no_grad()\n    def embed_text(self, text):\n        text = text[..., :self.max_text_len]\n        text_mask = text != 0\n        text_embed, text_encodings = self.clip.embed_text(text)\n        text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)\n        return EmbeddedText(text_embed, text_encodings)\n    @torch.no_grad()\n    def embed_image(self, image):\n        image = self.validate_and_resize_image(image)\n        image_embed, image_encodings = self.clip.embed_image(image)\n        return EmbeddedImage(image_embed, image_encodings)\nclass OpenAIClipAdapter(BaseClipAdapter):\n    def __init__(\n        self,\n        name = 'ViT-B/32'\n    ):\n        import clip\n        openai_clip, preprocess = clip.load(name)\n        super().__init__(openai_clip)\n        self.eos_id = 49407 # for handling 0 being also '!'\n        text_attention_final = self.find_layer('ln_final')\n        self.dim_latent_ = text_attention_final.weight.shape[0]",
         "type": "code",
-        "location": "/train_decoder.py:173-186"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:290-319"
     },
     "149": {
-        "file_id": 5,
-        "content": "This function generates samples, combines them with real images in a grid format for easy viewing. It first calls `generate_samples` to get the real and generated images along with their corresponding captions. Then it uses `torchvision.utils.make_grid` to create grids of original and generated images.",
+        "file_id": 6,
+        "content": "This code is for a text-to-image model that uses CLIP as its base. It has functions to embed texts and images, with the ability to handle maximum text length. It initializes an OpenAIClipAdapter class using CLIP's 'ViT-B/32' model and finds the layer for text attention final output.",
         "type": "comment"
     },
     "150": {
-        "file_id": 5,
-        "content": "    return grid_images, captions\ndef evaluate_trainer(trainer, dataloader, device, start_unet, end_unet, clip=None, condition_on_text_encodings=False, cond_scale=1.0, inference_device=None, n_evaluation_samples=1000, FID=None, IS=None, KID=None, LPIPS=None):\n    \"\"\"\n    Computes evaluation metrics for the decoder\n    \"\"\"\n    metrics = {}\n    # Prepare the data\n    examples = get_example_data(dataloader, device, n_evaluation_samples)\n    if len(examples) == 0:\n        print(\"No data to evaluate. Check that your dataloader has shards.\")\n        return metrics\n    real_images, generated_images, captions = generate_samples(trainer, examples, clip, start_unet, end_unet, condition_on_text_encodings, cond_scale, inference_device)\n    real_images = torch.stack(real_images).to(device=device, dtype=torch.float)\n    generated_images = torch.stack(generated_images).to(device=device, dtype=torch.float)\n    # Convert from [0, 1] to [0, 255] and from torch.float to torch.uint8\n    int_real_images = real_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)",
+        "file_id": 6,
+        "content": "        self.handle = text_attention_final.register_forward_hook(self._hook)\n        self.clip_normalize = preprocess.transforms[-1]\n        self.cleared = False\n    def find_layer(self,  layer):\n        modules = dict([*self.clip.named_modules()])\n        return modules.get(layer, None)\n    def clear(self):\n        if self.cleared:\n            return\n        self.handle()\n    def _hook(self, _, inputs, outputs):\n        self.text_encodings = outputs\n    @property\n    def dim_latent(self):\n        return self.dim_latent_\n    @property\n    def image_size(self):\n        return self.clip.visual.input_resolution\n    @property\n    def image_channels(self):\n        return 3\n    @property\n    def max_text_len(self):\n        return self.clip.context_length\n    @torch.no_grad()\n    def embed_text(self, text):\n        text = text[..., :self.max_text_len]\n        is_eos_id = (text == self.eos_id)\n        text_mask_excluding_eos = is_eos_id.cumsum(dim = -1) == 0\n        text_mask = F.pad(text_mask_excluding_eos, (1, -1), value = True)",
         "type": "code",
-        "location": "/train_decoder.py:187-203"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:320-360"
     },
     "151": {
-        "file_id": 5,
-        "content": "This function computes evaluation metrics for a decoder. It prepares data, generates samples using the trainer and start/end unets, converts images from [0, 1] to [0, 255], and types them as uint8. The generated and real images are then stored in variables for further evaluation metrics calculations.",
+        "file_id": 6,
+        "content": "This code is part of a neural network model for text-to-image generation using PyTorch. It includes functions to handle text attention, clear the internal state, and embed input text. The class has properties such as `dim_latent`, `image_size`, `image_channels`, `max_text_len` which are used to define the network's structure and behavior.",
         "type": "comment"
     },
     "152": {
-        "file_id": 5,
-        "content": "    int_generated_images = generated_images.mul(255).add(0.5).clamp(0, 255).type(torch.uint8)\n    def null_sync(t, *args, **kwargs):\n        return [t]\n    if exists(FID):\n        fid = FrechetInceptionDistance(**FID, dist_sync_fn=null_sync)\n        fid.to(device=device)\n        fid.update(int_real_images, real=True)\n        fid.update(int_generated_images, real=False)\n        metrics[\"FID\"] = fid.compute().item()\n    if exists(IS):\n        inception = InceptionScore(**IS, dist_sync_fn=null_sync)\n        inception.to(device=device)\n        inception.update(int_real_images)\n        is_mean, is_std = inception.compute()\n        metrics[\"IS_mean\"] = is_mean.item()\n        metrics[\"IS_std\"] = is_std.item()\n    if exists(KID):\n        kernel_inception = KernelInceptionDistance(**KID, dist_sync_fn=null_sync)\n        kernel_inception.to(device=device)\n        kernel_inception.update(int_real_images, real=True)\n        kernel_inception.update(int_generated_images, real=False)\n        kid_mean, kid_std = kernel_inception.compute()",
+        "file_id": 6,
+        "content": "        text_mask = text_mask & (text != 0)\n        assert not self.cleared\n        text_embed = self.clip.encode_text(text)\n        text_encodings = self.text_encodings\n        text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)\n        del self.text_encodings\n        return EmbeddedText(l2norm(text_embed.float()), text_encodings.float())\n    @torch.no_grad()\n    def embed_image(self, image):\n        assert not self.cleared\n        image = self.validate_and_resize_image(image)\n        image = self.clip_normalize(image)\n        image_embed = self.clip.encode_image(image)\n        return EmbeddedImage(l2norm(image_embed.float()), None)\nclass OpenClipAdapter(BaseClipAdapter):\n    def __init__(\n        self,\n        name = 'ViT-B/32',\n        pretrained = 'laion400m_e32'\n    ):\n        import open_clip\n        clip, _, preprocess = open_clip.create_model_and_transforms(name, pretrained = pretrained)\n        super().__init__(clip)\n        self.eos_id = 49407\n        text_attention_final = self.find_layer('ln_final')",
         "type": "code",
-        "location": "/train_decoder.py:204-227"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:361-390"
     },
     "153": {
-        "file_id": 5,
-        "content": "This code calculates and stores metrics for the quality of generated images, including Frechet Inception Distance (FID), Inception Score (IS), and Kernel Inception Distance (KID). It first scales the generated images, then checks if specific configuration files exist for each metric. If they do, it creates an instance of the corresponding metric class, sets it up on the device, updates with real and generated images, and computes the metric values. The computed metrics are stored in the \"metrics\" dictionary.",
+        "file_id": 6,
+        "content": "Method to embed text using CLIP model by encoding the input text, applying a mask on text encodings, and returning EmbeddedText object with L2 normalized text embedding and float text encodings.",
         "type": "comment"
     },
     "154": {
-        "file_id": 5,
-        "content": "        metrics[\"KID_mean\"] = kid_mean.item()\n        metrics[\"KID_std\"] = kid_std.item()\n    if exists(LPIPS):\n        # Convert from [0, 1] to [-1, 1]\n        renorm_real_images = real_images.mul(2).sub(1).clamp(-1,1)\n        renorm_generated_images = generated_images.mul(2).sub(1).clamp(-1,1)\n        lpips = LearnedPerceptualImagePatchSimilarity(**LPIPS, dist_sync_fn=null_sync)\n        lpips.to(device=device)\n        lpips.update(renorm_real_images, renorm_generated_images)\n        metrics[\"LPIPS\"] = lpips.compute().item()\n    if trainer.accelerator.num_processes > 1:\n        # Then we should sync the metrics\n        metrics_order = sorted(metrics.keys())\n        metrics_tensor = torch.zeros(1, len(metrics), device=device, dtype=torch.float)\n        for i, metric_name in enumerate(metrics_order):\n            metrics_tensor[0, i] = metrics[metric_name]\n        metrics_tensor = trainer.accelerator.gather(metrics_tensor)\n        metrics_tensor = metrics_tensor.mean(dim=0)\n        for i, metric_name in enumerate(metrics_order):",
+        "file_id": 6,
+        "content": "        self._dim_latent = text_attention_final.weight.shape[0]\n        self.handle = text_attention_final.register_forward_hook(self._hook)\n        self.clip_normalize = preprocess.transforms[-1]\n        self.cleared = False\n    def find_layer(self,  layer):\n        modules = dict([*self.clip.named_modules()])\n        return modules.get(layer, None)\n    def clear(self):\n        if self.cleared:\n            return\n        self.handle()\n    def _hook(self, _, inputs, outputs):\n        self.text_encodings = outputs\n    @property\n    def dim_latent(self):\n        return self._dim_latent\n    @property\n    def image_size(self):\n        image_size = self.clip.visual.image_size\n        if isinstance(image_size, tuple):\n            return max(image_size)\n        return image_size\n    @property\n    def image_channels(self):\n        return 3\n    @property\n    def max_text_len(self):\n        return self.clip.context_length\n    @torch.no_grad()\n    def embed_text(self, text):\n        text = text[..., :self.max_text_len]\n        is_eos_id = (text == self.eos_id)",
         "type": "code",
-        "location": "/train_decoder.py:228-247"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:391-433"
     },
     "155": {
-        "file_id": 5,
-        "content": "This code calculates metrics such as KID and LPIPS for a model's performance. It stores the values in a dictionary, normalizes the images if LPIPS is present, applies the LearnedPerceptualImagePatchSimilarity function, and syncs the calculated metrics across processes using accelerator functions.",
+        "file_id": 6,
+        "content": "The code represents a class that appears to be a part of a larger model. It has methods for embedding text, clearing internal state, finding layers in the network, and retrieving properties like latent dimension and maximum text length. The class relies on other components such as `preprocess`, `clip`, and `image_size`.",
         "type": "comment"
     },
     "156": {
-        "file_id": 5,
-        "content": "            metrics[metric_name] = metrics_tensor[i].item()\n    return metrics\ndef save_trainer(tracker: Tracker, trainer: DecoderTrainer, epoch: int, sample: int, next_task: str, validation_losses: List[float], samples_seen: int, is_latest=True, is_best=False):\n    \"\"\"\n    Logs the model with an appropriate method depending on the tracker\n    \"\"\"\n    tracker.save(trainer, is_best=is_best, is_latest=is_latest, epoch=epoch, sample=sample, next_task=next_task, validation_losses=validation_losses, samples_seen=samples_seen)\ndef recall_trainer(tracker: Tracker, trainer: DecoderTrainer):\n    \"\"\"\n    Loads the model with an appropriate method depending on the tracker\n    \"\"\"\n    trainer.accelerator.print(print_ribbon(f\"Loading model from {type(tracker.loader).__name__}\"))\n    state_dict = tracker.recall()\n    trainer.load_state_dict(state_dict, only_model=False, strict=True)\n    return state_dict.get(\"epoch\", 0), state_dict.get(\"validation_losses\", []), state_dict.get(\"next_task\", \"train\"), state_dict.get(\"sample\", 0), state_dict.get(\"samples_seen\", 0)",
+        "file_id": 6,
+        "content": "        text_mask_excluding_eos = is_eos_id.cumsum(dim = -1) == 0\n        text_mask = F.pad(text_mask_excluding_eos, (1, -1), value = True)\n        text_mask = text_mask & (text != 0)\n        assert not self.cleared\n        text_embed = self.clip.encode_text(text)\n        text_encodings = self.text_encodings\n        text_encodings = text_encodings.masked_fill(~text_mask[..., None], 0.)\n        del self.text_encodings\n        return EmbeddedText(l2norm(text_embed.float()), text_encodings.float())\n    @torch.no_grad()\n    def embed_image(self, image):\n        assert not self.cleared\n        image = self.validate_and_resize_image(image)\n        image = self.clip_normalize(image)\n        image_embed = self.clip.encode_image(image)\n        return EmbeddedImage(l2norm(image_embed.float()), None)\n# classifier free guidance functions\ndef prob_mask_like(shape, prob, device):\n    if prob == 1:\n        return torch.ones(shape, device = device, dtype = torch.bool)\n    elif prob == 0:\n        return torch.zeros(shape, device = device, dtype = torch.bool)",
         "type": "code",
-        "location": "/train_decoder.py:248-264"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:434-459"
     },
     "157": {
-        "file_id": 5,
-        "content": "This code contains three functions: 1) `train_decoder`, which updates metrics based on the current metric; 2) `save_trainer`, which logs the model using an appropriate method according to the tracker; and 3) `recall_trainer`, which loads the model using the tracker. The code is part of a larger system that likely involves training a machine learning model, tracking its progress, and recalling it for further use or evaluation.",
+        "file_id": 6,
+        "content": "This function takes in a text input and returns an EmbeddedText object containing the embedded text representation and a corresponding mask. It first creates a mask excluding the end of sentence (EOS) token, pads it, and applies the mask to the original mask. Then, it encodes the text using CLIP's encode_text function, and finally normalizes the resulting embeddings. The classifier free guidance functions return a probability mask based on the given probability value for a specific shape and device.",
         "type": "comment"
     },
     "158": {
-        "file_id": 5,
-        "content": "def train(\n    dataloaders,\n    decoder: Decoder,\n    accelerator: Accelerator,\n    tracker: Tracker,\n    inference_device,\n    clip=None,\n    evaluate_config=None,\n    epoch_samples = None,  # If the training dataset is resampling, we have to manually stop an epoch\n    validation_samples = None,\n    save_immediately=False,\n    epochs = 20,\n    n_sample_images = 5,\n    save_every_n_samples = 100000,\n    unet_training_mask=None,\n    condition_on_text_encodings=False,\n    cond_scale=1.0,\n    **kwargs\n):\n    \"\"\"\n    Trains a decoder on a dataset.\n    \"\"\"\n    is_master = accelerator.process_index == 0\n    if not exists(unet_training_mask):\n        # Then the unet mask should be true for all unets in the decoder\n        unet_training_mask = [True] * len(decoder.unets)\n    assert len(unet_training_mask) == len(decoder.unets), f\"The unet training mask should be the same length as the number of unets in the decoder. Got {len(unet_training_mask)} and {trainer.num_unets}\"\n    trainable_unet_numbers = [i+1 for i, trainable in enumerate(unet_training_mask) if trainable]",
+        "file_id": 6,
+        "content": "    else:\n        return torch.zeros(shape, device = device).float().uniform_(0, 1) < prob\n# gaussian diffusion helper functions\ndef extract(a, t, x_shape):\n    b, *_ = t.shape\n    out = a.gather(-1, t)\n    return out.reshape(b, *((1,) * (len(x_shape) - 1)))\ndef meanflat(x):\n    return x.mean(dim = tuple(range(1, len(x.shape))))\ndef normal_kl(mean1, logvar1, mean2, logvar2):\n    return 0.5 * (-1.0 + logvar2 - logvar1 + torch.exp(logvar1 - logvar2) + ((mean1 - mean2) ** 2) * torch.exp(-logvar2))\ndef approx_standard_normal_cdf(x):\n    return 0.5 * (1.0 + torch.tanh(((2.0 / math.pi) ** 0.5) * (x + 0.044715 * (x ** 3))))\ndef discretized_gaussian_log_likelihood(x, *, means, log_scales, thres = 0.999):\n    assert x.shape == means.shape == log_scales.shape\n    # attempting to correct nan gradients when learned variance is turned on\n    # in the setting of deepspeed fp16\n    eps = 1e-12 if x.dtype == torch.float32 else 1e-3\n    centered_x = x - means\n    inv_stdv = torch.exp(-log_scales)\n    plus_in = inv_stdv * (centered_x + 1. / 255.)",
         "type": "code",
-        "location": "/train_decoder.py:266-294"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:460-488"
     },
     "159": {
-        "file_id": 5,
-        "content": "The function trains a decoder on a dataset, using the specified dataloaders, Decoder instance, and Accelerator. It also has optional arguments for clip, evaluate_config, epoch_samples, validation_samples, save_immediately, epochs, n_sample_images, save_every_n_samples, unet_training_mask, condition_on_text_encodings, and cond_scale. The function checks if the unet_training_mask exists and asserts that its length matches the number of unets in the decoder. It also assigns trainable unet numbers to a list.",
+        "file_id": 6,
+        "content": "This code defines several helper functions used in the DALLE2-pytorch model. These functions are involved in tasks such as extracting values, calculating normal KL divergence, approximating the standard normal cumulative distribution function, and computing the discretized Gaussian log likelihood. The code also includes error handling for potential nan gradients when using deepspeed fp16.",
         "type": "comment"
     },
     "160": {
-        "file_id": 5,
-        "content": "    first_trainable_unet = trainable_unet_numbers[0]\n    last_trainable_unet = trainable_unet_numbers[-1]\n    def move_unets(unet_training_mask):\n        for i in range(len(decoder.unets)):\n            if not unet_training_mask[i]:\n                # Replace the unet from the module list with a nn.Identity(). This training script never uses unets that aren't being trained so this is fine.\n                decoder.unets[i] = nn.Identity().to(inference_device)\n    # Remove non-trainable unets\n    move_unets(unet_training_mask)\n    trainer = DecoderTrainer(\n        decoder=decoder,\n        accelerator=accelerator,\n        dataloaders=dataloaders,\n        **kwargs\n    )\n    # Set up starting model and parameters based on a recalled state dict\n    start_epoch = 0\n    validation_losses = []\n    next_task = 'train'\n    sample = 0\n    samples_seen = 0\n    val_sample = 0\n    step = lambda: int(trainer.num_steps_taken(unet_number=first_trainable_unet))\n    if tracker.can_recall:\n        start_epoch, validation_losses, next_task, recalled_sample, samples_seen = recall_trainer(tracker, trainer)",
+        "file_id": 6,
+        "content": "    cdf_plus = approx_standard_normal_cdf(plus_in)\n    min_in = inv_stdv * (centered_x - 1. / 255.)\n    cdf_min = approx_standard_normal_cdf(min_in)\n    log_cdf_plus = log(cdf_plus, eps = eps)\n    log_one_minus_cdf_min = log(1. - cdf_min, eps = eps)\n    cdf_delta = cdf_plus - cdf_min\n    log_probs = torch.where(x < -thres,\n        log_cdf_plus,\n        torch.where(x > thres,\n            log_one_minus_cdf_min,\n            log(cdf_delta, eps = eps)))\n    return log_probs\ndef cosine_beta_schedule(timesteps, s = 0.008):\n    \"\"\"\n    cosine schedule\n    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ\n    \"\"\"\n    steps = timesteps + 1\n    x = torch.linspace(0, timesteps, steps, dtype = torch.float64)\n    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2\n    alphas_cumprod = alphas_cumprod / first(alphas_cumprod)\n    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])\n    return torch.clip(betas, 0, 0.999)\ndef linear_beta_schedule(timesteps):\n    scale = 1000 / timesteps\n    beta_start = scale * 0.0001",
         "type": "code",
-        "location": "/train_decoder.py:295-322"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:489-519"
     },
     "161": {
-        "file_id": 5,
-        "content": "The code is removing non-trainable UNet modules and setting up a trainer for the given task. It also checks if the state can be recalled from a previous training session and updates relevant variables accordingly.",
+        "file_id": 6,
+        "content": "Function at line 488-518 calculates log probabilities for a given input x, using an adaptive quantile regression approach with a cosine or linear schedule. The cosine_beta_schedule function generates a sequence of beta values using a cosine schedule, and the linear_beta_schedule function generates a sequence of beta values linearly.",
         "type": "comment"
     },
     "162": {
-        "file_id": 5,
-        "content": "        if next_task == 'train':\n            sample = recalled_sample\n        if next_task == 'val':\n            val_sample = recalled_sample\n        accelerator.print(f\"Loaded model from {type(tracker.loader).__name__} on epoch {start_epoch} having seen {samples_seen} samples with minimum validation loss {min(validation_losses) if len(validation_losses) > 0 else 'N/A'}\")\n        accelerator.print(f\"Starting training from task {next_task} at sample {sample} and validation sample {val_sample}\")\n    trainer.to(device=inference_device)\n    accelerator.print(print_ribbon(\"Generating Example Data\", repeat=40))\n    accelerator.print(\"This can take a while to load the shard lists...\")\n    if is_master:\n        train_example_data = get_example_data(dataloaders[\"train_sampling\"], inference_device, n_sample_images)\n        accelerator.print(\"Generated training examples\")\n        test_example_data = get_example_data(dataloaders[\"test_sampling\"], inference_device, n_sample_images)\n        accelerator.print(\"Generated testing examples\")",
+        "file_id": 6,
+        "content": "    beta_end = scale * 0.02\n    return torch.linspace(beta_start, beta_end, timesteps, dtype = torch.float64)\ndef quadratic_beta_schedule(timesteps):\n    scale = 1000 / timesteps\n    beta_start = scale * 0.0001\n    beta_end = scale * 0.02\n    return torch.linspace(beta_start**0.5, beta_end**0.5, timesteps, dtype = torch.float64) ** 2\ndef sigmoid_beta_schedule(timesteps):\n    scale = 1000 / timesteps\n    beta_start = scale * 0.0001\n    beta_end = scale * 0.02\n    betas = torch.linspace(-6, 6, timesteps, dtype = torch.float64)\n    return torch.sigmoid(betas) * (beta_end - beta_start) + beta_start\nclass NoiseScheduler(nn.Module):\n    def __init__(self, *, beta_schedule, timesteps, loss_type, p2_loss_weight_gamma = 0., p2_loss_weight_k = 1):\n        super().__init__()\n        if beta_schedule == \"cosine\":\n            betas = cosine_beta_schedule(timesteps)\n        elif beta_schedule == \"linear\":\n            betas = linear_beta_schedule(timesteps)\n        elif beta_schedule == \"quadratic\":\n            betas = quadratic_beta_schedule(timesteps)",
         "type": "code",
-        "location": "/train_decoder.py:323-337"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:520-548"
     },
     "163": {
-        "file_id": 5,
-        "content": "The code loads a model and starts training from the specified task, either 'train' or 'val'. It prints the details of the loaded model, including epoch, samples seen, and minimum validation loss. The trainer is moved to the inference device. Example data for both training and testing is generated using get_example_data function with the specified number of sample images.",
+        "file_id": 6,
+        "content": "This code defines three beta scheduling functions (linear, quadratic, cosine) and a class for the NoiseScheduler. The scheduler initializes with a selected beta schedule and timesteps. The beta_schedule parameter determines which function to use for generating the betas, which represent noise scaling factors in the model's training process.",
         "type": "comment"
     },
     "164": {
-        "file_id": 5,
-        "content": "    send_to_device = lambda arr: [x.to(device=inference_device, dtype=torch.float) for x in arr]\n    sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)\n    unet_losses_tensor = torch.zeros(TRAIN_CALC_LOSS_EVERY_ITERS, trainer.num_unets, dtype=torch.float, device=inference_device)\n    for epoch in range(start_epoch, epochs):\n        accelerator.print(print_ribbon(f\"Starting epoch {epoch}\", repeat=40))\n        timer = Timer()\n        last_sample = sample\n        last_snapshot = sample\n        if next_task == 'train':\n            for i, (img, emb, txt) in enumerate(dataloaders[\"train\"]):\n                # We want to count the total number of samples across all processes\n                sample_length_tensor[0] = len(img)\n                all_samples = accelerator.gather(sample_length_tensor)  # TODO: accelerator.reduce is broken when this was written. If it is fixed replace this.\n                total_samples = all_samples.sum().item()\n                sample += total_samples\n                samples_seen += total_samples",
+        "file_id": 6,
+        "content": "        elif beta_schedule == \"jsd\":\n            betas = 1.0 / torch.linspace(timesteps, 1, timesteps)\n        elif beta_schedule == \"sigmoid\":\n            betas = sigmoid_beta_schedule(timesteps)\n        else:\n            raise NotImplementedError()\n        alphas = 1. - betas\n        alphas_cumprod = torch.cumprod(alphas, axis = 0)\n        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value = 1.)\n        timesteps, = betas.shape\n        self.num_timesteps = int(timesteps)\n        if loss_type == 'l1':\n            loss_fn = F.l1_loss\n        elif loss_type == 'l2':\n            loss_fn = F.mse_loss\n        elif loss_type == 'huber':\n            loss_fn = F.smooth_l1_loss\n        else:\n            raise NotImplementedError()\n        self.loss_type = loss_type\n        self.loss_fn = loss_fn\n        # register buffer helper function to cast double back to float\n        register_buffer = lambda name, val: self.register_buffer(name, val.to(torch.float32))\n        register_buffer('betas', betas)\n        register_buffer('alphas_cumprod', alphas_cumprod)",
         "type": "code",
-        "location": "/train_decoder.py:339-357"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:549-580"
     },
     "165": {
-        "file_id": 5,
-        "content": "Iterating over epochs in training mode, counting the total number of samples across all processes. Gathering sample length tensors using accelerator's gather function and summing them up to get the total samples seen. Updating sample and samples_seen variables accordingly.",
+        "file_id": 6,
+        "content": "This code sets the beta schedule and alpha values based on user input, then selects a loss function according to the specified type. The code also registers buffer helper functions for 'betas' and 'alphas_cumprod'.",
         "type": "comment"
     },
     "166": {
-        "file_id": 5,
-        "content": "                img_emb = emb.get('img')\n                has_img_embedding = img_emb is not None\n                if has_img_embedding:\n                    img_emb, = send_to_device((img_emb,))\n                text_emb = emb.get('text')\n                has_text_embedding = text_emb is not None\n                if has_text_embedding:\n                    text_emb, = send_to_device((text_emb,))\n                img, = send_to_device((img,))\n                trainer.train()\n                for unet in range(1, trainer.num_unets+1):\n                    # Check if this is a unet we are training\n                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1\n                        continue\n                    forward_params = {}\n                    if has_img_embedding:\n                        forward_params['image_embed'] = img_emb\n                    else:\n                        # Forward pass automatically generates embedding\n                        assert clip is not None\n                        img_embed, img_encoding = clip.embed_image(img)",
+        "file_id": 6,
+        "content": "        register_buffer('alphas_cumprod_prev', alphas_cumprod_prev)\n        # calculations for diffusion q(x_t | x_{t-1}) and others\n        register_buffer('sqrt_alphas_cumprod', torch.sqrt(alphas_cumprod))\n        register_buffer('sqrt_one_minus_alphas_cumprod', torch.sqrt(1. - alphas_cumprod))\n        register_buffer('log_one_minus_alphas_cumprod', torch.log(1. - alphas_cumprod))\n        register_buffer('sqrt_recip_alphas_cumprod', torch.sqrt(1. / alphas_cumprod))\n        register_buffer('sqrt_recipm1_alphas_cumprod', torch.sqrt(1. / alphas_cumprod - 1))\n        # calculations for posterior q(x_{t-1} | x_t, x_0)\n        posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)\n        # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)\n        register_buffer('posterior_variance', posterior_variance)\n        # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain\n        register_buffer('posterior_log_variance_clipped', torch.log(posterior_variance.clamp(min =1e-20)))",
         "type": "code",
-        "location": "/train_decoder.py:358-380"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:581-601"
     },
     "167": {
-        "file_id": 5,
-        "content": "This code checks if there are image or text embeddings available, sends them to the device, and then trains a model. It also performs a forward pass for image embedding generation if necessary.",
+        "file_id": 6,
+        "content": "The code is registering various buffers for computations related to diffusion. It calculates the posterior variance and clips the log of the posterior variance to avoid numerical instability at the beginning of the diffusion chain.",
         "type": "comment"
     },
     "168": {
-        "file_id": 5,
-        "content": "                        forward_params['image_embed'] = img_embed\n                    if condition_on_text_encodings:\n                        if has_text_embedding:\n                            forward_params['text_encodings'] = text_emb\n                        else:\n                            # Then we need to pass the text instead\n                            assert clip is not None\n                            tokenized_texts = tokenize(txt, truncate=True).to(inference_device)\n                            assert tokenized_texts.shape[0] == len(img), f\"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(img)})\"\n                            text_embed, text_encodings = clip.embed_text(tokenized_texts)\n                            forward_params['text_encodings'] = text_encodings\n                    loss = trainer.forward(img, **forward_params, unet_number=unet, _device=inference_device)\n                    trainer.update(unet_number=unet)\n                    unet_losses_tensor[i % TRAIN_CALC_LOSS_EVERY_ITERS, unet-1] = loss",
+        "file_id": 6,
+        "content": "        register_buffer('posterior_mean_coef1', betas * torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))\n        register_buffer('posterior_mean_coef2', (1. - alphas_cumprod_prev) * torch.sqrt(alphas) / (1. - alphas_cumprod))\n        # p2 loss reweighting\n        self.has_p2_loss_reweighting = p2_loss_weight_gamma > 0.\n        register_buffer('p2_loss_weight', (p2_loss_weight_k + alphas_cumprod / (1 - alphas_cumprod)) ** -p2_loss_weight_gamma)\n    def sample_random_times(self, batch):\n        return torch.randint(0, self.num_timesteps, (batch,), device = self.betas.device, dtype = torch.long)\n    def q_posterior(self, x_start, x_t, t):\n        posterior_mean = (\n            extract(self.posterior_mean_coef1, t, x_t.shape) * x_start +\n            extract(self.posterior_mean_coef2, t, x_t.shape) * x_t\n        )\n        posterior_variance = extract(self.posterior_variance, t, x_t.shape)\n        posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)\n        return posterior_mean, posterior_variance, posterior_log_variance_clipped",
         "type": "code",
-        "location": "/train_decoder.py:381-394"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:602-620"
     },
     "169": {
-        "file_id": 5,
-        "content": "This code chunk is for training the DALL-E 2 model's decoder. It first checks if image and text embeddings are provided, and if not, it tokenizes the text and generates text embeddings using the CLIP model. Then, it passes the required parameters to the trainer and updates the model, storing the loss for each unit in the unet_losses_tensor array.",
+        "file_id": 6,
+        "content": "In this code segment, the author is computing posterior means for a model, performing loss reweighting, generating random times, and calculating posterior values. The posterior means are calculated based on betas and alphas, while the loss reweighting considers p2_loss_weight_gamma. Random times are sampled for a batch of inputs using torch.randint. The q_posterior function calculates posterior mean, variance, and log-variance clipped from these computed values.",
         "type": "comment"
     },
     "170": {
-        "file_id": 5,
-        "content": "                samples_per_sec = (sample - last_sample) / timer.elapsed()\n                timer.reset()\n                last_sample = sample\n                if i % TRAIN_CALC_LOSS_EVERY_ITERS == 0:\n                    # We want to average losses across all processes\n                    unet_all_losses = accelerator.gather(unet_losses_tensor)\n                    mask = unet_all_losses != 0\n                    unet_average_loss = (unet_all_losses * mask).sum(dim=0) / mask.sum(dim=0)\n                    loss_map = { f\"Unet {index} Training Loss\": loss.item() for index, loss in enumerate(unet_average_loss) if unet_training_mask[index] }\n                    # gather decay rate on each UNet\n                    ema_decay_list = {f\"Unet {index} EMA Decay\": ema_unet.get_current_decay() for index, ema_unet in enumerate(trainer.ema_unets) if unet_training_mask[index]}\n                    log_data = {\n                        \"Epoch\": epoch,\n                        \"Sample\": sample,\n                        \"Step\": i,",
+        "file_id": 6,
+        "content": "    def q_sample(self, x_start, t, noise = None):\n        noise = default(noise, lambda: torch.randn_like(x_start))\n        return (\n            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +\n            extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise\n        )\n    def calculate_v(self, x_start, t, noise = None):\n        return (\n            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * noise -\n            extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * x_start\n        )\n    def q_sample_from_to(self, x_from, from_t, to_t, noise = None):\n        shape = x_from.shape\n        noise = default(noise, lambda: torch.randn_like(x_from))\n        alpha = extract(self.sqrt_alphas_cumprod, from_t, shape)\n        sigma = extract(self.sqrt_one_minus_alphas_cumprod, from_t, shape)\n        alpha_next = extract(self.sqrt_alphas_cumprod, to_t, shape)\n        sigma_next = extract(self.sqrt_one_minus_alphas_cumprod, to_t, shape)\n        return x_from * (alpha_next / alpha) + noise * (sigma_next * alpha - sigma * alpha_next) / alpha",
         "type": "code",
-        "location": "/train_decoder.py:396-413"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:622-645"
     },
     "171": {
-        "file_id": 5,
-        "content": "This code is calculating the samples per second and resetting timers, then averaging the losses across all processes for a UNet model. It gathers the decay rate on each UNet, logs epoch, sample, and step information.",
+        "file_id": 6,
+        "content": "The code defines three functions: `q_sample`, `calculate_v`, and `q_sample_from_to`. These functions are part of a neural network for generating images. `q_sample` combines alpha and noise values to generate a sample, while `calculate_v` calculates the difference between an alpha-blended noise and a one minus alpha-blended image start. The `q_sample_from_to` function samples from one timestep to another by interpolating alphas and sigmas.",
         "type": "comment"
     },
     "172": {
-        "file_id": 5,
-        "content": "                        \"Samples per second\": samples_per_sec,\n                        \"Samples Seen\": samples_seen,\n                        **ema_decay_list,\n                        **loss_map\n                    }\n                    if is_master:\n                        tracker.log(log_data, step=step())\n                if is_master and (last_snapshot + save_every_n_samples < sample or (save_immediately and i == 0)):  # This will miss by some amount every time, but it's not a big deal... I hope\n                    # It is difficult to gather this kind of info on the accelerator, so we have to do it on the master\n                    print(\"Saving snapshot\")\n                    last_snapshot = sample\n                    # We need to know where the model should be saved\n                    save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen)\n                    if exists(n_sample_images) and n_sample_images > 0:\n                        trainer.eval()\n             ",
+        "file_id": 6,
+        "content": "    def predict_start_from_v(self, x_t, t, v):\n        return (\n            extract(self.sqrt_alphas_cumprod, t, x_t.shape) * x_t -\n            extract(self.sqrt_one_minus_alphas_cumprod, t, x_t.shape) * v\n        )\n    def predict_start_from_noise(self, x_t, t, noise):\n        return (\n            extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -\n            extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise\n        )\n    def predict_noise_from_start(self, x_t, t, x0):\n        return (\n            (extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - x0) / \\\n            extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)\n        )\n    def p2_reweigh_loss(self, loss, times):\n        if not self.has_p2_loss_reweighting:\n            return loss\n        return loss * extract(self.p2_loss_weight, times, loss.shape)\n# rearrange image to sequence\nclass RearrangeToSequence(nn.Module):\n    def __init__(self, fn):\n        super().__init__()\n        self.fn = fn\n    def forward(self, x):",
         "type": "code",
-        "location": "/train_decoder.py:414-431"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:647-677"
     },
     "173": {
-        "file_id": 5,
-        "content": "This code snippet is logging data and saving a snapshot of the model at specific intervals. It logs samples per second, samples seen, EMA decay parameters, and loss metrics. The snapshot is saved if the current sample meets certain conditions or every time an immediate save command is issued. The code prints \"Saving snapshot\" when a snapshot is taken.",
+        "file_id": 6,
+        "content": "The code defines three methods for predicting values from different inputs, including v and noise. It also includes a method to reweight loss using p2_loss_weight and a class to rearrange images into sequences.",
         "type": "comment"
     },
     "174": {
-        "file_id": 5,
-        "content": "           train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, \"Train: \")\n                        tracker.log_images(train_images, captions=train_captions, image_section=\"Train Samples\", step=step())\n                if epoch_samples is not None and sample >= epoch_samples:\n                    break\n            next_task = 'val'\n            sample = 0\n        all_average_val_losses = None\n        if next_task == 'val':\n            trainer.eval()\n            accelerator.print(print_ribbon(f\"Starting Validation {epoch}\", repeat=40))\n            last_val_sample = val_sample\n            val_sample_length_tensor = torch.zeros(1, dtype=torch.int, device=inference_device)\n            average_val_loss_tensor = torch.zeros(1, trainer.num_unets, dtype=torch.float, device=inference_device)\n            timer = Timer()\n            accelerator.wait_for_everyone()\n            i = 0",
+        "file_id": 6,
+        "content": "        x = rearrange(x, 'b c ... -> b ... c')\n        x, ps = pack([x], 'b * c')\n        x = self.fn(x)\n        x, = unpack(x, ps, 'b * c')\n        x = rearrange(x, 'b ... c -> b c ...')\n        return x\n# diffusion prior\nclass LayerNorm(nn.Module):\n    def __init__(self, dim, eps = 1e-5, fp16_eps = 1e-3, stable = False):\n        super().__init__()\n        self.eps = eps\n        self.fp16_eps = fp16_eps\n        self.stable = stable\n        self.g = nn.Parameter(torch.ones(dim))\n    def forward(self, x):\n        eps = self.eps if x.dtype == torch.float32 else self.fp16_eps\n        if self.stable:\n            x = x / x.amax(dim = -1, keepdim = True).detach()\n        var = torch.var(x, dim = -1, unbiased = False, keepdim = True)\n        mean = torch.mean(x, dim = -1, keepdim = True)\n        return (x - mean) * (var + eps).rsqrt() * self.g\nclass ChanLayerNorm(nn.Module):\n    def __init__(self, dim, eps = 1e-5, fp16_eps = 1e-3, stable = False):\n        super().__init__()\n        self.eps = eps\n        self.fp16_eps = fp16_eps",
         "type": "code",
-        "location": "/train_decoder.py:431-448"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:678-711"
     },
     "175": {
-        "file_id": 5,
-        "content": "This code is used for training a model and validating it. It generates samples from the training dataset, logs them, checks if it should stop based on sample count, switches to validation mode, and initializes variables for validation.",
+        "file_id": 6,
+        "content": "This function is applying layer normalization to input tensor 'x' and returning the normalized output. The 'LayerNorm' class is a type of layer normalization, while 'ChanLayerNorm' is a channel-wise version. The code includes settings for epsilon, float precision, and stability options.",
         "type": "comment"
     },
     "176": {
-        "file_id": 5,
-        "content": "            for i, (img, emb, txt) in enumerate(dataloaders['val']):  # Use the accelerate prepared loader\n                val_sample_length_tensor[0] = len(img)\n                all_samples = accelerator.gather(val_sample_length_tensor)\n                total_samples = all_samples.sum().item()\n                val_sample += total_samples\n                img_emb = emb.get('img')\n                has_img_embedding = img_emb is not None\n                if has_img_embedding:\n                    img_emb, = send_to_device((img_emb,))\n                text_emb = emb.get('text')\n                has_text_embedding = text_emb is not None\n                if has_text_embedding:\n                    text_emb, = send_to_device((text_emb,))\n                img, = send_to_device((img,))\n                for unet in range(1, len(decoder.unets)+1):\n                    if not unet_training_mask[unet-1]: # Unet index is the unet number - 1\n                        # No need to evaluate an unchanging unet\n                        continue",
+        "file_id": 6,
+        "content": "        self.stable = stable\n        self.g = nn.Parameter(torch.ones(1, dim, 1, 1))\n    def forward(self, x):\n        eps = self.eps if x.dtype == torch.float32 else self.fp16_eps\n        if self.stable:\n            x = x / x.amax(dim = 1, keepdim = True).detach()\n        var = torch.var(x, dim = 1, unbiased = False, keepdim = True)\n        mean = torch.mean(x, dim = 1, keepdim = True)\n        return (x - mean) * (var + eps).rsqrt() * self.g\nclass Residual(nn.Module):\n    def __init__(self, fn):\n        super().__init__()\n        self.fn = fn\n    def forward(self, x, **kwargs):\n        return self.fn(x, **kwargs) + x\n# mlp\nclass MLP(nn.Module):\n    def __init__(\n        self,\n        dim_in,\n        dim_out,\n        *,\n        expansion_factor = 2.,\n        depth = 2,\n        norm = False,\n    ):\n        super().__init__()\n        hidden_dim = int(expansion_factor * dim_out)\n        norm_fn = lambda: nn.LayerNorm(hidden_dim) if norm else nn.Identity()\n        layers = [nn.Sequential(\n            nn.Linear(dim_in, hidden_dim),",
         "type": "code",
-        "location": "/train_decoder.py:449-467"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:712-750"
     },
     "177": {
-        "file_id": 5,
-        "content": "This code is part of the DALLE2-pytorch training process. It iterates over the validation dataloader, gathers sample lengths, calculates total samples, and checks for image and text embeddings. If available, it sends these embeddings along with images to the device for further processing. This code ensures that all necessary data is properly prepared and sent to the device for evaluation.",
+        "file_id": 6,
+        "content": "This code defines a Residual class that wraps a function and adds it to the input. It also contains an MLP (Multi-Layer Perceptron) class with optional normalization and activation functions, followed by a series of fully connected layers. The forward method in DALLE2_PyTorch performs normalization, calculates mean and variance, then applies element-wise transformations before returning the output.",
         "type": "comment"
     },
     "178": {
-        "file_id": 5,
-        "content": "                    forward_params = {}\n                    if has_img_embedding:\n                        forward_params['image_embed'] = img_emb.float()\n                    else:\n                        # Forward pass automatically generates embedding\n                        assert clip is not None\n                        img_embed, img_encoding = clip.embed_image(img)\n                        forward_params['image_embed'] = img_embed\n                    if condition_on_text_encodings:\n                        if has_text_embedding:\n                            forward_params['text_encodings'] = text_emb.float()\n                        else:\n                            # Then we need to pass the text instead\n                            assert clip is not None\n                            tokenized_texts = tokenize(txt, truncate=True).to(device=inference_device)\n                            assert tokenized_texts.shape[0] == len(img), f\"The number of texts ({tokenized_texts.shape[0]}) should be the same as the number of images ({len(img)})\"",
+        "file_id": 6,
+        "content": "            nn.SiLU(),\n            norm_fn()\n        )]\n        for _ in range(depth - 1):\n            layers.append(nn.Sequential(\n                nn.Linear(hidden_dim, hidden_dim),\n                nn.SiLU(),\n                norm_fn()\n            ))\n        layers.append(nn.Linear(hidden_dim, dim_out))\n        self.net = nn.Sequential(*layers)\n    def forward(self, x):\n        return self.net(x.float())\n# relative positional bias for causal transformer\nclass RelPosBias(nn.Module):\n    def __init__(\n        self,\n        heads = 8,\n        num_buckets = 32,\n        max_distance = 128,\n    ):\n        super().__init__()\n        self.num_buckets = num_buckets\n        self.max_distance = max_distance\n        self.relative_attention_bias = nn.Embedding(num_buckets, heads)\n    @staticmethod\n    def _relative_position_bucket(\n        relative_position,\n        num_buckets = 32,\n        max_distance = 128\n    ):\n        n = -relative_position\n        n = torch.max(n, torch.zeros_like(n))\n        max_exact = num_buckets // 2\n        is_small = n < max_exact",
         "type": "code",
-        "location": "/train_decoder.py:469-484"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:751-792"
     },
     "179": {
-        "file_id": 5,
-        "content": "This code segment checks if image and text embeddings are provided. If not, it automatically generates image embedding or passes the text instead based on the condition. It also asserts the number of texts should be equal to the number of images for consistency.",
+        "file_id": 6,
+        "content": "This code defines a neural network architecture for the DALL-E 2 model. It includes a sequential layer with multiple linear layers, SiLU activation function, and normalization. The forward method performs inference on input data. Another class is defined for relative positional bias in causal transformer. The RelPosBias class initializes an embedding layer to calculate the relative position between elements for attention mechanism. It uses the concept of buckets, where each bucket represents a range of distances between two elements, and computes the relative position bucket based on input data.",
         "type": "comment"
     },
     "180": {
-        "file_id": 5,
-        "content": "                            text_embed, text_encodings = clip.embed_text(tokenized_texts)\n                            forward_params['text_encodings'] = text_encodings\n                    loss = trainer.forward(img.float(), **forward_params, unet_number=unet, _device=inference_device)\n                    average_val_loss_tensor[0, unet-1] += loss\n                if i % VALID_CALC_LOSS_EVERY_ITERS == 0:\n                    samples_per_sec = (val_sample - last_val_sample) / timer.elapsed()\n                    timer.reset()\n                    last_val_sample = val_sample\n                    accelerator.print(f\"Epoch {epoch}/{epochs} Val Step {i} -  Sample {val_sample} - {samples_per_sec:.2f} samples/sec\")\n                    accelerator.print(f\"Loss: {(average_val_loss_tensor / (i+1))}\")\n                    accelerator.print(\"\")\n                if validation_samples is not None and val_sample >= validation_samples:\n                    break\n            print(f\"Rank {accelerator.state.process_index} finished validation after {i} steps\")",
+        "file_id": 6,
+        "content": "        val_if_large = max_exact + (torch.log(n.float() / max_exact) / math.log(max_distance / max_exact) * (num_buckets - max_exact)).long()\n        val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))\n        return torch.where(is_small, n, val_if_large)\n    def forward(self, i, j, *, device):\n        q_pos = torch.arange(i, dtype = torch.long, device = device)\n        k_pos = torch.arange(j, dtype = torch.long, device = device)\n        rel_pos = rearrange(k_pos, 'j -> 1 j') - rearrange(q_pos, 'i -> i 1')\n        rp_bucket = self._relative_position_bucket(rel_pos, num_buckets = self.num_buckets, max_distance = self.max_distance)\n        values = self.relative_attention_bias(rp_bucket)\n        return rearrange(values, 'i j h -> h i j')\n# feedforward\nclass SwiGLU(nn.Module):\n    \"\"\" used successfully in https://arxiv.org/abs/2204.0231 \"\"\"\n    def forward(self, x):\n        x, gate = x.chunk(2, dim = -1)\n        return x * F.silu(gate)\ndef FeedForward(\n    dim,\n    mult = 4,",
         "type": "code",
-        "location": "/train_decoder.py:485-500"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:794-816"
     },
     "181": {
-        "file_id": 5,
-        "content": "This code snippet is part of a larger model training process. It calculates the loss based on input images and text, updates the average validation loss, prints validation progress including samples per second and loss, and eventually breaks the loop when the specified number of validation samples have been processed. The code uses the PyTorch framework and the DALLE2 library for embedding text.",
+        "file_id": 6,
+        "content": "This code snippet defines a class for DALLE2-pytorch, containing a method to calculate relative position buckets and an attention layer. The attention layer uses the SwiGLU activation function in its FeedForward module. The purpose of this code is to facilitate the calculation and application of positional embeddings in a transformer model.",
         "type": "comment"
     },
     "182": {
-        "file_id": 5,
-        "content": "            accelerator.wait_for_everyone()\n            average_val_loss_tensor /= i+1\n            # Gather all the average loss tensors\n            all_average_val_losses = accelerator.gather(average_val_loss_tensor)\n            if is_master:\n                unet_average_val_loss = all_average_val_losses.mean(dim=0)\n                val_loss_map = { f\"Unet {index} Validation Loss\": loss.item() for index, loss in enumerate(unet_average_val_loss) if loss != 0 }\n                tracker.log(val_loss_map, step=step())\n            next_task = 'eval'\n        if next_task == 'eval':\n            if exists(evaluate_config):\n                accelerator.print(print_ribbon(f\"Starting Evaluation {epoch}\", repeat=40))\n                evaluation = evaluate_trainer(trainer, dataloaders[\"val\"], inference_device, first_trainable_unet, last_trainable_unet, clip=clip, inference_device=inference_device, **evaluate_config.model_dump(), condition_on_text_encodings=condition_on_text_encodings, cond_scale=cond_scale)\n                if is_master:",
+        "file_id": 6,
+        "content": "    dropout = 0.,\n    post_activation_norm = False\n):\n    \"\"\" post-activation norm https://arxiv.org/abs/2110.09456 \"\"\"\n    inner_dim = int(mult * dim)\n    return nn.Sequential(\n        LayerNorm(dim),\n        nn.Linear(dim, inner_dim * 2, bias = False),\n        SwiGLU(),\n        LayerNorm(inner_dim) if post_activation_norm else nn.Identity(),\n        nn.Dropout(dropout),\n        nn.Linear(inner_dim, dim, bias = False)\n    )\n# attention\nclass Attention(nn.Module):\n    def __init__(\n        self,\n        dim,\n        *,\n        dim_head = 64,\n        heads = 8,\n        dropout = 0.,\n        causal = False,\n        rotary_emb = None,\n        cosine_sim = True,\n        cosine_sim_scale = 16\n    ):\n        super().__init__()\n        self.scale = cosine_sim_scale if cosine_sim else (dim_head ** -0.5)\n        self.cosine_sim = cosine_sim\n        self.heads = heads\n        inner_dim = dim_head * heads\n        self.causal = causal\n        self.norm = LayerNorm(dim)\n        self.dropout = nn.Dropout(dropout)\n        self.null_kv = nn.Parameter(torch.randn(2, dim_head))",
         "type": "code",
-        "location": "/train_decoder.py:501-515"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:817-858"
     },
     "183": {
-        "file_id": 5,
-        "content": "This code is used for averaging the validation losses and logging them during training. It also starts the evaluation process if it's time to do so, printing a message to indicate this. The average_val_loss_tensor is gathered by the accelerator, and then the mean of all the average loss tensors is calculated if the current task is 'eval'. If there are no zeros in the unet_average_val_loss, the validation losses are logged.",
+        "file_id": 6,
+        "content": "The code defines a module that applies post-activation normalization. It also includes a nested Attention class that performs multi-head attention with optional causal masking and rotary embedding. The main components include layer normalization, dropout regularization, and linear transformations for dimensionality adjustments. The cosine similarity calculation is utilized if specified.",
         "type": "comment"
     },
     "184": {
-        "file_id": 5,
-        "content": "                    tracker.log(evaluation, step=step())\n            next_task = 'sample'\n            val_sample = 0\n        if next_task == 'sample':\n            if is_master:\n                # Generate examples and save the model if we are the master\n                # Generate sample images\n                print(print_ribbon(f\"Sampling Set {epoch}\", repeat=40))\n                test_images, test_captions = generate_grid_samples(trainer, test_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, \"Test: \")\n                train_images, train_captions = generate_grid_samples(trainer, train_example_data, clip, first_trainable_unet, last_trainable_unet, condition_on_text_encodings, cond_scale, inference_device, \"Train: \")\n                tracker.log_images(test_images, captions=test_captions, image_section=\"Test Samples\", step=step())\n                tracker.log_images(train_images, captions=train_captions, image_section=\"Train Samples\", step=step())",
+        "file_id": 6,
+        "content": "        self.to_q = nn.Linear(dim, inner_dim, bias = False)\n        self.to_kv = nn.Linear(dim, dim_head * 2, bias = False)\n        self.rotary_emb = rotary_emb\n        self.to_out = nn.Sequential(\n            nn.Linear(inner_dim, dim, bias = False),\n            LayerNorm(dim)\n        )\n    def forward(self, x, mask = None, attn_bias = None):\n        b, n, device = *x.shape[:2], x.device\n        x = self.norm(x)\n        q, k, v = (self.to_q(x), *self.to_kv(x).chunk(2, dim = -1))\n        q = rearrange(q, 'b n (h d) -> b h n d', h = self.heads)\n        q = q * self.scale\n        # rotary embeddings\n        if exists(self.rotary_emb):\n            q, k = map(self.rotary_emb.rotate_queries_or_keys, (q, k))\n        # add null key / value for classifier free guidance in prior net\n        nk, nv = map(lambda t: repeat(t, 'd -> b 1 d', b = b), self.null_kv.unbind(dim = -2))\n        k = torch.cat((nk, k), dim = -2)\n        v = torch.cat((nv, v), dim = -2)\n        # whether to use cosine sim\n        if self.cosine_sim:",
         "type": "code",
-        "location": "/train_decoder.py:516-528"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:859-891"
     },
     "185": {
-        "file_id": 5,
-        "content": "The code is generating sample images and saving the model if it is the master process. It prints a ribbon and then generates grid samples from both train and test example data, conditioning on text encodings. Finally, it logs the generated images using the tracker, with labels indicating whether they are test or train samples.",
+        "file_id": 6,
+        "content": "This code defines a self-attention layer for DALL·E 2, initializing linear layers and including the option to use rotary embeddings. It also allows for classifier free guidance by adding null key/value pairs and using cosine similarity if enabled.",
         "type": "comment"
     },
     "186": {
-        "file_id": 5,
-        "content": "                print(print_ribbon(f\"Starting Saving {epoch}\", repeat=40))\n                is_best = False\n                if all_average_val_losses is not None:\n                    average_loss = all_average_val_losses.mean(dim=0).sum() / sum(unet_training_mask)\n                    if len(validation_losses) == 0 or average_loss < min(validation_losses):\n                        is_best = True\n                    validation_losses.append(average_loss)\n                save_trainer(tracker, trainer, epoch, sample, next_task, validation_losses, samples_seen, is_best=is_best)\n            next_task = 'train'\ndef create_tracker(accelerator: Accelerator, config: TrainDecoderConfig, config_path: str, dummy: bool = False) -> Tracker:\n    tracker_config = config.tracker\n    accelerator_config = {\n        \"Distributed\": accelerator.distributed_type != accelerate_dataclasses.DistributedType.NO,\n        \"DistributedType\": accelerator.distributed_type,\n        \"NumProcesses\": accelerator.num_processes,\n        \"MixedPrecision\": accelerator.mixed_precision",
+        "file_id": 6,
+        "content": "            q, k = map(l2norm, (q, k))\n        q, k = map(lambda t: t * math.sqrt(self.scale), (q, k))\n        # calculate query / key similarities\n        sim = einsum('b h i d, b j d -> b h i j', q, k)\n        # relative positional encoding (T5 style)\n        if exists(attn_bias):\n            sim = sim + attn_bias\n        # masking\n        max_neg_value = -torch.finfo(sim.dtype).max\n        if exists(mask):\n            mask = F.pad(mask, (1, 0), value = True)\n            mask = rearrange(mask, 'b j -> b 1 1 j')\n            sim = sim.masked_fill(~mask, max_neg_value)\n        if self.causal:\n            i, j = sim.shape[-2:]\n            causal_mask = torch.ones((i, j), dtype = torch.bool, device = device).triu(j - i + 1)\n            sim = sim.masked_fill(causal_mask, max_neg_value)\n        # attention\n        attn = sim.softmax(dim = -1, dtype = torch.float32)\n        attn = attn.type(sim.dtype)\n        attn = self.dropout(attn)\n        # aggregate values\n        out = einsum('b h i j, b j d -> b h i d', attn, v)",
         "type": "code",
-        "location": "/train_decoder.py:530-546"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:892-928"
     },
     "187": {
-        "file_id": 5,
-        "content": "The code checks if the average validation loss is lower than previous min, and saves the trainer if it's a new minimum. It's part of a function called create_tracker that creates a tracker object with accelerator, config, and dummy parameters.",
+        "file_id": 6,
+        "content": "This code snippet performs multi-head attention by first normalizing the query and key tensors, calculating their similarities, adding relative positional encoding if available, masking irrelevant values based on a given mask, applying causal masking if specified, and finally computing the attention weights and aggregating the corresponding values.",
         "type": "comment"
     },
     "188": {
-        "file_id": 5,
-        "content": "    }\n    accelerator.wait_for_everyone()  # If nodes arrive at this point at different times they might try to autoresume the current run which makes no sense and will cause errors\n    tracker: Tracker = tracker_config.create(config, accelerator_config, dummy_mode=dummy)\n    tracker.save_config(config_path, config_name='decoder_config.json')\n    tracker.add_save_metadata(state_dict_key='config', metadata=config.model_dump())\n    return tracker\ndef initialize_training(config: TrainDecoderConfig, config_path):\n    # Make sure if we are not loading, distributed models are initialized to the same values\n    torch.manual_seed(config.seed)\n    # Set up accelerator for configurable distributed training\n    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=config.train.find_unused_parameters, static_graph=config.train.static_graph)\n    init_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=60*60))\n    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs, init_kwargs])\n    if accelerator.num_processes > 1:",
+        "file_id": 6,
+        "content": "        out = rearrange(out, 'b h n d -> b n (h d)')\n        return self.to_out(out)\nclass CausalTransformer(nn.Module):\n    def __init__(\n        self,\n        *,\n        dim,\n        depth,\n        dim_head = 64,\n        heads = 8,\n        ff_mult = 4,\n        norm_in = False,\n        norm_out = True,\n        attn_dropout = 0.,\n        ff_dropout = 0.,\n        final_proj = True,\n        normformer = False,\n        rotary_emb = True\n    ):\n        super().__init__()\n        self.init_norm = LayerNorm(dim) if norm_in else nn.Identity() # from latest BLOOM model and Yandex's YaLM\n        self.rel_pos_bias = RelPosBias(heads = heads)\n        rotary_emb = RotaryEmbedding(dim = min(32, dim_head)) if rotary_emb else None\n        self.layers = nn.ModuleList([])\n        for _ in range(depth):\n            self.layers.append(nn.ModuleList([\n                Attention(dim = dim, causal = True, dim_head = dim_head, heads = heads, dropout = attn_dropout, rotary_emb = rotary_emb),\n                FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout, post_activation_norm = normformer)",
         "type": "code",
-        "location": "/train_decoder.py:547-563"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:930-961"
     },
     "189": {
-        "file_id": 5,
-        "content": "This code initializes distributed training for DALLE2, sets manual seed, and creates an accelerator for parallel processing with optional arguments. The function returns a tracker object to save configuration.",
+        "file_id": 6,
+        "content": "This code defines a `CausalTransformer` class for natural language processing tasks. The class initializes several modules such as LayerNorm, RelPosBias, RotaryEmbedding, and Attention. It also includes a FeedForward layer with configurable parameters like `dim`, `depth`, `dim_head`, `heads`, `ff_mult`, `attn_dropout`, `ff_dropout`, `norm_in`, `norm_out`, `final_proj`, and `rotary_emb`. The code snippet you provided is responsible for rearranging the tensor dimensions and returning it after processing by the `CausalTransformer` model.",
         "type": "comment"
     },
     "190": {
-        "file_id": 5,
-        "content": "        # We are using distributed training and want to immediately ensure all can connect\n        accelerator.print(\"Waiting for all processes to connect...\")\n        accelerator.wait_for_everyone()\n        accelerator.print(\"All processes online and connected\")\n    # If we are in deepspeed fp16 mode, we must ensure learned variance is off\n    if accelerator.mixed_precision == \"fp16\" and accelerator.distributed_type == accelerate_dataclasses.DistributedType.DEEPSPEED and config.decoder.learned_variance:\n        raise ValueError(\"DeepSpeed fp16 mode does not support learned variance\")\n    # Set up data\n    all_shards = list(range(config.data.start_shard, config.data.end_shard + 1))\n    world_size = accelerator.num_processes\n    rank = accelerator.process_index\n    shards_per_process = len(all_shards) // world_size\n    assert shards_per_process > 0, \"Not enough shards to split evenly\"\n    my_shards = all_shards[rank * shards_per_process: (rank + 1) * shards_per_process]\n    dataloaders = create_dataloaders (",
+        "file_id": 6,
+        "content": "            ]))\n        self.norm = LayerNorm(dim, stable = True) if norm_out else nn.Identity()  # unclear in paper whether they projected after the classic layer norm for the final denoised image embedding, or just had the transformer output it directly: plan on offering both options\n        self.project_out = nn.Linear(dim, dim, bias = False) if final_proj else nn.Identity()\n    def forward(self, x):\n        n, device = x.shape[1], x.device\n        x = self.init_norm(x)\n        attn_bias = self.rel_pos_bias(n, n + 1, device = device)\n        for attn, ff in self.layers:\n            x = attn(x, attn_bias = attn_bias) + x\n            x = ff(x) + x\n        out = self.norm(x)\n        return self.project_out(out)\nclass DiffusionPriorNetwork(nn.Module):\n    def __init__(\n        self,\n        dim,\n        num_timesteps = None,\n        num_time_embeds = 1,\n        num_image_embeds = 1,\n        num_text_embeds = 1,\n        max_text_len = 256,\n        self_cond = False,\n        **kwargs\n    ):\n        super().__init__()",
         "type": "code",
-        "location": "/train_decoder.py:564-581"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:962-993"
     },
     "191": {
-        "file_id": 5,
-        "content": "This code snippet is part of a distributed training process where it checks the accelerator settings, data sharding, and creates dataloaders for training. It ensures all processes are connected, handles DeepSpeed mixed precision mode without learned variance, splits data shards evenly across processes, and finally creates the necessary dataloaders for the training process.",
+        "file_id": 6,
+        "content": "The code initializes a DiffusionPriorNetwork model with multiple layers, including attention and feed-forward modules. It also includes layer normalization and the option to project the output. The network takes in input of varying dimensions and can condition on time, image, and/or text embeddings. The self_cond parameter determines whether or not to use self-conditioning.",
         "type": "comment"
     },
     "192": {
-        "file_id": 5,
-        "content": "        available_shards=my_shards,\n        img_preproc = config.data.img_preproc,\n        train_prop = config.data.splits.train,\n        val_prop = config.data.splits.val,\n        test_prop = config.data.splits.test,\n        n_sample_images=config.train.n_sample_images,\n        **config.data.model_dump(),\n        rank = rank,\n        seed = config.seed,\n    )\n    # If clip is in the model, we need to remove it for compatibility with deepspeed\n    clip = None\n    if config.decoder.clip is not None:\n        clip = config.decoder.clip.create()  # Of course we keep it to use it during training, just not in the decoder as that causes issues\n        config.decoder.clip = None\n    # Create the decoder model and print basic info\n    decoder = config.decoder.create()\n    get_num_parameters = lambda model, only_training=False: sum(p.numel() for p in model.parameters() if (p.requires_grad or not only_training))\n    # Create and initialize the tracker if we are the master\n    tracker = create_tracker(accelerator, config, config_path, dummy = rank!=0)",
+        "file_id": 6,
+        "content": "        self.dim = dim\n        self.num_time_embeds = num_time_embeds\n        self.num_image_embeds = num_image_embeds\n        self.num_text_embeds = num_text_embeds\n        self.to_text_embeds = nn.Sequential(\n            nn.Linear(dim, dim * num_text_embeds) if num_text_embeds > 1 else nn.Identity(),\n            Rearrange('b (n d) -> b n d', n = num_text_embeds)\n        )\n        self.continuous_embedded_time = not exists(num_timesteps)\n        self.to_time_embeds = nn.Sequential(\n            nn.Embedding(num_timesteps, dim * num_time_embeds) if exists(num_timesteps) else nn.Sequential(SinusoidalPosEmb(dim), MLP(dim, dim * num_time_embeds)), # also offer a continuous version of timestep embeddings, with a 2 layer MLP\n            Rearrange('b (n d) -> b n d', n = num_time_embeds)\n        )\n        self.to_image_embeds = nn.Sequential(\n            nn.Linear(dim, dim * num_image_embeds) if num_image_embeds > 1 else nn.Identity(),\n            Rearrange('b (n d) -> b n d', n = num_image_embeds)\n        )\n        self.learned_query = nn.Parameter(torch.randn(dim))",
         "type": "code",
-        "location": "/train_decoder.py:582-603"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:994-1017"
     },
     "193": {
-        "file_id": 5,
-        "content": "The code initializes the decoder model with specified parameters, removes clip if present for compatibility, and creates a tracker if the current rank is not the master. It also calculates the number of parameters in the model and prepares it for training.",
+        "file_id": 6,
+        "content": "This code defines a class with parameters for dimensionality, number of time, image, and text embeddings. It initializes layers to transform input into text, time, and image embeddings. The \"learned_query\" is a learned parameter for the model.",
         "type": "comment"
     },
     "194": {
-        "file_id": 5,
-        "content": "    has_img_embeddings = config.data.img_embeddings_url is not None\n    has_text_embeddings = config.data.text_embeddings_url is not None\n    conditioning_on_text = any([unet.cond_on_text_encodings for unet in config.decoder.unets])\n    has_clip_model = clip is not None\n    data_source_string = \"\"\n    if has_img_embeddings:\n        data_source_string += \"precomputed image embeddings\"\n    elif has_clip_model:\n        data_source_string += \"clip image embeddings generation\"\n    else:\n        raise ValueError(\"No image embeddings source specified\")\n    if conditioning_on_text:\n        if has_text_embeddings:\n            data_source_string += \" and precomputed text embeddings\"\n        elif has_clip_model:\n            data_source_string += \" and clip text encoding generation\"\n        else:\n            raise ValueError(\"No text embeddings source specified\")\n    accelerator.print(print_ribbon(\"Loaded Config\", repeat=40))\n    accelerator.print(f\"Running training with {accelerator.num_processes} processes and {accelerator.distributed_type} distributed training\")",
+        "file_id": 6,
+        "content": "        self.causal_transformer = CausalTransformer(dim = dim, **kwargs)\n        # dalle1 learned padding strategy\n        self.max_text_len = max_text_len\n        self.null_text_encodings = nn.Parameter(torch.randn(1, max_text_len, dim))\n        self.null_text_embeds = nn.Parameter(torch.randn(1, num_text_embeds, dim))\n        self.null_image_embed = nn.Parameter(torch.randn(1, dim))\n        # whether to use self conditioning, Hinton's group's new ddpm technique\n        self.self_cond = self_cond\n    def forward_with_cond_scale(\n        self,\n        *args,\n        cond_scale = 1.,\n        **kwargs\n    ):\n        logits = self.forward(*args, **kwargs)\n        if cond_scale == 1:\n            return logits\n        null_logits = self.forward(*args, text_cond_drop_prob = 1., image_cond_drop_prob = 1, **kwargs)\n        return null_logits + (logits - null_logits) * cond_scale\n    def forward(\n        self,\n        image_embed,\n        diffusion_timesteps,\n        *,\n        text_embed,\n        text_encodings = None,",
         "type": "code",
-        "location": "/train_decoder.py:605-627"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1018-1052"
     },
     "195": {
-        "file_id": 5,
-        "content": "This code checks if image and/or text embeddings are available, either precomputed or generated using CLIP model. It then prints a message indicating the source of embeddings used for training.",
+        "file_id": 6,
+        "content": "The code defines a model with a causal transformer and includes parameters for padding strategy, self-conditioning, and a function to perform forward calculations. The `forward_with_cond_scale` method takes conditional scaling as input and returns the scaled logits by combining original logits with null logits at 100% condition drop probabilities.",
         "type": "comment"
     },
     "196": {
-        "file_id": 5,
-        "content": "    accelerator.print(f\"Training using {data_source_string}. {'conditioned on text' if conditioning_on_text else 'not conditioned on text'}\")\n    accelerator.print(f\"Number of parameters: {get_num_parameters(decoder)} total; {get_num_parameters(decoder, only_training=True)} training\")\n    for i, unet in enumerate(decoder.unets):\n        accelerator.print(f\"Unet {i} has {get_num_parameters(unet)} total; {get_num_parameters(unet, only_training=True)} training\")\n    train(dataloaders, decoder, accelerator,\n        clip=clip,\n        tracker=tracker,\n        inference_device=accelerator.device,\n        evaluate_config=config.evaluate,\n        condition_on_text_encodings=conditioning_on_text,\n        **config.train.model_dump(),\n    )\n# Create a simple click command line interface to load the config and start the training\n@click.command()\n@click.option(\"--config_file\", default=\"./train_decoder_config.json\", help=\"Path to config file\")\ndef main(config_file):\n    config_file_path = Path(config_file)\n    config = TrainDecoderConfig.from_json_path(str(config_file_path))",
+        "file_id": 6,
+        "content": "        self_cond = None,\n        text_cond_drop_prob = 0.,\n        image_cond_drop_prob = 0.\n    ):\n        batch, dim, device, dtype = *image_embed.shape, image_embed.device, image_embed.dtype\n        num_time_embeds, num_image_embeds, num_text_embeds = self.num_time_embeds, self.num_image_embeds, self.num_text_embeds\n        # setup self conditioning\n        if self.self_cond:\n            self_cond = default(self_cond, lambda: torch.zeros(batch, self.dim, device = device, dtype = dtype))\n            self_cond = rearrange(self_cond, 'b d -> b 1 d')\n        # in section 2.2, last paragraph\n        # \"... consisting of encoded text, CLIP text embedding, diffusion timestep embedding, noised CLIP image embedding, final embedding for prediction\"\n        text_embed = self.to_text_embeds(text_embed)\n        image_embed = self.to_image_embeds(image_embed)\n        # classifier free guidance masks\n        text_keep_mask = prob_mask_like((batch,), 1 - text_cond_drop_prob, device = device)\n        text_keep_mask = rearrange(text_keep_mask, 'b -> b 1 1')",
         "type": "code",
-        "location": "/train_decoder.py:628-647"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1053-1076"
     },
     "197": {
-        "file_id": 5,
-        "content": "Training of the decoder is being executed using the specified data source, with or without conditioning on text. The number of parameters in total and for training are displayed, along with similar information for each Unet. The train function is called with dataloaders, decoder, accelerator, clip, tracker, inference_device, evaluate_config, and condition_on_text_encodings as arguments. A simple click command line interface is created to load the config and start training, using a default configuration file path and allowing for an alternative path to be specified with the --config_file option.",
+        "file_id": 6,
+        "content": "This code initializes a model's parameters based on the given image_embed. It sets up self-conditioning if necessary, converts text and image embeddings to the appropriate format, and creates classifier free guidance masks for both text and image inputs. The model will use these embeddings and masks for prediction.",
         "type": "comment"
     },
     "198": {
-        "file_id": 5,
-        "content": "    initialize_training(config, config_path=config_file_path)\nif __name__ == \"__main__\":\n    main()",
+        "file_id": 6,
+        "content": "        image_keep_mask = prob_mask_like((batch,), 1 - image_cond_drop_prob, device = device)\n        image_keep_mask = rearrange(image_keep_mask, 'b -> b 1 1')\n        # make text encodings optional\n        # although the paper seems to suggest it is present <--\n        if not exists(text_encodings):\n            text_encodings = torch.empty((batch, 0, dim), device = device, dtype = dtype)\n        mask = torch.any(text_encodings != 0., dim = -1)\n        # replace any padding in the text encodings with learned padding tokens unique across position\n        text_encodings = text_encodings[:, :self.max_text_len]\n        mask = mask[:, :self.max_text_len]\n        text_len = text_encodings.shape[-2]\n        remainder = self.max_text_len - text_len\n        if remainder > 0:\n            text_encodings = F.pad(text_encodings, (0, 0, 0, remainder), value = 0.)\n            mask = F.pad(mask, (0, remainder), value = False)\n        # mask out text encodings with null encodings\n        null_text_encodings = self.null_text_encodings.to(text_encodings.dtype)",
         "type": "code",
-        "location": "/train_decoder.py:648-651"
+        "location": "/dalle2_pytorch/dalle2_pytorch.py:1078-1103"
     },
     "199": {
-        "file_id": 5,
-        "content": "This code snippet initializes training and then calls the main function if the script is run directly. It ensures proper execution when running the script as a standalone program.",
+        "file_id": 6,
+        "content": "This code snippet is preparing the input data for a DALL-E 2 model by handling text encodings. It creates an image_keep_mask, makes text encodings optional based on their existence, applies masking to remove padding or null encodings, and ensures that the length of text_encodings matches the expected maximum length.",
         "type": "comment"
     }
 }

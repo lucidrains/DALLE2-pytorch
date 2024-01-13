@@ -1,111 +1,112 @@
 {
     "800": {
-        "file_id": 23,
-        "content": "        \"\"\"\n        self.start = start\n    def get_start(self):\n        return self.start\n    def get_sample(self):\n        \"\"\"\n        pre-proocess data from either reader into a common format\n        \"\"\"\n        if self.text_conditioned:\n            image_embedding, caption = next(self.loader)\n            image_embedding = from_numpy(image_embedding)\n            tokenized_caption = tokenize(caption[\"caption\"].to_list(), truncate=True)\n            return image_embedding, tokenized_caption\n        else:\n            (image_embedding, _), (text_embedding, _) = next(self.loader)\n            image_embedding = from_numpy(image_embedding)\n            text_embedding = from_numpy(text_embedding)\n            return image_embedding, text_embedding\n# helper functions\ndef distribute_to_rank(start, stop, rank, world_size):\n    \"\"\"\n    Distribute data to each rank given the world size.\n    Return:\n        - New start and stop points for this rank.\n    \"\"\"\n    num_samples = int(stop - start)\n    per_rank = int(ceil((num_samples) / float(world_size)))",
+        "file_id": 24,
+        "content": "    validation_countdown = Timer()  # when to perform evalutation\n    # keep track of best validation loss\n    best_validation_loss = config.train.best_validation_loss\n    samples_seen = config.train.num_samples_seen\n    # do training\n    start_epoch = config.train.current_epoch\n    for epoch in range(start_epoch, config.train.epochs):\n        # if we finished out an old epoch, reset the distribution to be a full epoch\n        tracker.log({\"tracking/epoch\": epoch}, step=trainer.step.item())\n        if train_loader.dataset.get_start() > 0 and epoch == start_epoch+1:\n            if trainer.accelerator.is_main_process:\n                click.secho(f\"Finished resumed epoch...resetting dataloader.\")\n            train_loader.dataset.set_start(0)\n        for img, txt in train_loader:\n            # setup things every step\n            trainer.train()\n            current_step = trainer.step.item()\n            samples_timer.reset()\n            # place data on device\n            img = img.to(trainer.device)\n            txt = txt.to(trainer.device)",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:73-112"
+        "location": "/train_diffusion_prior.py:441-471"
     },
     "801": {
-        "file_id": 23,
-        "content": "This code defines a class with methods to manage data loading and distribution for the DALL-E 2 model. It supports text-conditioned or unconditioned data, preprocesses input into a common format, and distributes data across multiple ranks using MPI.",
+        "file_id": 24,
+        "content": "The code sets up a training loop that iterates over epochs and resets the dataloader if it was paused mid-epoch. It places data on the device, tracks the best validation loss, and keeps track of samples seen.",
         "type": "comment"
     },
     "802": {
-        "file_id": 23,
-        "content": "    assert (\n        per_rank > 0\n    ), f\"Number of samples per rank must be larger than 0, (found: {per_rank})\"\n    rank_start = start + rank * per_rank\n    rank_stop = min(rank_start + per_rank, stop)\n    new_length = rank_stop - rank_start\n    assert (\n        new_length > 0\n    ), \"Calculated start and stop points result in a length of zero for this rank.\"\n    return rank_start, rank_stop\ndef get_reader(\n    text_conditioned: bool, img_url: str, meta_url: str = None, txt_url: str = None\n):\n    \"\"\"\n    Create an EmbeddingReader object from the specified URLs\n    get_reader() will always expect a url to image embeddings.\n    If text-conditioned, it will also expect a meta_url for the captions.\n    Otherwise, it will need txt_url for the matching text embeddings.\n    Returns an image_reader object if text-conditioned.\n    Otherwise it returns both an image_reader and a text_reader\n    \"\"\"\n    assert img_url is not None, \"Must supply a image url\"\n    if text_conditioned:\n        assert meta_url is not None, \"Must supply meta url if text-conditioned\"",
+        "file_id": 24,
+        "content": "            # pass to model\n            loss = trainer(text=txt, image_embed=img)\n            # perform backprop & apply EMA updates\n            trainer.update()\n            # gather info about training step\n            all_loss = pad_gather_reduce(trainer, loss, method=\"mean\")\n            num_samples = pad_gather_reduce(trainer, len(txt), method=\"sum\")\n            samples_per_sec = num_samples / samples_timer.elapsed()\n            samples_seen += num_samples\n            ema_decay = trainer.ema_diffusion_prior.get_current_decay()\n            # log\n            tracker.log(\n                {\n                    \"tracking/samples-sec\": samples_per_sec,\n                    \"tracking/samples-seen\": samples_seen,\n                    \"tracking/ema-decay\": ema_decay,\n                    f\"tracking/training-{config.prior.loss_type}\": all_loss,\n                },\n                step=current_step,\n            )\n            # Metric Tracking @ Timed Intervals\n            eval_delta = pad_gather_reduce(\n                trainer, validation_countdown.elapsed(), method=\"min\"",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:114-149"
+        "location": "/train_diffusion_prior.py:473-504"
     },
     "803": {
-        "file_id": 23,
-        "content": "The code is defining functions that calculate the start and stop points for a given rank, and another function to create an EmbeddingReader object based on URLs. It asserts that certain inputs are not None before proceeding, ensuring necessary information is provided.",
+        "file_id": 24,
+        "content": "This code is performing backpropagation, updating the exponential moving average (EMA), logging training metrics, and tracking evaluation intervals. It calculates the loss from text and image embeddings using the trainer model and updates the EMA diffusion prior. Metrics like samples per second, number of samples seen, EMA decay, and a specific loss type are logged at each step, while evaluating the validation countdown time interval for metrics tracking.",
         "type": "comment"
     },
     "804": {
-        "file_id": 23,
-        "content": "        image_reader = EmbeddingReader(\n            embeddings_folder=img_url,\n            file_format=\"parquet_npy\",\n            # will assume the caption column exists and is the only one requested\n            meta_columns=[\"caption\"],\n            metadata_folder=meta_url,\n        )\n        return image_reader\n    # otherwise we will require text embeddings as well and return two readers\n    assert (\n        txt_url is not None\n    ), \"Must supply text embedding url if not text-conditioning\"\n    image_reader = EmbeddingReader(img_url, file_format=\"npy\")\n    text_reader = EmbeddingReader(txt_url, file_format=\"npy\")\n    return image_reader, text_reader\ndef make_splits(\n    text_conditioned: bool,\n    batch_size: int,\n    num_data_points: int,\n    train_split: float,\n    eval_split: float,\n    image_reader: EmbeddingReader,\n    text_reader: EmbeddingReader = None,\n    start=0,\n    rank=0,\n    world_size=1,\n):\n    \"\"\"\n    Split an embedding reader object as needed.\n    NOTE: make_splits() will infer the test set size from your train and eval.",
+        "file_id": 24,
+        "content": "            )\n            if eval_delta != None and eval_delta > config.data.eval_every_seconds:\n                # begin timing how long this takes\n                validation_profiler.reset()\n                # package kwargs for evaluation\n                eval_kwargs = {\n                    \"trainer\": trainer,\n                    \"tracker\": tracker,\n                    \"text_conditioned\": config.prior.condition_on_text_encodings,\n                    \"timesteps\": config.train.eval_timesteps,\n                }\n                # ONLINE MODEL : COSINE : LOSS : VALIDATION SPLIT\n                eval_model(\n                    dataloader=eval_loader,\n                    loss_type=config.prior.loss_type,\n                    split=\"validation\",\n                    use_ema=False,\n                    report_cosine=False,\n                    report_loss=True,\n                    **eval_kwargs,\n                )\n                # EMA MODEL : COSINE : LOSS : VALIDATION DATA\n                ema_val_loss = eval_model(\n                    dataloader=eval_loader,",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:151-187"
+        "location": "/train_diffusion_prior.py:505-536"
     },
     "805": {
-        "file_id": 23,
-        "content": "This code defines a function to split an embedding reader object into training, evaluation, and optional test sets. It takes in the text conditioned flag, batch size, number of data points, and train/eval splits as input parameters. If text-conditioning is not enabled, it requires text embedding URLs as well and returns two readers.",
+        "file_id": 24,
+        "content": "This code is evaluating the model on validation data with specified options. It checks if it's time to evaluate, resets the profiler for timing, packages evaluation kwargs, and calls eval_model function with dataloader, loss type, split (validation), use_ema, report_cosine, report_loss, and eval_kwargs. It also evaluates the ema model separately.",
         "type": "comment"
     },
     "806": {
-        "file_id": 23,
-        "content": "    Input:\n        - text_conditioned: whether to prepare text-conditioned training data\n        - batch_size: the batch size for a single gpu\n        - num_data_points: the total number of data points you wish to train on\n        - train_split: the percentage of data you wish to train on\n        - eval_split: the percentage of data you wish to validate on\n        - image_reader: the image_reader you wish to split\n        - text_reader: the text_reader you want to split (if !text_conditioned)\n        - start: the starting point within your dataset\n        - rank: the rank of your worker\n        - world_size: the total world size of your distributed training run\n    Returns:\n        - PyTorch Dataloaders that yield tuples of (img, txt) data.\n    \"\"\"\n    assert start < image_reader.count, \"start position cannot exceed reader count.\"\n    # verify that the num_data_points does not exceed the max points\n    if num_data_points > (image_reader.count - start):\n        print(\n            \"Specified count is larger than what's available...defaulting to reader's count.\"",
+        "file_id": 24,
+        "content": "                    loss_type=config.prior.loss_type,\n                    split=\"validation\",\n                    use_ema=True,\n                    report_cosine=True,\n                    report_loss=True,\n                    **eval_kwargs,\n                )\n                tracker.log(\n                    {\n                        \"tracking/validation length (minutes)\": validation_profiler.elapsed()\n                        / 60\n                    }\n                )\n                # check if the ema validation is the lowest seen yet\n                if ema_val_loss < best_validation_loss:\n                    best_validation_loss = ema_val_loss\n                    #  go save the model as best\n                    save_trainer(\n                        trainer=trainer,\n                        tracker=tracker,\n                        is_best=True,\n                        is_latest=False,\n                        samples_seen=samples_seen,\n                        epoch=epoch,\n                        best_validation_loss=best_validation_loss,",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:189-210"
+        "location": "/train_diffusion_prior.py:537-566"
     },
     "807": {
-        "file_id": 23,
-        "content": "This function takes various inputs like batch size, train and eval splits, readers, and starting point to create PyTorch Dataloaders for image-text pairs. It ensures the start position is within the reader's count, and if the specified data points count exceeds the available ones, it defaults to the remaining count.",
+        "file_id": 24,
+        "content": "In this code, a validation process is executed using ema (exponential moving average) to calculate the loss. The lowest ema validation loss seen so far is stored in `best_validation_loss` and if the current validation loss is lower than the previous best, the model is saved as the 'best' model. This code also logs the time taken for the validation process.",
         "type": "comment"
     },
     "808": {
-        "file_id": 23,
-        "content": "        )\n        num_data_points = image_reader.count\n    # compute split points\n    train_set_size = int(train_split * num_data_points)\n    eval_set_size = int(eval_split * num_data_points)\n    eval_start = train_set_size\n    eval_stop = int(eval_start + eval_set_size)\n    assert (\n        train_split + eval_split\n    ) < 1.0, \"Specified train and eval split is too large to infer a test split.\"\n    # distribute to rank\n    rank_train_start, rank_train_stop = distribute_to_rank(\n        start, train_set_size, rank, world_size\n    )\n    rank_eval_start, rank_eval_stop = distribute_to_rank(\n        train_set_size, eval_stop, rank, world_size\n    )\n    rank_test_start, rank_test_stop = distribute_to_rank(\n        eval_stop, num_data_points, rank, world_size\n    )\n    # wrap up splits into a dict\n    train_split_args = dict(\n        start=rank_train_start, stop=rank_train_stop, batch_size=batch_size\n    )\n    eval_split_args = dict(\n        start=rank_eval_start, stop=rank_eval_stop, batch_size=batch_size\n    )\n    test_split_args = dict(",
+        "file_id": 24,
+        "content": "                    )\n                # reset timer for validaiton\n                validation_countdown.reset()\n            elif eval_delta is None:\n                click.secho(\n                    f\"Error occured reading the eval time on rank: {trainer.device}\",\n                    fg=\"yellow\",\n                )\n            # save as latest model on schedule\n            save_delta = pad_gather_reduce(trainer, save_timer.elapsed(), method=\"min\")\n            if save_delta != None and save_delta >= config.train.save_every_seconds:\n                save_trainer(\n                    trainer=trainer,\n                    tracker=tracker,\n                    is_best=False,\n                    is_latest=True,\n                    samples_seen=samples_seen,\n                    epoch=epoch,\n                    best_validation_loss=best_validation_loss,\n                )\n                save_timer.reset()\n            elif save_delta is None:\n                click.secho(\n                    f\"Error occured reading the save time on rank: {trainer.device}\",",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:211-242"
+        "location": "/train_diffusion_prior.py:567-598"
     },
     "809": {
-        "file_id": 23,
-        "content": "Computing split points for training and evaluation data sets based on the specified splits. Distributing the data to ranks according to the world size. Wrapping up the splits into a dictionary with start, stop, and batch_size parameters.",
+        "file_id": 24,
+        "content": "This code segment resets the validation timer and handles errors in reading eval and save times. It saves the latest model if the elapsed time meets a certain condition, and resets the save timer. This helps keep track of the training progress and ensures timely saving of models for later use.",
         "type": "comment"
     },
     "810": {
-        "file_id": 23,
-        "content": "        start=rank_test_start, stop=rank_test_stop, batch_size=batch_size\n    )\n    if text_conditioned:\n        # add the text-conditioned args to a unified dict\n        reader_args = dict(\n            text_conditioned=text_conditioned,\n            image_reader=image_reader,\n        )\n        train_split_args = dict(**reader_args, **train_split_args)\n        eval_split_args = dict(**reader_args, **eval_split_args)\n        test_split_args = dict(**reader_args, **test_split_args)\n        train = PriorEmbeddingDataset(**train_split_args)\n        val = PriorEmbeddingDataset(**eval_split_args)\n        test = PriorEmbeddingDataset(**test_split_args)\n    else:\n        # add the non-conditioned args to a unified dict\n        reader_args = dict(\n            text_conditioned=text_conditioned,\n            image_reader=image_reader,\n            text_reader=text_reader,\n        )\n        train_split_args = dict(**reader_args, **train_split_args)\n        eval_split_args = dict(**reader_args, **eval_split_args)\n        test_split_args = dict(**reader_args, **test_split_args)",
+        "file_id": 24,
+        "content": "                    fg=\"yellow\",\n                )\n    # evaluate on test data\n    if trainer.accelerator.is_main_process:\n        click.secho(f\"Starting Test\", fg=\"red\")\n    # save one last time as latest before beginning validation\n    save_trainer(\n        tracker=tracker,\n        trainer=trainer,\n        is_best=False,\n        is_latest=True,\n        samples_seen=samples_seen,\n        epoch=epoch,\n        best_validation_loss=best_validation_loss,\n    )\n    test_loss = eval_model(\n        trainer=trainer,\n        dataloader=test_loader,\n        text_conditioned=config.prior.condition_on_text_encodings,\n        split=\"test\",\n        tracker=tracker,\n        use_ema=True,\n        report_cosine=False,\n        report_loss=True,\n        timesteps=config.train.eval_timesteps,\n        loss_type=config.prior.loss_type,\n    )\n    if test_loss < best_validation_loss:\n        best_validation_loss = test_loss\n        #  go save the model as best\n        save_trainer(\n            trainer=trainer,\n            tracker=tracker,\n            is_best=True,",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:243-271"
+        "location": "/train_diffusion_prior.py:599-640"
     },
     "811": {
-        "file_id": 23,
-        "content": "Code is creating a PriorEmbeddingDataset for train, validation, and test datasets based on given arguments. If text_conditioned, it creates separate dictionaries for each dataset and passes them to the PriorEmbeddingDataset class; otherwise, it adds additional non-conditioned arguments for the same process.",
+        "file_id": 24,
+        "content": "Starting test phase and saving the last model as latest before validation. If test loss is lower than previous best validation loss, it will be saved as the new best model.",
         "type": "comment"
     },
     "812": {
-        "file_id": 23,
-        "content": "        train = PriorEmbeddingDataset(**train_split_args)\n        val = PriorEmbeddingDataset(**eval_split_args)\n        test = PriorEmbeddingDataset(**test_split_args)\n    # true batch size is specifed in the PriorEmbeddingDataset\n    train_loader = DataLoader(train, batch_size=None)\n    eval_loader = DataLoader(val, batch_size=None)\n    test_loader = DataLoader(test, batch_size=None)\n    return train_loader, eval_loader, test_loader",
+        "file_id": 24,
+        "content": "            is_latest=False,\n            samples_seen=samples_seen,\n            epoch=epoch,\n            best_validation_loss=test_loss,\n        )\ndef initialize_training(config_file, accelerator):\n    \"\"\"\n    Parse the configuration file, and prepare everything necessary for training\n    \"\"\"\n    # load the configuration file\n    if accelerator.is_main_process:\n        click.secho(f\"Loading configuration from {config_file}\", fg=\"green\")\n    config = TrainDiffusionPriorConfig.from_json_path(config_file)\n    # seed\n    set_seed(config.train.random_seed)\n    # get a device\n    device = accelerator.device\n    # make the trainer (will automatically distribute if possible & configured)\n    trainer: DiffusionPriorTrainer = make_model(\n        config.prior, config.train, device, accelerator\n    ).to(device)\n    # create a tracker\n    tracker = create_tracker(\n        accelerator, config, config_file, dummy=accelerator.process_index != 0\n    )\n    # reload from chcekpoint\n    if tracker.can_recall:\n        current_epoch, best_validation_loss, samples_seen = recall_trainer(",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/prior_loader.py:273-282"
+        "location": "/train_diffusion_prior.py:641-681"
     },
     "813": {
-        "file_id": 23,
-        "content": "This code creates train, val, and test datasets using PriorEmbeddingDataset with specific args. DataLoaders are created without specifying batch sizes, so the true batch size is determined in PriorEmbeddingDataset. The loaders and datasets are returned for further processing.",
+        "file_id": 24,
+        "content": "The function initialize_training is responsible for loading the configuration file, setting the seed, getting a device, making the trainer, and creating a tracker. The trainer is automatically distributed if possible and configured. Additionally, the function checks whether it can recall from a checkpoint.",
         "type": "comment"
     },
     "814": {
         "file_id": 24,
-        "content": "/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py",
-        "type": "filepath"
+        "content": "            tracker=tracker, trainer=trainer\n        )\n        # display best values\n        if trainer.accelerator.is_main_process:\n            click.secho(f\"Current Epoch: {current_epoch} | Best Val Loss: {best_validation_loss} | Samples Seen: {samples_seen}\", fg=\"yellow\")\n        # update config to reflect recalled values\n        config.train.num_samples_seen = samples_seen\n        config.train.current_epoch = current_epoch\n        config.train.best_validation_loss = best_validation_loss\n    # fetch and prepare data\n    if trainer.accelerator.is_main_process:\n        click.secho(\"Grabbing data...\", fg=\"blue\", blink=True)\n    trainer.accelerator.wait_for_everyone()\n    img_reader = get_reader(\n        text_conditioned=trainer.text_conditioned,\n        img_url=config.data.image_url,\n        meta_url=config.data.meta_url,\n    )\n    # calculate start point within epoch\n    trainer.accelerator.wait_for_everyone()\n    train_loader, eval_loader, test_loader = make_splits(\n        text_conditioned=trainer.text_conditioned,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:682-711"
     },
     "815": {
         "file_id": 24,
-        "content": "This code defines a Dataset class and get_images_dataloader function for loading image data. The Dataset class initializes with a folder path, image size, and extensions to consider. The get_images_dataloader function returns a DataLoader object for the specified folder with optional parameters like batch size, shuffle, cycle_dl, and pin_memory.",
-        "type": "summary"
+        "content": "This code block displays the current epoch, best validation loss, and samples seen, updates configuration with recalled values, fetches and prepares data for training by creating a loader, and calculates the start point within the epoch.",
+        "type": "comment"
     },
     "816": {
         "file_id": 24,
-        "content": "from pathlib import Path\nimport torch\nfrom torch.utils import data\nfrom torchvision import transforms, utils\nfrom PIL import Image\n# helpers functions\ndef cycle(dl):\n    while True:\n        for data in dl:\n            yield data\n# dataset and dataloader\nclass Dataset(data.Dataset):\n    def __init__(\n        self,\n        folder,\n        image_size,\n        exts = ['jpg', 'jpeg', 'png']\n    ):\n        super().__init__()\n        self.folder = folder\n        self.image_size = image_size\n        self.paths = [p for ext in exts for p in Path(f'{folder}').glob(f'**/*.{ext}')]\n        self.transform = transforms.Compose([\n            transforms.Resize(image_size),\n            transforms.RandomHorizontalFlip(),\n            transforms.CenterCrop(image_size),\n            transforms.ToTensor()\n        ])\n    def __len__(self):\n        return len(self.paths)\n    def __getitem__(self, index):\n        path = self.paths[index]\n        img = Image.open(path)\n        return self.transform(img)\ndef get_images_dataloader(\n    folder,\n    *,",
+        "content": "        batch_size=config.data.batch_size,\n        num_data_points=config.data.num_data_points,\n        train_split=config.data.splits.train,\n        eval_split=config.data.splits.val,\n        image_reader=img_reader,\n        rank=accelerator.state.process_index,\n        world_size=accelerator.state.num_processes,\n        start=0,\n    )\n    # update the start point to finish out the epoch on a resumed run\n    if tracker.can_recall:\n        samples_seen = config.train.num_samples_seen\n        length = (\n            config.data.num_data_points\n            if samples_seen <= img_reader.count\n            else img_reader.count\n        )\n        scaled_samples = length * config.train.current_epoch\n        start_point = (\n            scaled_samples - samples_seen if scaled_samples > samples_seen else samples_seen\n        )\n        if trainer.accelerator.is_main_process:\n            click.secho(f\"Resuming at sample: {start_point}\", fg=\"yellow\")\n        train_loader.dataset.set_start(start_point)\n    # start training\n    if trainer.accelerator.is_main_process:",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py:1-47"
+        "location": "/train_diffusion_prior.py:712-743"
     },
     "817": {
         "file_id": 24,
-        "content": "This code defines a Dataset class and get_images_dataloader function for loading image data. The Dataset class initializes with a folder path, image size, and extensions to consider. It uses transforms to apply resizing, horizontal flipping, centercropping, and converting images to tensors. The get_images_dataloader function returns a data loader object for the specified folder.",
+        "content": "This code initializes a data loader and sets the start point for resuming training if necessary. It ensures that the training continues from where it left off in a previous run by adjusting the number of samples seen based on the total number of data points and the current epoch. The main process prints a message indicating the resumption sample count.",
         "type": "comment"
     },
     "818": {
         "file_id": 24,
-        "content": "    batch_size,\n    image_size,\n    shuffle = True,\n    cycle_dl = True,\n    pin_memory = True\n):\n    ds = Dataset(folder, image_size)\n    dl = data.DataLoader(ds, batch_size = batch_size, shuffle = shuffle, pin_memory = pin_memory)\n    if cycle_dl:\n        dl = cycle(dl)\n    return dl",
+        "content": "        click.secho(\n            f\"Beginning Prior Training : Distributed={accelerator.state.distributed_type != accelerate_dataclasses.DistributedType.NO}\",\n            fg=\"yellow\",\n        )\n    train(\n        trainer=trainer,\n        tracker=tracker,\n        train_loader=train_loader,\n        eval_loader=eval_loader,\n        test_loader=test_loader,\n        config=config,\n    )\n@click.command()\n@click.option(\"--config_file\", default=\"configs/train_prior_config.example.json\")\ndef main(config_file):\n    # start HFA\n    accelerator = Accelerator()\n    # setup training\n    initialize_training(config_file, accelerator)\nif __name__ == \"__main__\":\n    main()",
         "type": "code",
-        "location": "/dalle2_pytorch/dataloaders/simple_image_only_dataloader.py:48-59"
+        "location": "/train_diffusion_prior.py:744-770"
     },
     "819": {
         "file_id": 24,
-        "content": "This function takes parameters such as folder, batch size, image size, shuffle, cycle_dl, and pin_memory. It creates a dataset from the provided folder using a given image size. Then, it uses DataLoader to create a data loader with the specified batch size, shuffle, and pin memory settings. If cycle_dl is True, it applies cyclic permutations to the data loader. Finally, it returns the data loader.",
+        "content": "Beginning Prior Training message with distributed status. Then, initiates training process using provided configurations and loaders for trainer, tracker, train_loader, eval_loader, and test_loader. Finally, executes main function with the specified config file to start Heterogeneous Fusion Acceleration (HFA) and set up the training environment.",
         "type": "comment"
     }
 }

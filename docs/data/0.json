@@ -526,23 +526,23 @@
     },
     "96": {
         "file_id": 3,
-        "content": "/prior.md",
+        "content": "/configs/README.md",
         "type": "filepath"
     },
     "97": {
         "file_id": 3,
-        "content": "This code uses diffusion prior and CLIP to generate images from text prompts, implements pre-trained decoders, compares EMA models, checks image embeddings in DALLE2-pytorch, and discusses overfitting and running diffusion model training scripts.",
+        "content": "This code configures DALLE2 model training and logging options in PyTorch, with customizable settings for Unet and Decoder, dataloader, preprocessing, hyperparameters, image metrics, and experiment tracking. It supports various configurations based on selected logger and storage types.",
         "type": "summary"
     },
     "98": {
         "file_id": 3,
-        "content": "# Diffusion Prior\nThis readme serves as an introduction to the diffusion prior.\n## Intro\nA properly trained prior will allow you to translate between two embedding spaces. If you know *a priori* that two embeddings are connected some way—then ability the translate between them could extremely helpful.\n### Motivation\nBefore we dive into the model, let’s look at a quick example of where the model may be helpful.\nFor demonstration purposes we will imagine that we wish to generate images from text using CLIP and a Decoder.\n> [CLIP](https://openai.com/blog/clip/) is a contrastive model that learns to maximize the cosine similarity between a given image and caption, however, there is no guarantee that these embeddings are in the same space. While the embeddings generated are ***close*** the image and text embeddings occupy two disjoint sets.\n```python\n# Load Models\nclip_model = clip.load(\"ViT-L/14\")\ndecoder = Decoder(checkpoint=\"best.pth\") # A decoder trained on CLIP Image embeddings\n# Retrieve prompt from user and encode with CLIP",
+        "content": "## DALLE2 Training Configurations\nFor more complex configuration, we provide the option of using a configuration file instead of command line arguments.\n### Decoder Trainer\nThe decoder trainer has 7 main configuration options. A full example of their use can be found in the [example decoder configuration](train_decoder_config.example.json).\n**<ins>Unet</ins>:**\nThis is a single unet config, which belongs as an array nested under the decoder config as a list of `unets`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `dim`  | Yes      | N/A     | The starting channels of the unet. |\n| `image_embed_dim` | Yes | N/A | The dimension of the image embeddings. |\n| `dim_mults` | No | `(1, 2, 4, 8)` | The growth factors of the channels. |\nAny parameter from the `Unet` constructor can also be given here.\n**<ins>Decoder</ins>:**\nDefines the configuration options for the decoder model. The unets defined above will automatically be inserted.\n| Option | Required | Default | Description |",
         "type": "code",
-        "location": "/prior.md:1-21"
+        "location": "/configs/README.md:1-24"
     },
     "99": {
         "file_id": 3,
-        "content": "This code introduces the concept of a diffusion prior, which is a trained model that allows translation between two embedding spaces. It motivates the use case of generating images from text using CLIP and a Decoder when embeddings are not guaranteed to be in the same space. The code loads CLIP and a pre-trained decoder, then retrieves a prompt from the user and encodes it with CLIP for further processing.",
+        "content": "This code provides details on configuring training for DALLE2, a complex model that requires various settings. It includes sections for Unet and Decoder configurations with optional parameters. An example configuration file is also mentioned for easier understanding.",
         "type": "comment"
     }
 }
