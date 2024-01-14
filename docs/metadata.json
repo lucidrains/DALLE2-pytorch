@@ -17,7 +17,7 @@
         "2": {
             "filepath": "/README.md",
             "entry_id": 8,
-            "language_id": "plain-text"
+            "language_id": "markdown"
         },
         "3": {
             "filepath": "/configs/README.md",
