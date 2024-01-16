@@ -22,7 +22,7 @@
         "3": {
             "filepath": "/configs/README.md",
             "entry_id": 96,
-            "language_id": "plain-text"
+            "language_id": "markdown"
         },
         "4": {
             "filepath": "/dalle2_pytorch/__init__.py",
@@ -42,7 +42,7 @@
         "7": {
             "filepath": "/dalle2_pytorch/dataloaders/README.md",
             "entry_id": 372,
-            "language_id": "markdown"
+            "language_id": "plain-text"
         },
         "8": {
             "filepath": "/dalle2_pytorch/dataloaders/__init__.py",
