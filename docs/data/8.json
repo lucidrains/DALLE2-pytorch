@@ -1,0 +1,112 @@
+{
+    "800": {
+        "file_id": 24,
+        "content": "    validation_countdown = Timer()  # when to perform evalutation\n    # keep track of best validation loss\n    best_validation_loss = config.train.best_validation_loss\n    samples_seen = config.train.num_samples_seen\n    # do training\n    start_epoch = config.train.current_epoch\n    for epoch in range(start_epoch, config.train.epochs):\n        # if we finished out an old epoch, reset the distribution to be a full epoch\n        tracker.log({\"tracking/epoch\": epoch}, step=trainer.step.item())\n        if train_loader.dataset.get_start() > 0 and epoch == start_epoch+1:\n            if trainer.accelerator.is_main_process:\n                click.secho(f\"Finished resumed epoch...resetting dataloader.\")\n            train_loader.dataset.set_start(0)\n        for img, txt in train_loader:\n            # setup things every step\n            trainer.train()\n            current_step = trainer.step.item()\n            samples_timer.reset()\n            # place data on device\n            img = img.to(trainer.device)\n            txt = txt.to(trainer.device)",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:441-471"
+    },
+    "801": {
+        "file_id": 24,
+        "content": "The code sets up a training loop that iterates over epochs and resets the dataloader if it was paused mid-epoch. It places data on the device, tracks the best validation loss, and keeps track of samples seen.",
+        "type": "comment"
+    },
+    "802": {
+        "file_id": 24,
+        "content": "            # pass to model\n            loss = trainer(text=txt, image_embed=img)\n            # perform backprop & apply EMA updates\n            trainer.update()\n            # gather info about training step\n            all_loss = pad_gather_reduce(trainer, loss, method=\"mean\")\n            num_samples = pad_gather_reduce(trainer, len(txt), method=\"sum\")\n            samples_per_sec = num_samples / samples_timer.elapsed()\n            samples_seen += num_samples\n            ema_decay = trainer.ema_diffusion_prior.get_current_decay()\n            # log\n            tracker.log(\n                {\n                    \"tracking/samples-sec\": samples_per_sec,\n                    \"tracking/samples-seen\": samples_seen,\n                    \"tracking/ema-decay\": ema_decay,\n                    f\"tracking/training-{config.prior.loss_type}\": all_loss,\n                },\n                step=current_step,\n            )\n            # Metric Tracking @ Timed Intervals\n            eval_delta = pad_gather_reduce(\n                trainer, validation_countdown.elapsed(), method=\"min\"",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:473-504"
+    },
+    "803": {
+        "file_id": 24,
+        "content": "This code is performing backpropagation, updating the exponential moving average (EMA), logging training metrics, and tracking evaluation intervals. It calculates the loss from text and image embeddings using the trainer model and updates the EMA diffusion prior. Metrics like samples per second, number of samples seen, EMA decay, and a specific loss type are logged at each step, while evaluating the validation countdown time interval for metrics tracking.",
+        "type": "comment"
+    },
+    "804": {
+        "file_id": 24,
+        "content": "            )\n            if eval_delta != None and eval_delta > config.data.eval_every_seconds:\n                # begin timing how long this takes\n                validation_profiler.reset()\n                # package kwargs for evaluation\n                eval_kwargs = {\n                    \"trainer\": trainer,\n                    \"tracker\": tracker,\n                    \"text_conditioned\": config.prior.condition_on_text_encodings,\n                    \"timesteps\": config.train.eval_timesteps,\n                }\n                # ONLINE MODEL : COSINE : LOSS : VALIDATION SPLIT\n                eval_model(\n                    dataloader=eval_loader,\n                    loss_type=config.prior.loss_type,\n                    split=\"validation\",\n                    use_ema=False,\n                    report_cosine=False,\n                    report_loss=True,\n                    **eval_kwargs,\n                )\n                # EMA MODEL : COSINE : LOSS : VALIDATION DATA\n                ema_val_loss = eval_model(\n                    dataloader=eval_loader,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:505-536"
+    },
+    "805": {
+        "file_id": 24,
+        "content": "This code is evaluating the model on validation data with specified options. It checks if it's time to evaluate, resets the profiler for timing, packages evaluation kwargs, and calls eval_model function with dataloader, loss type, split (validation), use_ema, report_cosine, report_loss, and eval_kwargs. It also evaluates the ema model separately.",
+        "type": "comment"
+    },
+    "806": {
+        "file_id": 24,
+        "content": "                    loss_type=config.prior.loss_type,\n                    split=\"validation\",\n                    use_ema=True,\n                    report_cosine=True,\n                    report_loss=True,\n                    **eval_kwargs,\n                )\n                tracker.log(\n                    {\n                        \"tracking/validation length (minutes)\": validation_profiler.elapsed()\n                        / 60\n                    }\n                )\n                # check if the ema validation is the lowest seen yet\n                if ema_val_loss < best_validation_loss:\n                    best_validation_loss = ema_val_loss\n                    #  go save the model as best\n                    save_trainer(\n                        trainer=trainer,\n                        tracker=tracker,\n                        is_best=True,\n                        is_latest=False,\n                        samples_seen=samples_seen,\n                        epoch=epoch,\n                        best_validation_loss=best_validation_loss,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:537-566"
+    },
+    "807": {
+        "file_id": 24,
+        "content": "In this code, a validation process is executed using ema (exponential moving average) to calculate the loss. The lowest ema validation loss seen so far is stored in `best_validation_loss` and if the current validation loss is lower than the previous best, the model is saved as the 'best' model. This code also logs the time taken for the validation process.",
+        "type": "comment"
+    },
+    "808": {
+        "file_id": 24,
+        "content": "                    )\n                # reset timer for validaiton\n                validation_countdown.reset()\n            elif eval_delta is None:\n                click.secho(\n                    f\"Error occured reading the eval time on rank: {trainer.device}\",\n                    fg=\"yellow\",\n                )\n            # save as latest model on schedule\n            save_delta = pad_gather_reduce(trainer, save_timer.elapsed(), method=\"min\")\n            if save_delta != None and save_delta >= config.train.save_every_seconds:\n                save_trainer(\n                    trainer=trainer,\n                    tracker=tracker,\n                    is_best=False,\n                    is_latest=True,\n                    samples_seen=samples_seen,\n                    epoch=epoch,\n                    best_validation_loss=best_validation_loss,\n                )\n                save_timer.reset()\n            elif save_delta is None:\n                click.secho(\n                    f\"Error occured reading the save time on rank: {trainer.device}\",",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:567-598"
+    },
+    "809": {
+        "file_id": 24,
+        "content": "This code segment resets the validation timer and handles errors in reading eval and save times. It saves the latest model if the elapsed time meets a certain condition, and resets the save timer. This helps keep track of the training progress and ensures timely saving of models for later use.",
+        "type": "comment"
+    },
+    "810": {
+        "file_id": 24,
+        "content": "                    fg=\"yellow\",\n                )\n    # evaluate on test data\n    if trainer.accelerator.is_main_process:\n        click.secho(f\"Starting Test\", fg=\"red\")\n    # save one last time as latest before beginning validation\n    save_trainer(\n        tracker=tracker,\n        trainer=trainer,\n        is_best=False,\n        is_latest=True,\n        samples_seen=samples_seen,\n        epoch=epoch,\n        best_validation_loss=best_validation_loss,\n    )\n    test_loss = eval_model(\n        trainer=trainer,\n        dataloader=test_loader,\n        text_conditioned=config.prior.condition_on_text_encodings,\n        split=\"test\",\n        tracker=tracker,\n        use_ema=True,\n        report_cosine=False,\n        report_loss=True,\n        timesteps=config.train.eval_timesteps,\n        loss_type=config.prior.loss_type,\n    )\n    if test_loss < best_validation_loss:\n        best_validation_loss = test_loss\n        #  go save the model as best\n        save_trainer(\n            trainer=trainer,\n            tracker=tracker,\n            is_best=True,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:599-640"
+    },
+    "811": {
+        "file_id": 24,
+        "content": "Starting test phase and saving the last model as latest before validation. If test loss is lower than previous best validation loss, it will be saved as the new best model.",
+        "type": "comment"
+    },
+    "812": {
+        "file_id": 24,
+        "content": "            is_latest=False,\n            samples_seen=samples_seen,\n            epoch=epoch,\n            best_validation_loss=test_loss,\n        )\ndef initialize_training(config_file, accelerator):\n    \"\"\"\n    Parse the configuration file, and prepare everything necessary for training\n    \"\"\"\n    # load the configuration file\n    if accelerator.is_main_process:\n        click.secho(f\"Loading configuration from {config_file}\", fg=\"green\")\n    config = TrainDiffusionPriorConfig.from_json_path(config_file)\n    # seed\n    set_seed(config.train.random_seed)\n    # get a device\n    device = accelerator.device\n    # make the trainer (will automatically distribute if possible & configured)\n    trainer: DiffusionPriorTrainer = make_model(\n        config.prior, config.train, device, accelerator\n    ).to(device)\n    # create a tracker\n    tracker = create_tracker(\n        accelerator, config, config_file, dummy=accelerator.process_index != 0\n    )\n    # reload from chcekpoint\n    if tracker.can_recall:\n        current_epoch, best_validation_loss, samples_seen = recall_trainer(",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:641-681"
+    },
+    "813": {
+        "file_id": 24,
+        "content": "The function initialize_training is responsible for loading the configuration file, setting the seed, getting a device, making the trainer, and creating a tracker. The trainer is automatically distributed if possible and configured. Additionally, the function checks whether it can recall from a checkpoint.",
+        "type": "comment"
+    },
+    "814": {
+        "file_id": 24,
+        "content": "            tracker=tracker, trainer=trainer\n        )\n        # display best values\n        if trainer.accelerator.is_main_process:\n            click.secho(f\"Current Epoch: {current_epoch} | Best Val Loss: {best_validation_loss} | Samples Seen: {samples_seen}\", fg=\"yellow\")\n        # update config to reflect recalled values\n        config.train.num_samples_seen = samples_seen\n        config.train.current_epoch = current_epoch\n        config.train.best_validation_loss = best_validation_loss\n    # fetch and prepare data\n    if trainer.accelerator.is_main_process:\n        click.secho(\"Grabbing data...\", fg=\"blue\", blink=True)\n    trainer.accelerator.wait_for_everyone()\n    img_reader = get_reader(\n        text_conditioned=trainer.text_conditioned,\n        img_url=config.data.image_url,\n        meta_url=config.data.meta_url,\n    )\n    # calculate start point within epoch\n    trainer.accelerator.wait_for_everyone()\n    train_loader, eval_loader, test_loader = make_splits(\n        text_conditioned=trainer.text_conditioned,",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:682-711"
+    },
+    "815": {
+        "file_id": 24,
+        "content": "This code block displays the current epoch, best validation loss, and samples seen, updates configuration with recalled values, fetches and prepares data for training by creating a loader, and calculates the start point within the epoch.",
+        "type": "comment"
+    },
+    "816": {
+        "file_id": 24,
+        "content": "        batch_size=config.data.batch_size,\n        num_data_points=config.data.num_data_points,\n        train_split=config.data.splits.train,\n        eval_split=config.data.splits.val,\n        image_reader=img_reader,\n        rank=accelerator.state.process_index,\n        world_size=accelerator.state.num_processes,\n        start=0,\n    )\n    # update the start point to finish out the epoch on a resumed run\n    if tracker.can_recall:\n        samples_seen = config.train.num_samples_seen\n        length = (\n            config.data.num_data_points\n            if samples_seen <= img_reader.count\n            else img_reader.count\n        )\n        scaled_samples = length * config.train.current_epoch\n        start_point = (\n            scaled_samples - samples_seen if scaled_samples > samples_seen else samples_seen\n        )\n        if trainer.accelerator.is_main_process:\n            click.secho(f\"Resuming at sample: {start_point}\", fg=\"yellow\")\n        train_loader.dataset.set_start(start_point)\n    # start training\n    if trainer.accelerator.is_main_process:",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:712-743"
+    },
+    "817": {
+        "file_id": 24,
+        "content": "This code initializes a data loader and sets the start point for resuming training if necessary. It ensures that the training continues from where it left off in a previous run by adjusting the number of samples seen based on the total number of data points and the current epoch. The main process prints a message indicating the resumption sample count.",
+        "type": "comment"
+    },
+    "818": {
+        "file_id": 24,
+        "content": "        click.secho(\n            f\"Beginning Prior Training : Distributed={accelerator.state.distributed_type != accelerate_dataclasses.DistributedType.NO}\",\n            fg=\"yellow\",\n        )\n    train(\n        trainer=trainer,\n        tracker=tracker,\n        train_loader=train_loader,\n        eval_loader=eval_loader,\n        test_loader=test_loader,\n        config=config,\n    )\n@click.command()\n@click.option(\"--config_file\", default=\"configs/train_prior_config.example.json\")\ndef main(config_file):\n    # start HFA\n    accelerator = Accelerator()\n    # setup training\n    initialize_training(config_file, accelerator)\nif __name__ == \"__main__\":\n    main()",
+        "type": "code",
+        "location": "/train_diffusion_prior.py:744-770"
+    },
+    "819": {
+        "file_id": 24,
+        "content": "Beginning Prior Training message with distributed status. Then, initiates training process using provided configurations and loaders for trainer, tracker, train_loader, eval_loader, and test_loader. Finally, executes main function with the specified config file to start Heterogeneous Fusion Acceleration (HFA) and set up the training environment.",
+        "type": "comment"
+    }
+}

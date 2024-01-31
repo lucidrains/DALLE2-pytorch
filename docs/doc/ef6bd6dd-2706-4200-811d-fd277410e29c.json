@@ -1,0 +1,10 @@
+{
+    "summary": "Install the updated pip and then install the project in editable mode. Then, run tests for a specific decoder configuration using CUDA visible devices and a provided JSON file.",
+    "details": [
+        {
+            "comment": "Install the updated pip and then install the project in editable mode. Then, run tests for a specific decoder configuration using CUDA visible devices and a provided JSON file.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/Makefile\":0-5",
+            "content": "install:\n\tpip install -U pip\n\tpip install -e .\ntest:\n\tCUDA_VISIBLE_DEVICES= python train_decoder.py --config_file configs/train_decoder_config.test.json"
+        }
+    ]
+}

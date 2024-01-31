@@ -1,0 +1,10 @@
+{
+    "summary": "This code is specifying the recursive inclusion of all .txt files in the dalle2_pytorch directory for the MANIFEST.in file.",
+    "details": [
+        {
+            "comment": "This code is specifying the recursive inclusion of all .txt files in the dalle2_pytorch directory for the MANIFEST.in file.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/MANIFEST.in\":0-0",
+            "content": "recursive-include dalle2_pytorch *.txt"
+        }
+    ]
+}

@@ -1,0 +1,15 @@
+{
+    "summary": "This code is a setup script for the dalle2-pytorch package using setuptools, defining project details and dependencies like PyTorch, Torchvision, and more. It's a Python project with beta development status, targeting developers in AI field, licensed under MIT, requires Python 3.6.",
+    "details": [
+        {
+            "comment": "This code is a setup script for the dalle2-pytorch package using setuptools. It defines the name, packages, entry points, version, license, description, author, URL, keywords, and install_requires. The script imports necessary modules and sets up dependencies for installation.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/setup.py\":0-41",
+            "content": "from setuptools import setup, find_packages\nexec(open('dalle2_pytorch/version.py').read())\nsetup(\n  name = 'dalle2-pytorch',\n  packages = find_packages(exclude=[]),\n  include_package_data = True,\n  entry_points={\n    'console_scripts': [\n      'dalle2_pytorch = dalle2_pytorch.cli:main',\n      'dream = dalle2_pytorch.cli:dream'\n    ],\n  },\n  version = __version__,\n  license='MIT',\n  description = 'DALL-E 2',\n  author = 'Phil Wang',\n  author_email = 'lucidrains@gmail.com',\n  long_description_content_type = 'text/markdown',\n  url = 'https://github.com/lucidrains/dalle2-pytorch',\n  keywords = [\n    'artificial intelligence',\n    'deep learning',\n    'text to image'\n  ],\n  install_requires=[\n    'accelerate',\n    'click',\n    'open-clip-torch>=2.0.0,<3.0.0',\n    'clip-anytorch>=2.5.2',\n    'coca-pytorch>=0.0.5',\n    'ema-pytorch>=0.0.7',\n    'einops>=0.7.0',\n    'embedding-reader',\n    'kornia>=0.5.4',\n    'numpy',\n    'packaging',\n    'pillow',\n    'pydantic>=2',\n    'pytorch-warmup',\n    'resize-right>=0.0.2',\n    'rotary-embedding-torch',"
+        },
+        {
+            "comment": "This is a Python project setup file, using setuptools. It depends on PyTorch >= 1.10, Torchvision, Tqdm, VectorQuantizePytorch, X-Clip >= 0.4.4, Webdataset >= 0.2.5, FSSpec >= 2022.1.0, and TorchMetrics[image] >= 0.8.0. The project has a beta development status, is intended for developers, relates to artificial intelligence, is licensed under MIT, and requires Python 3.6.",
+            "location": "\"/media/root/Toshiba XG3/works/DALLE2-pytorch/docs/src/setup.py\":42-58",
+            "content": "    'torch>=1.10',\n    'torchvision',\n    'tqdm',\n    'vector-quantize-pytorch',\n    'x-clip>=0.4.4',\n    'webdataset>=0.2.5',\n    'fsspec>=2022.1.0',\n    'torchmetrics[image]>=0.8.0'\n  ],\n  classifiers=[\n    'Development Status :: 4 - Beta',\n    'Intended Audience :: Developers',\n    'Topic :: Scientific/Engineering :: Artificial Intelligence',\n    'License :: OSI Approved :: MIT License',\n    'Programming Language :: Python :: 3.6',\n  ],\n)"
+        }
+    ]
+}

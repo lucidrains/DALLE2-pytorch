@@ -1,0 +1,548 @@
+{
+    "0": {
+        "file_id": 0,
+        "content": "/MANIFEST.in",
+        "type": "filepath"
+    },
+    "1": {
+        "file_id": 0,
+        "content": "This code is specifying the recursive inclusion of all .txt files in the dalle2_pytorch directory for the MANIFEST.in file.",
+        "type": "summary"
+    },
+    "2": {
+        "file_id": 0,
+        "content": "recursive-include dalle2_pytorch *.txt",
+        "type": "code",
+        "location": "/MANIFEST.in:1-1"
+    },
+    "3": {
+        "file_id": 0,
+        "content": "This code is specifying the recursive inclusion of all .txt files in the dalle2_pytorch directory for the MANIFEST.in file.",
+        "type": "comment"
+    },
+    "4": {
+        "file_id": 1,
+        "content": "/Makefile",
+        "type": "filepath"
+    },
+    "5": {
+        "file_id": 1,
+        "content": "Install the updated pip and then install the project in editable mode. Then, run tests for a specific decoder configuration using CUDA visible devices and a provided JSON file.",
+        "type": "summary"
+    },
+    "6": {
+        "file_id": 1,
+        "content": "install:\n\tpip install -U pip\n\tpip install -e .\ntest:\n\tCUDA_VISIBLE_DEVICES= python train_decoder.py --config_file configs/train_decoder_config.test.json",
+        "type": "code",
+        "location": "/Makefile:1-6"
+    },
+    "7": {
+        "file_id": 1,
+        "content": "Install the updated pip and then install the project in editable mode. Then, run tests for a specific decoder configuration using CUDA visible devices and a provided JSON file.",
+        "type": "comment"
+    },
+    "8": {
+        "file_id": 2,
+        "content": "/README.md",
+        "type": "filepath"
+    },
+    "9": {
+        "file_id": 2,
+        "content": "The code enhances DALL-E 2 with additional layers, unconditional generation, and prior models. It provides installation guidance for saving generated images and inpainting through Latent Diffusion. The accompanying code snippet offers BibTeX entries for four research articles published between 2021 and 2022.",
+        "type": "summary"
+    },
+    "10": {
+        "file_id": 2,
+        "content": "<img src=\"./dalle2.png\" width=\"450px\"></img>\n## DALL-E 2 - Pytorch\nImplementation of <a href=\"https://openai.com/dall-e-2/\">DALL-E 2</a>, OpenAI's updated text-to-image synthesis neural network, in Pytorch.\n<a href=\"https://youtu.be/RJwPN4qNi_Y?t=555\">Yannic Kilcher summary</a> | <a href=\"https://www.youtube.com/watch?v=F1X4fHzF4mQ\">AssemblyAI explainer</a>\nThe main novelty seems to be an extra layer of indirection with the prior network (whether it is an autoregressive transformer or a diffusion network), which predicts an image embedding based on the text embedding from CLIP. Specifically, this repository will only build out the diffusion prior network, as it is the best performing variant (but which incidentally involves a causal transformer as the denoising network 😂)\nThis model is SOTA for text-to-image for now.\nPlease join <a href=\"https://discord.gg/xBPBXfcFHd\"><img alt=\"Join us on Discord\" src=\"https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=whit",
+        "type": "code",
+        "location": "/README.md:1-13"
+    },
+    "11": {
+        "file_id": 2,
+        "content": "This code is for an implementation of DALL-E 2, OpenAI's text-to-image synthesis neural network, in Pytorch. It includes a link to a Yannic Kilcher summary and AssemblyAI explainer. The main novelty is an extra layer using the prior network, predicting an image embedding from text embedding. This repository builds out the diffusion prior network, using a causal transformer as the denoising network. It currently holds the SOTA for text-to-image synthesis.",
+        "type": "comment"
+    },
+    "12": {
+        "file_id": 2,
+        "content": "e\"></a> if you are interested in helping out with the replication with the <a href=\"https://laion.ai/\">LAION</a> community | <a href=\"https://www.youtube.com/watch?v=AIOE1l1W0Tw\">Yannic Interview</a>\nAs of 5/23/22, it is no longer SOTA. SOTA will be <a href=\"https://github.com/lucidrains/imagen-pytorch\">here</a>. Jax versions as well as text-to-video project will be shifted towards the Imagen architecture, as it is way simpler.\n## Status\n- A research group has used the code in this repository to train a functional diffusion prior for their CLIP generations. Will share their work once they release their preprint. This, and <a href=\"https://github.com/crowsonkb\">Katherine's</a> own experiments, validate OpenAI's finding that the extra prior increases variety of generations.\n- Decoder is now verified working for unconditional generation on my experimental setup for Oxford flowers. 2 researchers have also confirmed Decoder is working for them.\n<img src=\"./samples/oxford.png\" width=\"450px\" />\n*ongoing at 21k steps*",
+        "type": "code",
+        "location": "/README.md:13-25"
+    },
+    "13": {
+        "file_id": 2,
+        "content": "This code is for a DALL-E 2 model. It has been improved and simplified using the Imagen architecture, and its decoder is verified to work for unconditional generation in Oxford flowers experiments. Researchers have used this code for training a functional diffusion prior, validating its effectiveness.",
+        "type": "comment"
+    },
+    "14": {
+        "file_id": 2,
+        "content": "- <a href=\"https://twitter.com/Buntworthy/status/1529475416775434240?t=0GEge3Kr9I36cjcUVCQUTg\">Justin Pinkney</a> successfully trained the diffusion prior in the repository for his CLIP to Stylegan2 text-to-image application\n- <a href=\"https://github.com/rom1504\">Romain</a> has scaled up training to 800 GPUs with the available scripts without any issues\n## Pre-Trained Models\n- LAION is training prior models. Checkpoints are available on <a href=\"https://huggingface.co/zenglishuci/conditioned-prior\">🤗huggingface</a> and the training statistics are available on <a href=\"https://wandb.ai/nousr_laion/conditioned-prior/reports/LAION-DALLE2-PyTorch-Prior--VmlldzoyMDI2OTIx\">🐝WANDB</a>.\n- Decoder - <a href=\"https://wandb.ai/veldrovive/dalle2_train_decoder/runs/jkrtg0so?workspace=user-veldrovive\">In-progress test run</a> 🚧\n- Decoder - <a href=\"https://wandb.ai/veldrovive/dalle2_train_decoder/runs/3d5rytsa?workspace=\">Another test run with sparse attention</a>\n- DALL-E 2 🚧 - <a href=\"https://github.com/LAION-AI/dalle2-laion\">DALL-E 2 Laion repository</a>",
+        "type": "code",
+        "location": "/README.md:27-36"
+    },
+    "15": {
+        "file_id": 2,
+        "content": "Justin Pinkney successfully trained the diffusion prior for his CLIP to Stylegan2 text-to-image application. Romain scaled up training to 800 GPUs with existing scripts without any issues. LAION is training prior models, available on HuggingFace and WANDB. Decoder testing runs are ongoing. DALL-E 2 repository by LAION is under development.",
+        "type": "comment"
+    },
+    "16": {
+        "file_id": 2,
+        "content": "## Appreciation\nThis library would not have gotten to this working state without the help of\n- <a href=\"https://github.com/nousr\">Zion</a> for the distributed training code for the diffusion prior\n- <a href=\"https://github.com/Veldrovive\">Aidan</a> for the distributed training code for the decoder as well as the dataloaders\n- <a href=\"https://github.com/krish240574\">Kumar</a> for working on the initial diffusion training script\n- <a href=\"https://github.com/rom1504\">Romain</a> for the pull request reviews and project management\n- <a href=\"https://github.com/Ciaohe\">He Cao</a> and <a href=\"https://github.com/xiankgx\">xiankgx</a> for the Q&A and for identifying of critical bugs\n- <a href=\"https://github.com/marunine\">Marunine</a> for identifying issues with resizing of the low resolution conditioner, when training the upsampler, in addition to various other bug fixes\n- <a href=\"https://github.com/malumadev\">MalumaDev</a> for proposing the use of pixel shuffle upsampler for fixing checkboard artifacts",
+        "type": "code",
+        "location": "/README.md:38-48"
+    },
+    "17": {
+        "file_id": 2,
+        "content": "This code block expresses gratitude to the contributors who assisted in developing and improving this library, acknowledging their efforts for distributed training code, bug fixes, Q&A support, and project management.",
+        "type": "comment"
+    },
+    "18": {
+        "file_id": 2,
+        "content": "- <a href=\"https://github.com/crowsonkb\">Katherine</a> for her advice\n- <a href=\"https://stability.ai/\">Stability AI</a> for the generous sponsorship\n- <a href=\"https://huggingface.co\">🤗 Huggingface</a> and in particular <a href=\"https://github.com/sgugger\">Sylvain</a> for the <a href=\"https://github.com/huggingface/accelerate\">Accelerate</a> library\n- <a href=\"https://github.com/arogozhnikov\">Alex</a> for <a href=\"https://github.com/arogozhnikov/einops\">einops</a>, indispensable tool for tensor manipulation\n... and many others. Thank you! 🙏\n## Install\n```bash\n$ pip install dalle2-pytorch\n```\n## Usage\nTo train DALLE-2 is a 3 step process, with the training of CLIP being the most important\nTo train CLIP, you can either use <a href=\"https://github.com/lucidrains/x-clip\">x-clip</a> package, or join the LAION discord, where a lot of replication efforts are already <a href=\"https://github.com/mlfoundations/open_clip\">underway</a>.\nThis repository will demonstrate integration with `x-clip` for starters\n```python",
+        "type": "code",
+        "location": "/README.md:49-70"
+    },
+    "19": {
+        "file_id": 2,
+        "content": "Acknowledgments to Katherine, Stability AI, HuggingFace (Sylvain), and Alex for their contributions; installation instructions with pip command; usage notes mentioning CLIP training, x-clip package, and LAION discord; repository integration with `x-clip` mentioned.",
+        "type": "comment"
+    },
+    "20": {
+        "file_id": 2,
+        "content": "import torch\nfrom dalle2_pytorch import CLIP\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 1,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 1,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8,\n    use_all_token_embeds = True,            # whether to use fine-grained contrastive learning (FILIP)\n    decoupled_contrastive_learning = True,  # use decoupled contrastive learning (DCL) objective function, removing positive pairs from the denominator of the InfoNCE loss (CLOOB + DCL)\n    extra_latent_projection = True,         # whether to use separate projections for text-to-image vs image-to-text comparisons (CLOOB)\n    use_visual_ssl = True,                  # whether to do self supervised learning on images\n    visual_ssl_type = 'simclr',             # can be either 'simclr' or 'simsiam', depending on using DeCLIP or SLIP\n    use_mlm = False,                        # use masked language learning (MLM) on text (DeCLIP)",
+        "type": "code",
+        "location": "/README.md:71-91"
+    },
+    "21": {
+        "file_id": 2,
+        "content": "The code imports necessary libraries and initializes a CLIP model with specific dimensions for text, image, and latent embeddings. It includes various settings such as token counts, encoding depths, image sizes, heads, and learning techniques (FILIP, DCL, CLOOB, DeCLIP, SLIP). It also indicates whether to use masked language learning on text (MLM) or not.",
+        "type": "comment"
+    },
+    "22": {
+        "file_id": 2,
+        "content": "    text_ssl_loss_weight = 0.05,            # weight for text MLM loss\n    image_ssl_loss_weight = 0.05            # weight for image self-supervised learning loss\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (4, 256)).cuda()\nimages = torch.randn(4, 3, 256, 256).cuda()\n# train\nloss = clip(\n    text,\n    images,\n    return_loss = True              # needs to be set to True to return contrastive loss\n)\nloss.backward()\n# do the above with as many texts and images as possible in a loop\n```\nThen, you will need to train the decoder, which learns to generate images based on the image embedding coming from the trained CLIP above\n```python\nimport torch\nfrom dalle2_pytorch import Unet, Decoder, CLIP\n# trained clip from step 1\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 1,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 1,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n).cuda()\n# unet for the decoder",
+        "type": "code",
+        "location": "/README.md:92-136"
+    },
+    "23": {
+        "file_id": 2,
+        "content": "The code snippet initializes a CLIP model, sets text and image self-supervised loss weights, generates mock data for training, computes the contrastive loss, backpropagates gradients, and trains the decoder using a Unet architecture. The trained CLIP from step 1 is used in this step to train the decoder.",
+        "type": "comment"
+    },
+    "24": {
+        "file_id": 2,
+        "content": "unet = Unet(\n    dim = 128,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults=(1, 2, 4, 8)\n).cuda()\n# decoder, which contains the unet and clip\ndecoder = Decoder(\n    unet = unet,\n    clip = clip,\n    timesteps = 100,\n    image_cond_drop_prob = 0.1,\n    text_cond_drop_prob = 0.5\n).cuda()\n# mock images (get a lot of this)\nimages = torch.randn(4, 3, 256, 256).cuda()\n# feed images into decoder\nloss = decoder(images)\nloss.backward()\n# do the above for many many many many steps\n# then it will learn to generate images based on the CLIP image embeddings\n```\nFinally, the main contribution of the paper. The repository offers the diffusion prior network. It takes the CLIP text embeddings and tries to generate the CLIP image embeddings. Again, you will need the trained CLIP from the first step\n```python\nimport torch\nfrom dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior, CLIP\n# get trained CLIP from step one\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,",
+        "type": "code",
+        "location": "/README.md:138-181"
+    },
+    "25": {
+        "file_id": 2,
+        "content": "In this code, a U-Net model is created using the provided configuration and then placed on the GPU. A decoder is also created, containing the U-Net and CLIP models, with specific parameters for timesteps, image, and text drop probabilities. The decoder generates images based on CLIP image embeddings after going through many steps of training. Finally, a trained CLIP model from step one is imported for use in the diffusion prior network.",
+        "type": "comment"
+    },
+    "26": {
+        "file_id": 2,
+        "content": "    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8,\n).cuda()\n# setup prior network, which contains an autoregressive transformer\nprior_network = DiffusionPriorNetwork(\n    dim = 512,\n    depth = 6,\n    dim_head = 64,\n    heads = 8\n).cuda()\n# diffusion prior network, which contains the CLIP and network (with transformer) above\ndiffusion_prior = DiffusionPrior(\n    net = prior_network,\n    clip = clip,\n    timesteps = 100,\n    cond_drop_prob = 0.2\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (4, 256)).cuda()\nimages = torch.randn(4, 3, 256, 256).cuda()\n# feed text and images into diffusion prior network\nloss = diffusion_prior(text, images)\nloss.backward()\n# do the above for many many many steps\n# now the diffusion prior can generate image embeddings from the text embeddings\n```\nIn the paper, they actually used a <a href=\"https://cascaded-diffusion.github.io/\">recently discovered technique</a>,",
+        "type": "code",
+        "location": "/README.md:182-223"
+    },
+    "27": {
+        "file_id": 2,
+        "content": "The code sets up a diffusion prior network for generating image embeddings from text embeddings using PyTorch. The network is composed of an autoregressive transformer, CLIP model, and other layers. It also includes a prior_network, random data, and losses are calculated by feeding the text and images into the diffusion prior network before backpropagation. This process is repeated many times to train the network.",
+        "type": "comment"
+    },
+    "28": {
+        "file_id": 2,
+        "content": " from <a href=\"http://www.jonathanho.me/\">Jonathan Ho</a> himself (original author of DDPMs, the core technique used in DALL-E v2) for high resolution image synthesis.\nThis can easily be used within this framework as so\n```python\nimport torch\nfrom dalle2_pytorch import Unet, Decoder, CLIP\n# trained clip from step 1\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n).cuda()\n# 2 unets for the decoder (a la cascading DDPM)\nunet1 = Unet(\n    dim = 32,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8)\n).cuda()\nunet2 = Unet(\n    dim = 32,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8, 16)\n).cuda()\n# decoder, which contains the unet(s) and clip\ndecoder = Decoder(\n    clip = clip,\n    unet = (unet1, unet2),           ",
+        "type": "code",
+        "location": "/README.md:223-269"
+    },
+    "29": {
+        "file_id": 2,
+        "content": "This code imports necessary modules and initializes a CLIP model, two UNETs for the decoder, and a decoder itself. The CLIP model is trained from a previous step, while the two UNETs are initialized with different dimensions for cascading DDPMs. The decoder contains the CLIP model and both UNETs.",
+        "type": "comment"
+    },
+    "30": {
+        "file_id": 2,
+        "content": " # insert both unets in order of low resolution to highest resolution (you can have as many stages as you want here)\n    image_sizes = (256, 512),         # resolutions, 256 for first unet, 512 for second. these must be unique and in ascending order (matches with the unets passed in)\n    timesteps = 1000,\n    image_cond_drop_prob = 0.1,\n    text_cond_drop_prob = 0.5\n).cuda()\n# mock images (get a lot of this)\nimages = torch.randn(4, 3, 512, 512).cuda()\n# feed images into decoder, specifying which unet you want to train\n# each unet can be trained separately, which is one of the benefits of the cascading DDPM scheme\nloss = decoder(images, unet_number = 1)\nloss.backward()\nloss = decoder(images, unet_number = 2)\nloss.backward()\n# do the above for many steps for both unets\n```\nFinally, to generate the DALL-E2 images from text. Insert the trained `DiffusionPrior` as well as the `Decoder` (which wraps `CLIP`, the causal transformer, and unet(s))\n```python\nfrom dalle2_pytorch import DALLE2\ndalle2 = DALLE2(\n    prior = diffusion_prior,",
+        "type": "code",
+        "location": "/README.md:269-298"
+    },
+    "31": {
+        "file_id": 2,
+        "content": "The code inserts two U-Nets into a decoder model in ascending order of resolution. The images are generated using a specified number of U-Nets, and the loss is calculated for each U-Net separately. Finally, a trained `DiffusionPrior` and `Decoder` (wrapping `CLIP`, a causal transformer, and unet(s)) are inserted to generate DALL-E2 images from text.",
+        "type": "comment"
+    },
+    "32": {
+        "file_id": 2,
+        "content": "    decoder = decoder\n)\n# send the text as a string if you want to use the simple tokenizer from DALLE v1\n# or you can do it as token ids, if you have your own tokenizer\ntexts = ['glistening morning dew on a flower petal']\nimages = dalle2(texts) # (1, 3, 256, 256)\n```\nThat's it!\nLet's see the whole script below\n```python\nimport torch\nfrom dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder, CLIP\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (4, 256)).cuda()\nimages = torch.randn(4, 3, 256, 256).cuda()\n# train\nloss = clip(\n    text,\n    images,\n    return_loss = True\n)\nloss.backward()\n# do above for many steps ...\n# prior networks (with transformer)\nprior_network = DiffusionPriorNetwork(\n    dim = 512,\n    depth = 6,\n    dim_head = 64,",
+        "type": "code",
+        "location": "/README.md:299-353"
+    },
+    "33": {
+        "file_id": 2,
+        "content": "This code is importing necessary modules and creating an instance of DALLE2 model. It then generates images from input text using the model, and performs training on the model by calculating loss and performing backpropagation for multiple steps. The code also creates a prior network with specified dimensions and depth.",
+        "type": "comment"
+    },
+    "34": {
+        "file_id": 2,
+        "content": "    heads = 8\n).cuda()\ndiffusion_prior = DiffusionPrior(\n    net = prior_network,\n    clip = clip,\n    timesteps = 1000,\n    sample_timesteps = 64,\n    cond_drop_prob = 0.2\n).cuda()\nloss = diffusion_prior(text, images)\nloss.backward()\n# do above for many steps ...\n# decoder (with unet)\nunet1 = Unet(\n    dim = 128,\n    image_embed_dim = 512,\n    text_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults=(1, 2, 4, 8),\n    cond_on_text_encodings = True    # set to True for any unets that need to be conditioned on text encodings\n).cuda()\nunet2 = Unet(\n    dim = 16,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8, 16)\n).cuda()\ndecoder = Decoder(\n    unet = (unet1, unet2),\n    image_sizes = (128, 256),\n    clip = clip,\n    timesteps = 100,\n    image_cond_drop_prob = 0.1,\n    text_cond_drop_prob = 0.5\n).cuda()\nfor unet_number in (1, 2):\n    loss = decoder(images, text = text, unet_number = unet_number) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much",
+        "type": "code",
+        "location": "/README.md:354-400"
+    },
+    "35": {
+        "file_id": 2,
+        "content": "The code sets up a DALLE-like model using PyTorch, with two Unets for the decoder and trains it by iteratively calculating the loss. The model uses diffusion prior and is conditioned on both text and image encodings. It has different dimensions and timesteps for each Unet. The code is used to train an AI image generation model.",
+        "type": "comment"
+    },
+    "36": {
+        "file_id": 2,
+        "content": "    loss.backward()\n# do above for many steps\ndalle2 = DALLE2(\n    prior = diffusion_prior,\n    decoder = decoder\n)\nimages = dalle2(\n    ['cute puppy chasing after a squirrel'],\n    cond_scale = 2. # classifier free guidance strength (> 1 would strengthen the condition)\n)\n# save your image (in this example, of size 256x256)\n```\nEverything in this readme should run without error\nYou can also train the decoder on images of greater than the size (say 512x512) at which CLIP was trained (256x256). The images will be resized to CLIP image resolution for the image embeddings\nFor the layperson, no worries, training will all be automated into a CLI tool, at least for small scale training.\n## Training on Preprocessed CLIP Embeddings\nIt is likely, when scaling up, that you would first preprocess your images and text into corresponding embeddings before training the prior network. You can do so easily by simply passing in `image_embed`, `text_embed`, and optionally `text_encodings`\nWorking example below\n```python\nimport torch",
+        "type": "code",
+        "location": "/README.md:401-431"
+    },
+    "37": {
+        "file_id": 2,
+        "content": "The code is initializing a DALLE2 model with specified prior and decoder, generating images from input text using classifier-free guidance (with conditional scale 2), and then saving the generated image of size 256x256. The code also mentions that training will be automated into a CLI tool for small-scale training and that preprocessing images and text into embeddings might be required for scaling up.",
+        "type": "comment"
+    },
+    "38": {
+        "file_id": 2,
+        "content": "from dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior, CLIP\n# get trained CLIP from step one\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8,\n).cuda()\n# setup prior network, which contains an autoregressive transformer\nprior_network = DiffusionPriorNetwork(\n    dim = 512,\n    depth = 6,\n    dim_head = 64,\n    heads = 8\n).cuda()\n# diffusion prior network, which contains the CLIP and network (with transformer) above\ndiffusion_prior = DiffusionPrior(\n    net = prior_network,\n    clip = clip,\n    timesteps = 100,\n    cond_drop_prob = 0.2,\n    condition_on_text_encodings = False  # this probably should be true, but just to get Laion started\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (4, 256)).cuda()\nimages = torch.randn(4, 3, 256, 256).cuda()\n# precompute the text and image embeddings",
+        "type": "code",
+        "location": "/README.md:432-474"
+    },
+    "39": {
+        "file_id": 2,
+        "content": "This code is importing modules, initializing a trained CLIP model and setting up a diffusion prior network containing an autoregressive transformer. The diffusion prior contains both the CLIP and network. Mock data is then created for testing purposes.",
+        "type": "comment"
+    },
+    "40": {
+        "file_id": 2,
+        "content": "# here using the diffusion prior class, but could be done with CLIP alone\nclip_image_embeds = diffusion_prior.clip.embed_image(images).image_embed\nclip_text_embeds = diffusion_prior.clip.embed_text(text).text_embed\n# feed text and images into diffusion prior network\nloss = diffusion_prior(\n    text_embed = clip_text_embeds,\n    image_embed = clip_image_embeds\n)\nloss.backward()\n# do the above for many many many steps\n# now the diffusion prior can generate image embeddings from the text embeddings\n```\nYou can also completely go `CLIP`-less, in which case you will need to pass in the `image_embed_dim` into the `DiffusionPrior` on initialization\n```python\nimport torch\nfrom dalle2_pytorch import DiffusionPriorNetwork, DiffusionPrior\n# setup prior network, which contains an autoregressive transformer\nprior_network = DiffusionPriorNetwork(\n    dim = 512,\n    depth = 6,\n    dim_head = 64,\n    heads = 8\n).cuda()\n# diffusion prior network, which contains the CLIP and network (with transformer) above\ndiffusion_prior = DiffusionPrior(",
+        "type": "code",
+        "location": "/README.md:475-510"
+    },
+    "41": {
+        "file_id": 2,
+        "content": "The code initializes a diffusion prior network with an autoregressive transformer and uses CLIP for image and text embeddings. It then calculates the loss by feeding the embeddings into the diffusion prior network, backpropagates the gradients, and repeats this process multiple times. Alternatively, CLIP can be excluded from the model initialization by passing the `image_embed_dim` directly to the `DiffusionPrior` class.",
+        "type": "comment"
+    },
+    "42": {
+        "file_id": 2,
+        "content": "    net = prior_network,\n    image_embed_dim = 512,               # this needs to be set\n    timesteps = 100,\n    cond_drop_prob = 0.2,\n    condition_on_text_encodings = False  # this probably should be true, but just to get Laion started\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (4, 256)).cuda()\nimages = torch.randn(4, 3, 256, 256).cuda()\n# precompute the text and image embeddings\n# here using the diffusion prior class, but could be done with CLIP alone\nclip_image_embeds = torch.randn(4, 512).cuda()\nclip_text_embeds = torch.randn(4, 512).cuda()\n# feed text and images into diffusion prior network\nloss = diffusion_prior(\n    text_embed = clip_text_embeds,\n    image_embed = clip_image_embeds\n)\nloss.backward()\n# do the above for many many many steps\n# now the diffusion prior can generate image embeddings from the text embeddings\n```\n## OpenAI CLIP\nAlthough there is the possibility they are using an unreleased, more powerful CLIP, you can use one of the released ones, if you do not wish to train your o",
+        "type": "code",
+        "location": "/README.md:511-544"
+    },
+    "43": {
+        "file_id": 2,
+        "content": "The code snippet is creating a diffusion model using the provided parameters and utilizing the OpenAI CLIP for image and text embeddings. The text and image embeddings are precomputed, then fed into the diffusion prior network to calculate loss and perform backpropagation. This process is repeated many times to train the model for generating image embeddings from text embeddings.",
+        "type": "comment"
+    },
+    "44": {
+        "file_id": 2,
+        "content": "wn CLIP from scratch. This will also allow the community to more quickly validate the conclusions of the paper.\nTo use a pretrained OpenAI CLIP, simply import `OpenAIClipAdapter` and pass it into the `DiffusionPrior` or `Decoder` like so\n```python\nimport torch\nfrom dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, Unet, Decoder, OpenAIClipAdapter\n# openai pretrained clip - defaults to ViT-B/32\nclip = OpenAIClipAdapter()\n# mock data\ntext = torch.randint(0, 49408, (4, 256)).cuda()\nimages = torch.randn(4, 3, 256, 256).cuda()\n# prior networks (with transformer)\nprior_network = DiffusionPriorNetwork(\n    dim = 512,\n    depth = 6,\n    dim_head = 64,\n    heads = 8\n).cuda()\ndiffusion_prior = DiffusionPrior(\n    net = prior_network,\n    clip = clip,\n    timesteps = 100,\n    cond_drop_prob = 0.2\n).cuda()\nloss = diffusion_prior(text, images)\nloss.backward()\n# do above for many steps ...\n# decoder (with unet)\nunet1 = Unet(\n    dim = 128,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults=(1, 2, 4, 8),",
+        "type": "code",
+        "location": "/README.md:544-589"
+    },
+    "45": {
+        "file_id": 2,
+        "content": "This code snippet demonstrates how to use OpenAI's CLIP model, pre-trained, within the DALLE2 PyTorch framework. It defines a function `OpenAIClipAdapter` that allows easy integration of pre-trained CLIP with DALLE2's prior and decoder networks. The code provides an example of how to use these networks for training purposes by defining a diffusion prior and unet decoder, and applying them to some mock data.",
+        "type": "comment"
+    },
+    "46": {
+        "file_id": 2,
+        "content": "    text_embed_dim = 512,\n    cond_on_text_encodings = True  # set to True for any unets that need to be conditioned on text encodings (ex. first unet in cascade)\n).cuda()\nunet2 = Unet(\n    dim = 16,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8, 16)\n).cuda()\ndecoder = Decoder(\n    unet = (unet1, unet2),\n    image_sizes = (128, 256),\n    clip = clip,\n    timesteps = 1000,\n    sample_timesteps = (250, 27),\n    image_cond_drop_prob = 0.1,\n    text_cond_drop_prob = 0.5\n).cuda()\nfor unet_number in (1, 2):\n    loss = decoder(images, text = text, unet_number = unet_number) # this can optionally be decoder(images, text) if you wish to condition on the text encodings as well, though it was hinted in the paper it didn't do much\n    loss.backward()\n# do above for many steps\ndalle2 = DALLE2(\n    prior = diffusion_prior,\n    decoder = decoder\n)\nimages = dalle2(\n    ['a butterfly trying to escape a tornado'],\n    cond_scale = 2. # classifier free guidance strength (> 1 would strengthen the condition)",
+        "type": "code",
+        "location": "/README.md:590-625"
+    },
+    "47": {
+        "file_id": 2,
+        "content": "The code initializes a DALLE2 model and trains it by feeding images and text. It creates Unet layers, a Decoder, and a DALLE2 instance using given dimensions and parameters. The training loop iterates over unet_number, calculates loss, and applies gradient descent to optimize the model. Finally, the DALLE2 model generates images based on input text with conditional scaling.",
+        "type": "comment"
+    },
+    "48": {
+        "file_id": 2,
+        "content": ")\n# save your image (in this example, of size 256x256)\n```\nAlternatively, you can also use <a href=\"https://github.com/mlfoundations/open_clip\">Open Clip</a>\n```bash\n$ pip install open-clip-torch\n```\nEx. using the <a href=\"https://laion.ai/blog/large-openclip/\">SOTA Open Clip</a> model trained by <a href=\"https://github.com/rom1504\">Romain</a>\n```python\nfrom dalle2_pytorch import OpenClipAdapter\nclip = OpenClipAdapter('ViT-H/14')\n```\nNow you'll just have to worry about training the Prior and the Decoder!\n## Inpainting\nInpainting is also built into the `Decoder`. You simply have to pass in the `inpaint_image` and `inpaint_mask` (boolean tensor where `True` indicates which regions of the inpaint image to keep)\nThis repository uses the formulation put forth by <a href=\"https://arxiv.org/abs/2201.09865\">Lugmayr et al. in Repaint</a>\n```python\nimport torch\nfrom dalle2_pytorch import Unet, Decoder, CLIP\n# trained clip from step 1\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,",
+        "type": "code",
+        "location": "/README.md:626-663"
+    },
+    "49": {
+        "file_id": 2,
+        "content": "The code provides instructions on how to save an image and use Open Clip for image processing. It mentions installing the open-clip-torch package, using a state-of-the-art (SOTA) Open Clip model, initializing the OpenClipAdapter with the desired model, and utilizing the Decoder's built-in inpainting feature, following the formulation presented in Repaint. The code also showcases how to import necessary modules and initialize a CLIP object with specified dimensions.",
+        "type": "comment"
+    },
+    "50": {
+        "file_id": 2,
+        "content": "    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n).cuda()\n# 2 unets for the decoder (a la cascading DDPM)\nunet = Unet(\n    dim = 16,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults = (1, 1, 1, 1)\n).cuda()\n# decoder, which contains the unet(s) and clip\ndecoder = Decoder(\n    clip = clip,\n    unet = (unet,),               # insert both unets in order of low resolution to highest resolution (you can have as many stages as you want here)\n    image_sizes = (256,),         # resolutions, 256 for first unet, 512 for second. these must be unique and in ascending order (matches with the unets passed in)\n    timesteps = 1000,\n    image_cond_drop_prob = 0.1,\n    text_cond_drop_prob = 0.5\n).cuda()\n# mock images (get a lot of this)\nimages = torch.randn(4, 3, 256, 256).cuda()\n# feed images into decoder, specifying which unet you want to train\n# each unet can be trained separately, which is one of the benefits of the cascading DDPM scheme",
+        "type": "code",
+        "location": "/README.md:664-700"
+    },
+    "51": {
+        "file_id": 2,
+        "content": "This code initializes a DALL-E 2 model with specified dimensions for text and visual encoders, along with two UNet models for the decoder. The decoder is then instantiated using these components and a set of image sizes, timesteps, and conditional drop probabilities. Finally, mock images are created for training purposes.",
+        "type": "comment"
+    },
+    "52": {
+        "file_id": 2,
+        "content": "loss = decoder(images, unet_number = 1)\nloss.backward()\n# do the above for many steps for both unets\nmock_image_embed = torch.randn(1, 512).cuda()\n# then to do inpainting\ninpaint_image = torch.randn(1, 3, 256, 256).cuda()      # (batch, channels, height, width)\ninpaint_mask = torch.ones(1, 256, 256).bool().cuda()    # (batch, height, width)\ninpainted_images = decoder.sample(\n    image_embed = mock_image_embed,\n    inpaint_image = inpaint_image,    # just pass in the inpaint image\n    inpaint_mask = inpaint_mask       # and the mask\n)\ninpainted_images.shape # (1, 3, 256, 256)\n```\n## Experimental\n### DALL-E2 with Latent Diffusion\nThis repository decides to take the next step and offer DALL-E v2 combined with <a href=\"https://huggingface.co/spaces/multimodalart/latentdiffusion\">latent diffusion</a>, from Rombach et al.\nYou can use it as follows. Latent diffusion can be limited to just the first U-Net in the cascade, or to any number you wish.\nThe repository also comes equipped with all the necessary settin",
+        "type": "code",
+        "location": "/README.md:702-731"
+    },
+    "53": {
+        "file_id": 2,
+        "content": "This code initializes a decoder and performs inpainting using DALL-E2 with Latent Diffusion. It generates a mock image embedding, sets the input image and mask for inpainting, then samples the inpainted images from the decoder.",
+        "type": "comment"
+    },
+    "54": {
+        "file_id": 2,
+        "content": "gs to recreate `ViT-VQGan` from the <a href=\"https://arxiv.org/abs/2110.04627\">Improved VQGans</a> paper. Furthermore, the <a href=\"https://github.com/lucidrains/vector-quantize-pytorch\">vector quantization</a> library also comes equipped to do <a href=\"https://arxiv.org/abs/2203.01941\">residual or multi-headed quantization</a>, which I believe will give an even further boost in performance to the autoencoder.\n```python\nimport torch\nfrom dalle2_pytorch import Unet, Decoder, CLIP, VQGanVAE\n# trained clip from step 1\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 1,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 1,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n)\n# 3 unets for the decoder (a la cascading DDPM)\n# first two unets are doing latent diffusion\n# vqgan-vae must be trained beforehand\nvae1 = VQGanVAE(\n    dim = 32,\n    image_size = 256,\n    layers = 3,\n    layer_mults = (1, 2, 4)",
+        "type": "code",
+        "location": "/README.md:731-762"
+    },
+    "55": {
+        "file_id": 2,
+        "content": "The code is importing necessary modules for training a VQGAN-VAE model. It initializes a CLIP model and three Unet models for the decoder, as well as a VQGanVAE model. The CLIP model is pre-trained, while the VQGanVAE needs to be trained beforehand. This code seems to aim at improving the performance of an autoencoder using residual or multi-headed quantization techniques.",
+        "type": "comment"
+    },
+    "56": {
+        "file_id": 2,
+        "content": ")\nvae2 = VQGanVAE(\n    dim = 32,\n    image_size = 512,\n    layers = 3,\n    layer_mults = (1, 2, 4)\n)\nunet1 = Unet(\n    dim = 32,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    sparse_attn = True,\n    sparse_attn_window = 2,\n    dim_mults = (1, 2, 4, 8)\n)\nunet2 = Unet(\n    dim = 32,\n    image_embed_dim = 512,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8, 16),\n    cond_on_image_embeds = True,\n    cond_on_text_encodings = False\n)\nunet3 = Unet(\n    dim = 32,\n    image_embed_dim = 512,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8, 16),\n    cond_on_image_embeds = True,\n    cond_on_text_encodings = False,\n    attend_at_middle = False\n)\n# decoder, which contains the unet(s) and clip\ndecoder = Decoder(\n    clip = clip,\n    vae = (vae1, vae2),                # latent diffusion for unet1 (vae1) and unet2 (vae2), but not for the last unet3\n    unet = (unet1, unet2, unet3),      # insert unets in order of low resolution to highest resolution (you can have as many stages as you want here)\n    image_sizes = (256, 512, 1024),    # resolutions, 256 for first unet, 512 for second, 1024 for third",
+        "type": "code",
+        "location": "/README.md:763-807"
+    },
+    "57": {
+        "file_id": 2,
+        "content": "This code sets up a DALLE2 model by creating and configuring various components: VQGanVAE (vae1), Unet models (unet1, unet2, unet3) and a Decoder. The decoder combines the clip and VAEs with corresponding Unets at different resolutions. The image sizes specify the resolutions for each Unet stage, starting from 256 for the first one up to 1024 for the third one.",
+        "type": "comment"
+    },
+    "58": {
+        "file_id": 2,
+        "content": "    timesteps = 100,\n    image_cond_drop_prob = 0.1,\n    text_cond_drop_prob = 0.5\n).cuda()\n# mock images (get a lot of this)\nimages = torch.randn(1, 3, 1024, 1024).cuda()\n# feed images into decoder, specifying which unet you want to train\n# each unet can be trained separately, which is one of the benefits of the cascading DDPM scheme\nwith decoder.one_unet_in_gpu(1):\n    loss = decoder(images, unet_number = 1)\n    loss.backward()\nwith decoder.one_unet_in_gpu(2):\n    loss = decoder(images, unet_number = 2)\n    loss.backward()\nwith decoder.one_unet_in_gpu(3):\n    loss = decoder(images, unet_number = 3)\n    loss.backward()\n# do the above for many steps for both unets\n# then it will learn to generate images based on the CLIP image embeddings\n# chaining the unets from lowest resolution to highest resolution (thus cascading)\nmock_image_embed = torch.randn(1, 512).cuda()\nimages = decoder.sample(mock_image_embed) # (1, 3, 1024, 1024)\n```\n## Training wrapper\n### Decoder Training\nTraining the `Decoder` may be confusing,",
+        "type": "code",
+        "location": "/README.md:808-846"
+    },
+    "59": {
+        "file_id": 2,
+        "content": "The code demonstrates how to train a `Decoder` with multiple unets using a cascading DDPM scheme. First, it initializes the model's parameters and assigns the required GPU. Then, it creates random images and specifies which unet to train in each iteration by calling the `one_unet_in_gpu()` method. The code trains multiple steps for each unet before moving on to the next one. Finally, a mock image is generated from an embedding using the trained decoder.",
+        "type": "comment"
+    },
+    "60": {
+        "file_id": 2,
+        "content": " as one needs to keep track of an optimizer for each of the `Unet`(s) separately. Each `Unet` will also need its own corresponding exponential moving average. The `DecoderTrainer` hopes to make this simple, as shown below\n```python\nimport torch\nfrom dalle2_pytorch import DALLE2, Unet, Decoder, CLIP, DecoderTrainer\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (32, 256)).cuda()\nimages = torch.randn(32, 3, 256, 256).cuda()\n# decoder (with unet)\nunet1 = Unet(\n    dim = 128,\n    image_embed_dim = 512,\n    text_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults=(1, 2, 4, 8),\n    cond_on_text_encodings = True,\n).cuda()\nunet2 = Unet(\n    dim = 16,\n    image_embed_dim = 512,\n    cond_dim = 128,\n    channels = 3,\n    dim_mults = (1, 2, 4, 8, 16),",
+        "type": "code",
+        "location": "/README.md:846-888"
+    },
+    "61": {
+        "file_id": 2,
+        "content": "The code defines a `CLIP` object and creates two `Unet` instances with different architectures. The `CLIP` model is used for text-to-image generation, while the `Unet` models are variational autoencoders that will be trained to generate images based on input text. The `unet1` has a smaller architecture compared to `unet2`, and both use the same embeddings. The code also provides mock data for testing the functionality of the decoder and trainers.",
+        "type": "comment"
+    },
+    "62": {
+        "file_id": 2,
+        "content": ").cuda()\ndecoder = Decoder(\n    unet = (unet1, unet2),\n    image_sizes = (128, 256),\n    clip = clip,\n    timesteps = 1000\n).cuda()\ndecoder_trainer = DecoderTrainer(\n    decoder,\n    lr = 3e-4,\n    wd = 1e-2,\n    ema_beta = 0.99,\n    ema_update_after_step = 1000,\n    ema_update_every = 10,\n)\nfor unet_number in (1, 2):\n    loss = decoder_trainer(\n        images,\n        text = text,\n        unet_number = unet_number, # which unet to train on\n        max_batch_size = 4         # gradient accumulation - this sets the maximum batch size in which to do forward and backwards pass - for this example 32 / 4 == 8 times\n    )\n    decoder_trainer.update(unet_number) # update the specific unet as well as its exponential moving average\n# after much training\n# you can sample from the exponentially moving averaged unets as so\nmock_image_embed = torch.randn(32, 512).cuda()\nimages = decoder_trainer.sample(image_embed = mock_image_embed, text = text) # (4, 3, 256, 256)\n```\n### Diffusion Prior Training\nSimilarly, one can use the `Di",
+        "type": "code",
+        "location": "/README.md:889-926"
+    },
+    "63": {
+        "file_id": 2,
+        "content": "This code sets up a decoder, trainer, and trains the unets to generate images based on text input. The trainer updates the unets and their exponential moving averages after each iteration. Finally, it samples from the moving-averaged unets to create new images.",
+        "type": "comment"
+    },
+    "64": {
+        "file_id": 2,
+        "content": "ffusionPriorTrainer` to automatically instantiate and keep track of an exponential moving averaged prior.\n```python\nimport torch\nfrom dalle2_pytorch import DALLE2, DiffusionPriorNetwork, DiffusionPrior, DiffusionPriorTrainer, Unet, Decoder, CLIP\nclip = CLIP(\n    dim_text = 512,\n    dim_image = 512,\n    dim_latent = 512,\n    num_text_tokens = 49408,\n    text_enc_depth = 6,\n    text_seq_len = 256,\n    text_heads = 8,\n    visual_enc_depth = 6,\n    visual_image_size = 256,\n    visual_patch_size = 32,\n    visual_heads = 8\n).cuda()\n# mock data\ntext = torch.randint(0, 49408, (512, 256)).cuda()\nimages = torch.randn(512, 3, 256, 256).cuda()\n# prior networks (with transformer)\nprior_network = DiffusionPriorNetwork(\n    dim = 512,\n    depth = 6,\n    dim_head = 64,\n    heads = 8\n).cuda()\ndiffusion_prior = DiffusionPrior(\n    net = prior_network,\n    clip = clip,\n    timesteps = 100,\n    cond_drop_prob = 0.2\n).cuda()\ndiffusion_prior_trainer = DiffusionPriorTrainer(\n    diffusion_prior,\n    lr = 3e-4,\n    wd = 1e-2,\n    ema_beta = 0.99,",
+        "type": "code",
+        "location": "/README.md:926-971"
+    },
+    "65": {
+        "file_id": 2,
+        "content": "This code creates a CLIP model, initializes a diffusion prior network, and sets up a trainer for the diffusion prior. The CLIP model is used to encode text and images into latent representations, while the diffusion prior network is responsible for predicting the future of latent samples. The trainer will automatically update the moving average of the prior network over time.",
+        "type": "comment"
+    },
+    "66": {
+        "file_id": 2,
+        "content": "    ema_update_after_step = 1000,\n    ema_update_every = 10,\n)\nloss = diffusion_prior_trainer(text, images, max_batch_size = 4)\ndiffusion_prior_trainer.update()  # this will update the optimizer as well as the exponential moving averaged diffusion prior\n# after much of the above three lines in a loop\n# you can sample from the exponential moving average of the diffusion prior identically to how you do so for DiffusionPrior\nimage_embeds = diffusion_prior_trainer.sample(text, max_batch_size = 4) # (512, 512) - exponential moving averaged image embeddings\n```\n## Bonus\n### Unconditional Training\nThe repository also contains the means to train unconditional DDPM model, or even cascading DDPMs. You simply have to set `unconditional = True` in the `Decoder`\nex.\n```python\nimport torch\nfrom dalle2_pytorch import Unet, Decoder, DecoderTrainer\n# unet for the cascading ddpm\nunet1 = Unet(\n    dim = 128,\n    dim_mults=(1, 2, 4, 8)\n).cuda()\nunet2 = Unet(\n    dim = 32,\n    dim_mults = (1, 2, 4, 8, 16)\n).cuda()\n# decoder, which contains the unets",
+        "type": "code",
+        "location": "/README.md:972-1009"
+    },
+    "67": {
+        "file_id": 2,
+        "content": "This code initializes a diffusion prior trainer with exponential moving average (EMA) update parameters, trains the model using diffusion_prior_trainer, updates optimizer and EMA diffusion prior, and finally samples from the EMA of the diffusion prior. The code also mentions that unconditional training or cascading DDPMs can be done by setting `unconditional = True` in the Decoder.",
+        "type": "comment"
+    },
+    "68": {
+        "file_id": 2,
+        "content": "decoder = Decoder(\n    unet = (unet1, unet2),\n    image_sizes = (256, 512),  # first unet up to 256px, then second to 512px\n    timesteps = 1000,\n    unconditional = True\n).cuda()\n# decoder trainer\ndecoder_trainer = DecoderTrainer(decoder)\n# images (get a lot of this)\nimages = torch.randn(1, 3, 512, 512).cuda()\n# feed images into decoder\nfor i in (1, 2):\n    loss = decoder_trainer(images, unet_number = i)\n    decoder_trainer.update(unet_number = i)\n# do the above for many many many many images\n# then it will learn to generate images\nimages = decoder_trainer.sample(batch_size = 36, max_batch_size = 4) # (36, 3, 512, 512)\n```\n## Dataloaders\n### Decoder Dataloaders\nIn order to make loading data simple and efficient, we include some general dataloaders that can be used to train portions of the network.\n#### Decoder: Image Embedding Dataset\nWhen training the decoder (and up samplers if training together) in isolation, you will need to load images and corresponding image embeddings. This dataset can read two simi",
+        "type": "code",
+        "location": "/README.md:1011-1046"
+    },
+    "69": {
+        "file_id": 2,
+        "content": "The code initializes a decoder, trainer for the decoder, and generates images. It then trains the decoder by feeding images into it, updating the trainer, and repeats this process many times to enable learning. Finally, it uses the trained decoder to generate new images.",
+        "type": "comment"
+    },
+    "70": {
+        "file_id": 2,
+        "content": "lar types of datasets. First, it can read a [webdataset](https://github.com/webdataset/webdataset) that contains `.jpg` and `.npy` files in the `.tar`s that contain the images and associated image embeddings respectively. Alternatively, you can also specify a source for the embeddings outside of the webdataset. In this case, the path to the embeddings should contain `.npy` files with the same shard numbers as the webdataset and there should be a correspondence between the filename of the `.jpg` and the index of the embedding in the `.npy`. So, for example, `0001.tar` from the webdataset with image `00010509.jpg` (the first 4 digits are the shard number and the last 4 are the index) in it should be paralleled by a `img_emb_0001.npy` which contains a NumPy array with the embedding at index 509.\nGenerating a dataset of this type: \n1. Use [img2dataset](https://github.com/rom1504/img2dataset) to generate a webdataset.\n2. Use [clip-retrieval](https://github.com/rom1504/clip-retrieval) to convert the images to embeddings.",
+        "type": "code",
+        "location": "/README.md:1046-1050"
+    },
+    "71": {
+        "file_id": 2,
+        "content": "This code describes a dataset format using webdataset, containing .jpg and .npy files in .tar archives. It allows specifying an external source for embeddings with the same shard numbers and filename-to-index correspondence. The code provides steps to generate this type of dataset using img2dataset and clip-retrieval.",
+        "type": "comment"
+    },
+    "72": {
+        "file_id": 2,
+        "content": "3. Use [embedding-dataset-reordering](https://github.com/Veldrovive/embedding-dataset-reordering) to reorder the embeddings into the expected format.\nUsage:\n```python\nfrom dalle2_pytorch.dataloaders import ImageEmbeddingDataset, create_image_embedding_dataloader\n# Create a dataloader directly.\ndataloader = create_image_embedding_dataloader(\n    tar_url=\"/path/or/url/to/webdataset/{0000..9999}.tar\", # Uses bracket expanding notation. This specifies to read all tars from 0000.tar to 9999.tar\n    embeddings_url=\"path/or/url/to/embeddings/folder\",     # Included if .npy files are not in webdataset. Left out or set to None otherwise\n    num_workers=4,\n    batch_size=32,\n    shard_width=4,                                         # If a file in the webdataset shard 3 is named 0003039.jpg, we know the shard width is 4 and the last three digits are the index\n    shuffle_num=200,                                       # Does a shuffle of the data with a buffer size of 200\n    shuffle_shards=True,                                   # Shuffle the order the shards are read in",
+        "type": "code",
+        "location": "/README.md:1051-1066"
+    },
+    "73": {
+        "file_id": 2,
+        "content": "This code snippet demonstrates the usage of the `create_image_embedding_dataloader` function from the DALLE2-pytorch library. It creates an image embedding dataloader by specifying a URL path for the webdataset tar files and optional embeddings folder, setting the number of workers and batch size, defining the shard width, and deciding whether to shuffle the shards or not. The purpose is to reorder the embeddings into the expected format for image generation tasks.",
+        "type": "comment"
+    },
+    "74": {
+        "file_id": 2,
+        "content": "    resample_shards=False,                                 # Sample shards with replacement. If true, an epoch will be infinite unless stopped manually\n)\nfor img, emb in dataloader:\n    print(img.shape)  # torch.Size([32, 3, 256, 256])\n    print(emb[\"img\"].shape)  # torch.Size([32, 512])\n    # Train decoder only as shown above\n# Or create a dataset without a loader so you can configure it manually\ndataset = ImageEmbeddingDataset(\n    urls=\"/path/or/url/to/webdataset/{0000..9999}.tar\",\n    embedding_folder_url=\"path/or/url/to/embeddings/folder\",\n    shard_width=4,\n    shuffle_shards=True,\n    resample=False\n)\n```\n### Scripts\n#### `train_diffusion_prior.py`\nFor detailed information on training the diffusion prior, please refer to the [dedicated readme](prior.md)\n## Todo\n- [x] finish off gaussian diffusion class for latent embedding - allow for prediction of epsilon\n- [x] add what was proposed in the paper, where DDPM objective for image latent embedding predicts x0 directly (reread vq-diffusion paper and get caught up on that line of work)",
+        "type": "code",
+        "location": "/README.md:1067-1093"
+    },
+    "75": {
+        "file_id": 2,
+        "content": "The code snippet shows how to load an ImageEmbeddingDataset and print its shape. The dataset is loaded from a webdataset at the specified URL, with embedding files located in the given folder. It uses shard_width=4 for sharding the data and sets resample to False. The loader creates images and embeddings which are printed for verification. Additionally, it mentions creating a dataset without a loader if manual configuration is preferred.",
+        "type": "comment"
+    },
+    "76": {
+        "file_id": 2,
+        "content": "- [x] make sure it works end to end to produce an output tensor, taking a single gradient step\n- [x] augment unet so that it can also be conditioned on text encodings (although in paper they hinted this didn't make much a difference)\n- [x] figure out all the current bag of tricks needed to make DDPMs great (starting with the blur trick mentioned in paper)\n- [x] build the cascading ddpm by having Decoder class manage multiple unets at different resolutions\n- [x] add efficient attention in unet\n- [x] be able to finely customize what to condition on (text, image embed) for specific unet in the cascade (super resolution ddpms near the end may not need too much conditioning)\n- [x] offload unets not being trained on to CPU for memory efficiency (for training each resolution unets separately)\n- [x] build out latent diffusion architecture, with the vq-reg variant (vqgan-vae), make it completely optional and compatible with cascading ddpms\n- [x] for decoder, allow ability to customize objective (predict epsilon vs x0), in case latent diffusion does better with prediction of x0",
+        "type": "code",
+        "location": "/README.md:1094-1102"
+    },
+    "77": {
+        "file_id": 2,
+        "content": "The code outlines the steps to create a DDPM model, including conditioning it with text encodings and incorporating a cascade of unets for different resolutions. It also mentions adding efficient attention in unet, allowing customization of conditioning for specific unets, offloading unets to CPU, building latent diffusion architecture, and providing the option for vq-reg variant (vqgan-vae). The decoder objective can be customized between predicting epsilon or x0.",
+        "type": "comment"
+    },
+    "78": {
+        "file_id": 2,
+        "content": "- [x] use attention-based upsampling https://arxiv.org/abs/2112.11435\n- [x] use inheritance just this once for sharing logic between decoder and prior network ddpms\n- [x] bring in vit-vqgan https://arxiv.org/abs/2110.04627 for the latent diffusion\n- [x] abstract interface for CLIP adapter class, so other CLIPs can be brought in\n- [x] take care of mixed precision as well as gradient accumulation within decoder trainer\n- [x] just take care of the training for the decoder in a wrapper class, as each unet in the cascade will need its own optimizer\n- [x] bring in tools to train vqgan-vae\n- [x] add convnext backbone for vqgan-vae (in addition to vit [vit-vqgan] + resnet)\n- [x] make sure DDPMs can be run with traditional resnet blocks (but leave convnext as an option for experimentation)\n- [x] make sure for the latter unets in the cascade, one can train on crops for learning super resolution (constrain the unet to be only convolutions in that case, or allow conv-like attention with rel pos bias)\n- [x] ",
+        "type": "code",
+        "location": "/README.md:1103-1113"
+    },
+    "79": {
+        "file_id": 2,
+        "content": "This code is a list of tasks to be completed for the DALLE2-pytorch project. It includes implementing attention-based upsampling, using inheritance, integrating Vit-VQGAN, creating an abstract interface for CLIP adapters, handling mixed precision and gradient accumulation in the decoder trainer, adding a training wrapper class for each unet in the cascade, incorporating convnext backbone for VQGAN-VAE, making sure DDPMs can be run with traditional resnet blocks, enabling super resolution training on crops for latter unets, and allowing conv-like attention with rel pos bias.",
+        "type": "comment"
+    },
+    "80": {
+        "file_id": 2,
+        "content": "offer setting in diffusion prior to split time and image embeddings into multiple tokens, configurable, for more surface area during attention\n- [x] make sure resnet hyperparameters can be configurable across unet depth (groups and expansion factor)\n- [x] pull logic for training diffusion prior into a class DiffusionPriorTrainer, for eventual script based + CLI based training\n- [x] make sure the cascading ddpm in the repository can be trained unconditionally, offer a one-line CLI tool for training on a folder of images\n- [x] bring in cross-scale embedding from iclr paper https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/crossformer.py#L14\n- [x] cross embed layers for downsampling, as an option\n- [x] use an experimental tracker agnostic setup, as done <a href=\"https://github.com/lucidrains/tf-bind-transformer#simple-trainer-class-for-fine-tuning\">here</a>\n- [x] use pydantic for config drive training\n- [x] for both diffusion prior and decoder, all exponential moving averaged models needs to be saved and restored as well (as well as the step number)",
+        "type": "code",
+        "location": "/README.md:1113-1121"
+    },
+    "81": {
+        "file_id": 2,
+        "content": "The code is about configuring and training a diffusion prior model for image generation. It includes improvements such as making hyperparameters configurable, incorporating cross-scale embedding, introducing cross embed layers for downsampling, and using an experimental tracker agnostic setup. The code also utilizes pydantic for configuration drive training, saves and restores all exponential moving averaged models for both diffusion prior and decoder.",
+        "type": "comment"
+    },
+    "82": {
+        "file_id": 2,
+        "content": "- [x] offer save / load methods on the trainer classes to automatically take care of state dicts for scalers / optimizers / saving versions and checking for breaking changes\n- [x] allow for creation of diffusion prior model off pydantic config classes - consider the same for tracker configs\n- [x] bring in skip-layer excitations (from lightweight gan paper) to see if it helps for either decoder of unet or vqgan-vae training (doesnt work well)\n- [x] test out grid attention in cascading ddpm locally, decide whether to keep or remove https://arxiv.org/abs/2204.01697 (keeping, seems to be fine)\n- [x] allow for unet to be able to condition non-cross attention style as well\n- [x] speed up inference, read up on papers (ddim)\n- [x] add inpainting ability using resampler from repaint paper https://arxiv.org/abs/2201.09865\n- [x] add the final combination of upsample feature maps, used in unet squared, seems to have an effect in local experiments\n- [ ] consider elucidated dalle2 https://arxiv.org/abs/2206.00364",
+        "type": "code",
+        "location": "/README.md:1122-1130"
+    },
+    "83": {
+        "file_id": 2,
+        "content": "This code lists various tasks and features that have been implemented or are planned for the DALLE2-pytorch model. These include save/load methods, creation of diffusion prior models, skip-layer excitations, grid attention in Cascading DDPM, unet conditioning, speed up inference, resampler from REPAINT paper, final combination of upsample feature maps, and consideration for Elucidated DALLE2.",
+        "type": "comment"
+    },
+    "84": {
+        "file_id": 2,
+        "content": "- [ ] add simple outpainting, text-guided 2x size the image for starters\n- [ ] interface out the vqgan-vae so a pretrained one can be pulled off the shelf to validate latent diffusion + DALL-E2\n## Citations\n```bibtex\n@misc{ramesh2022,\n    title   = {Hierarchical Text-Conditional Image Generation with CLIP Latents}, \n    author  = {Aditya Ramesh et al},\n    year    = {2022}\n}\n```\n```bibtex\n@misc{crowson2022,\n    author  = {Katherine Crowson},\n    url     = {https://twitter.com/rivershavewings}\n}\n```\n```bibtex\n@misc{rombach2021highresolution,\n    title   = {High-Resolution Image Synthesis with Latent Diffusion Models}, \n    author  = {Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},\n    year    = {2021},\n    eprint  = {2112.10752},\n    archivePrefix = {arXiv},\n    primaryClass = {cs.CV}\n}\n```\n```bibtex\n@article{shen2019efficient,\n    author  = {Zhuoran Shen and Mingyuan Zhang and Haiyu Zhao and Shuai Yi and Hongsheng Li},\n    title   = {Efficient Attention: Attention with Linear Complexities},",
+        "type": "code",
+        "location": "/README.md:1131-1165"
+    },
+    "85": {
+        "file_id": 2,
+        "content": "This code chunk appears to be a task list for the DALLE2-pytorch project, followed by citations in BibTeX format. The tasks include implementing simple outpainting and text-guided 2x image size expansion. The project also plans on integrating the VQGAN-VAE, which can be pulled from a pretrained model to test latent diffusion and DALL-E2 integration. The cited works include \"Hierarchical Text-Conditional Image Generation with CLIP Latents\", \"High-Resolution Image Synthesis with Latent Diffusion Models\", \"Efficient Attention: Attention with Linear Complexities\" and a Twitter post by Katherine Crowson.",
+        "type": "comment"
+    },
+    "86": {
+        "file_id": 2,
+        "content": "    journal = {CoRR},\n    year    = {2018},\n    url     = {http://arxiv.org/abs/1812.01243},\n}\n```\n```bibtex\n@article{Yu2021VectorquantizedIM,\n    title   = {Vector-quantized Image Modeling with Improved VQGAN},\n    author  = {Jiahui Yu and Xin Li and Jing Yu Koh and Han Zhang and Ruoming Pang and James Qin and Alexander Ku and Yuanzhong Xu and Jason Baldridge and Yonghui Wu},\n    journal = {ArXiv},\n    year    = {2021},\n    volume  = {abs/2110.04627}\n}\n```\n```bibtex\n@article{Shleifer2021NormFormerIT,\n    title   = {NormFormer: Improved Transformer Pretraining with Extra Normalization},\n    author  = {Sam Shleifer and Jason Weston and Myle Ott},\n    journal = {ArXiv},\n    year    = {2021},\n    volume  = {abs/2110.09456}\n}\n```\n```bibtex\n@article{Yu2022CoCaCC,\n    title   = {CoCa: Contrastive Captioners are Image-Text Foundation Models},\n    author  = {Jiahui Yu and Zirui Wang and Vijay Vasudevan and Legg Yeung and Mojtaba Seyedhosseini and Yonghui Wu},\n    journal = {ArXiv},\n    year    = {2022},\n    volume  = {abs/2205.01917}",
+        "type": "code",
+        "location": "/README.md:1166-1198"
+    },
+    "87": {
+        "file_id": 2,
+        "content": "The code defines four BibTeX entries for academic papers, providing the paper title, author(s), journal or arXiv, and publication year. These entries can be used to cite the papers in a BibTeX database or bibliography file.",
+        "type": "comment"
+    },
+    "88": {
+        "file_id": 2,
+        "content": "}\n```\n```bibtex\n@misc{wang2021crossformer,\n    title   = {CrossFormer: A Versatile Vision Transformer Hinging on Cross-scale Attention},\n    author  = {Wenxiao Wang and Lu Yao and Long Chen and Binbin Lin and Deng Cai and Xiaofei He and Wei Liu},\n    year    = {2021},\n    eprint  = {2108.00154},\n    archivePrefix = {arXiv},\n    primaryClass = {cs.CV}\n}\n```\n```bibtex\n@article{ho2021cascaded,\n    title   = {Cascaded Diffusion Models for High Fidelity Image Generation},\n    author  = {Ho, Jonathan and Saharia, Chitwan and Chan, William and Fleet, David J and Norouzi, Mohammad and Salimans, Tim},\n    journal = {arXiv preprint arXiv:2106.15282},\n    year    = {2021}\n}\n```\n```bibtex\n@misc{Saharia2022,\n    title   = {Imagen: unprecedented photorealism × deep level of language understanding},\n    author  = {Chitwan Saharia*, William Chan*, Saurabh Saxena†, Lala Li†, Jay Whang†, Emily Denton, Seyed Kamyar Seyed Ghasemipour, Burcu Karagol Ayan, S. Sara Mahdavi, Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho†, David Fleet†, Mohammad Norouzi*},",
+        "type": "code",
+        "location": "/README.md:1199-1225"
+    },
+    "89": {
+        "file_id": 2,
+        "content": "This code snippet represents the citation for a research paper called \"CrossFormer: A Versatile Vision Transformer Hinging on Cross-scale Attention\" by Wenxiao Wang et al. The paper is available at arXiv with ID 2108.00154 and focuses on a versatile vision transformer model using cross-scale attention.",
+        "type": "comment"
+    },
+    "90": {
+        "file_id": 2,
+        "content": "    year    = {2022}\n}\n```\n```bibtex\n@article{Choi2022PerceptionPT,\n    title   = {Perception Prioritized Training of Diffusion Models},\n    author  = {Jooyoung Choi and Jungbeom Lee and Chaehun Shin and Sungwon Kim and Hyunwoo J. Kim and Sung-Hoon Yoon},\n    journal = {ArXiv},\n    year    = {2022},\n    volume  = {abs/2204.00227}\n}\n```\n```bibtex\n@article{Saharia2021PaletteID,\n    title   = {Palette: Image-to-Image Diffusion Models},\n    author  = {Chitwan Saharia and William Chan and Huiwen Chang and Chris A. Lee and Jonathan Ho and Tim Salimans and David J. Fleet and Mohammad Norouzi},\n    journal = {ArXiv},\n    year    = {2021},\n    volume  = {abs/2111.05826}\n}\n```\n```bibtex\n@article{Lugmayr2022RePaintIU,\n    title   = {RePaint: Inpainting using Denoising Diffusion Probabilistic Models},\n    author  = {Andreas Lugmayr and Martin Danelljan and Andr{\\'e}s Romero and Fisher Yu and Radu Timofte and Luc Van Gool},\n    journal = {ArXiv},\n    year    = {2022},\n    volume  = {abs/2201.09865}\n}\n```\n```bibtex\n@misc{chen2022analog,",
+        "type": "code",
+        "location": "/README.md:1226-1261"
+    },
+    "91": {
+        "file_id": 2,
+        "content": "The code includes four BibTeX entries, each representing a different research article. The first entry is for the article titled \"Perception Prioritized Training of Diffusion Models\" by Choi et al., published in 2022. The second entry is for the article titled \"Palette: Image-to-Image Diffusion Models\" by Saharia et al., published in 2021. The third entry is for the article titled \"RePaint: Inpainting using Denoising Diffusion Probabilistic Models\" by Lugmayr et al., published in 2022. The last entry, marked as incomplete, is for an unnamed article by Chen et al. published in 2022.",
+        "type": "comment"
+    },
+    "92": {
+        "file_id": 2,
+        "content": "    title   = {Analog Bits: Generating Discrete Data using Diffusion Models with Self-Conditioning},\n    author  = {Ting Chen and Ruixiang Zhang and Geoffrey Hinton},\n    year    = {2022},\n    eprint  = {2208.04202},\n    archivePrefix = {arXiv},\n    primaryClass = {cs.CV}\n}\n```\n```bibtex\n@article{Qiao2019WeightS,\n    title   = {Weight Standardization},\n    author  = {Siyuan Qiao and Huiyu Wang and Chenxi Liu and Wei Shen and Alan Loddon Yuille},\n    journal = {ArXiv},\n    year    = {2019},\n    volume  = {abs/1903.10520}\n}\n```\n```bibtex\n@inproceedings{rogozhnikov2022einops,\n    title   = {Einops: Clear and Reliable Tensor Manipulations with Einstein-like Notation},\n    author  = {Alex Rogozhnikov},\n    booktitle = {International Conference on Learning Representations},\n    year    = {2022},\n    url     = {https://openreview.net/forum?id=oapKSVM2bcj}\n}\n```\n```bibtex\n@article{Sunkara2022NoMS,\n    title   = {No More Strided Convolutions or Pooling: A New CNN Building Block for Low-Resolution Images and Small Objects},",
+        "type": "code",
+        "location": "/README.md:1262-1293"
+    },
+    "93": {
+        "file_id": 2,
+        "content": "The code represents BibTeX entries for research articles and conferences. These entries provide information about the title, authors, journals or conferences, publication years, and related identifiers of the cited works.",
+        "type": "comment"
+    },
+    "94": {
+        "file_id": 2,
+        "content": "    author  = {Raja Sunkara and Tie Luo},\n    journal = {ArXiv},\n    year    = {2022},\n    volume  = {abs/2208.03641}\n}\n```\n```bibtex\n@article{Salimans2022ProgressiveDF,\n    title   = {Progressive Distillation for Fast Sampling of Diffusion Models},\n    author  = {Tim Salimans and Jonathan Ho},\n    journal = {ArXiv},\n    year    = {2022},\n    volume  = {abs/2202.00512}\n}\n```\n*Creating noise from data is easy; creating data from noise is generative modeling.* - <a href=\"https://arxiv.org/abs/2011.13456\">Yang Song's paper</a>",
+        "type": "code",
+        "location": "/README.md:1294-1311"
+    },
+    "95": {
+        "file_id": 2,
+        "content": "This code snippet provides the citation information for two papers in the BibTeX format. The first paper is titled \"Progressive Distillation for Fast Sampling of Diffusion Models\" by Tim Salimans and Jonathan Ho, published in ArXiv in 2022 with volume abs/2202.00512. The second paper is called \"ArXiv:2208.03641\" which doesn't seem to have a title or authors listed, but it was also published on ArXiv in 2022 with the volume abs/2208.03641. Both papers discuss generative modeling techniques using diffusion models.",
+        "type": "comment"
+    },
+    "96": {
+        "file_id": 3,
+        "content": "/configs/README.md",
+        "type": "filepath"
+    },
+    "97": {
+        "file_id": 3,
+        "content": "This code configures DALLE2 model training and logging options in PyTorch, with customizable settings for Unet and Decoder, dataloader, preprocessing, hyperparameters, image metrics, and experiment tracking. It supports various configurations based on selected logger and storage types.",
+        "type": "summary"
+    },
+    "98": {
+        "file_id": 3,
+        "content": "## DALLE2 Training Configurations\nFor more complex configuration, we provide the option of using a configuration file instead of command line arguments.\n### Decoder Trainer\nThe decoder trainer has 7 main configuration options. A full example of their use can be found in the [example decoder configuration](train_decoder_config.example.json).\n**<ins>Unet</ins>:**\nThis is a single unet config, which belongs as an array nested under the decoder config as a list of `unets`\n| Option | Required | Default | Description |\n| ------ | -------- | ------- | ----------- |\n| `dim`  | Yes      | N/A     | The starting channels of the unet. |\n| `image_embed_dim` | Yes | N/A | The dimension of the image embeddings. |\n| `dim_mults` | No | `(1, 2, 4, 8)` | The growth factors of the channels. |\nAny parameter from the `Unet` constructor can also be given here.\n**<ins>Decoder</ins>:**\nDefines the configuration options for the decoder model. The unets defined above will automatically be inserted.\n| Option | Required | Default | Description |",
+        "type": "code",
+        "location": "/configs/README.md:1-24"
+    },
+    "99": {
+        "file_id": 3,
+        "content": "This code provides details on configuring training for DALLE2, a complex model that requires various settings. It includes sections for Unet and Decoder configurations with optional parameters. An example configuration file is also mentioned for easier understanding.",
+        "type": "comment"
+    }
+}
